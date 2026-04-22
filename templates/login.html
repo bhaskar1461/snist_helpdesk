@@ -41,14 +41,15 @@
           {% endwith %}
 
           <form class="login-form" method="post" action="{{ url_for('login') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="field">
               <span>Email</span>
-              <input type="email" name="email" placeholder="Enter your email" value="faculty@gmail.com" required />
+              <input type="email" name="email" placeholder="Enter your email" required />
             </label>
 
             <label class="field">
               <span>Password</span>
-              <input type="password" name="password" placeholder="Enter your password" value="123" required />
+              <input type="password" name="password" placeholder="Enter your password" required />
             </label>
 
             <button type="submit" class="login-btn">Login</button>

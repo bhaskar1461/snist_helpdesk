@@ -47,6 +47,22 @@
     .multi-select-dropdown input[type="checkbox"] { accent-color:#4f46e5; width:16px; height:16px; }
 
     .dept-hint { font-size:.72rem; color:#6b7280; margin-top:2px; font-style:italic; }
+
+    /* Compact dept multi-select (CA role) */
+    .dept-multi-select { position:relative; display:inline-block; width:100%; }
+    .dept-multi-btn { width:100%; padding:4px 8px; border:1px solid #d1d5db; border-radius:4px; background:#fff; cursor:pointer;
+      font-size:.82rem; text-align:left; display:flex; justify-content:space-between; align-items:center; min-height:30px;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; gap:4px; }
+    .dept-multi-btn .dept-label-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; color:#374151; }
+    .dept-multi-btn .dept-arrow { flex-shrink:0; font-size:.65rem; color:#6b7280; }
+    .dept-multi-panel { display:none; position:absolute; top:calc(100% + 2px); left:0; min-width:180px; width:max-content; max-width:260px;
+      background:#fff; border:1px solid #d1d5db; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.15);
+      z-index:60; padding:4px 0; max-height:200px; overflow-y:auto; }
+    .dept-multi-panel.open { display:block; }
+    .dept-multi-panel label { display:flex; align-items:center; gap:6px; padding:5px 10px; cursor:pointer; font-size:.8rem;
+      transition:background .15s; white-space:nowrap; margin:0; font-weight:normal; }
+    .dept-multi-panel label:hover { background:#f3f4f6; }
+    .dept-multi-panel input[type="checkbox"] { accent-color:#4f46e5; width:14px; height:14px; flex-shrink:0; }
   </style>
 </head>
 <body>
@@ -79,6 +95,7 @@
         <section class="admin-card">
           <div class="card-head"><div><p class="kicker">Create User</p><h3>New demo user</h3></div></div>
           <form method="post" action="{{ url_for('user_management') }}" class="admin-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-grid">
               <label class="field"><span>Name</span><input type="text" name="name" required></label>
               <label class="field"><span>Email</span><input type="email" name="email" required></label>
@@ -101,12 +118,18 @@
                       <option value="{{ department.code }}" data-all="true">{{ department.code }}</option>
                     {% endfor %}
                   </select>
-                  <div id="create-department-multi" class="checkbox-grid" style="display: none; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 120px; overflow-y: auto; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #fff;">
-                    {% for department in departments %}
-                      <label data-all="true" style="display: flex; align-items: center; gap: 4px; font-weight: normal; margin: 0; white-space: nowrap;">
-                        <input type="checkbox" name="department" value="{{ department.code }}"> {{ department.code }}
-                      </label>
-                    {% endfor %}
+                  <div id="create-department-multi" class="dept-multi-select" style="display:none;">
+                    <button type="button" class="dept-multi-btn" onclick="toggleDeptPanel('create')">
+                      <span class="dept-label-text" id="create-dept-label">Select departments</span>
+                      <span class="dept-arrow">▾</span>
+                    </button>
+                    <div class="dept-multi-panel" id="create-dept-panel">
+                      {% for department in departments %}
+                        <label data-all="true">
+                          <input type="checkbox" name="department" value="{{ department.code }}" onchange="updateDeptLabel('create')"> {{ department.code }}
+                        </label>
+                      {% endfor %}
+                    </div>
                   </div>
                   <span class="dept-hint" id="create-dept-hint"></span>
                 </div>
@@ -161,6 +184,7 @@
                   </tr>
                   <tr id="user-edit-{{ item.id }}" class="edit-row" style="display:none;">
                     <form method="post" action="{{ url_for('update_user', user_id=item.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <td><input type="text" name="name" value="{{ item.name }}" required></td>
                       <td><input type="email" name="email" value="{{ item.email }}" required></td>
                       <td>
@@ -177,17 +201,22 @@
                             <option value="{{ department.code }}" data-all="true" {% if department.code in item_depts %}selected{% endif %}>{{ department.code }}</option>
                           {% endfor %}
                         </select>
-                        <div id="edit-{{ item.id }}-department-multi" class="checkbox-grid" style="display: none; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 120px; overflow-y: auto; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #fff; text-align: left;">
-                          {% set item_depts = item.department.split(',') | map('trim') | list %}
-                          {% for department in departments %}
-                            <label data-all="true" style="display: flex; align-items: center; gap: 4px; font-weight: normal; margin: 0; white-space: nowrap;">
-                              <input type="checkbox" name="department" value="{{ department.code }}" {% if department.code in item_depts %}checked{% endif %}> {{ department.code }}
-                            </label>
-                          {% endfor %}
+                        <div id="edit-{{ item.id }}-department-multi" class="dept-multi-select" style="display:none;">
+                          <button type="button" class="dept-multi-btn" onclick="toggleDeptPanel('edit-{{ item.id }}')">
+                            <span class="dept-label-text" id="edit-{{ item.id }}-dept-label">Select departments</span>
+                            <span class="dept-arrow">▾</span>
+                          </button>
+                          <div class="dept-multi-panel" id="edit-{{ item.id }}-dept-panel">
+                            {% set item_depts = item.department.split(',') | map('trim') | list %}
+                            {% for department in departments %}
+                              <label data-all="true">
+                                <input type="checkbox" name="department" value="{{ department.code }}" {% if department.code in item_depts %}checked{% endif %} onchange="updateDeptLabel('edit-{{ item.id }}')"> {{ department.code }}
+                              </label>
+                            {% endfor %}
+                          </div>
                         </div>
                       </td>
                       <td>
-                        <input type="hidden" name="password" value="{{ item.email }}">
                         <div class="btn-group">
                           <button type="submit" class="save-btn">Save</button>
                           <button type="button" class="cancel-btn" onclick="toggleEdit({{ item.id }})">Cancel</button>
@@ -213,6 +242,7 @@
       <p>Are you sure you want to delete <strong id="delete-user-name"></strong>? This cannot be undone. Users referenced by tickets or categories cannot be deleted.</p>
       <div class="btn-group">
         <form id="delete-form" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="delete-btn">Yes, Delete</button>
         </form>
         <button type="button" class="cancel-btn" onclick="closeDelete()">Cancel</button>
@@ -261,7 +291,7 @@
       if (isCA) {
         deptSelect.style.display = 'none';
         deptSelect.required = false;
-        if (multiBox) multiBox.style.display = 'grid';
+        if (multiBox) multiBox.style.display = '';
       } else {
         deptSelect.style.display = '';
         deptSelect.required = true;
@@ -278,16 +308,20 @@
           opt.disabled = true;
         }
       });
-      
+
       if (multiBox) {
-        multiBox.querySelectorAll('label[data-all]').forEach(lbl => {
+        const panel = document.getElementById(prefix + '-dept-panel');
+        if (panel) {
+          panel.querySelectorAll('label[data-all]').forEach(lbl => {
             const val = lbl.querySelector('input').value;
             if (allowedDepts.length === 0 || allowedDepts.includes(val)) {
-                lbl.style.display = 'flex';
+              lbl.style.display = 'flex';
             } else {
-                lbl.style.display = 'none';
+              lbl.style.display = 'none';
             }
-        });
+          });
+        }
+        updateDeptLabel(prefix);
       }
 
       // Auto-select if current value is now hidden
@@ -312,11 +346,39 @@
       document.getElementById('role-dropdown').classList.toggle('open');
     }
 
-    // Close dropdown when clicking outside
+    /* ── Dept multi-select dropdown ── */
+    function toggleDeptPanel(prefix) {
+      // Close all other dept panels first
+      document.querySelectorAll('.dept-multi-panel.open').forEach(p => {
+        if (p.id !== prefix + '-dept-panel') p.classList.remove('open');
+      });
+      const panel = document.getElementById(prefix + '-dept-panel');
+      if (panel) panel.classList.toggle('open');
+    }
+
+    function updateDeptLabel(prefix) {
+      const panel = document.getElementById(prefix + '-dept-panel');
+      const labelEl = document.getElementById(prefix + '-dept-label');
+      if (!panel || !labelEl) return;
+      const checked = Array.from(panel.querySelectorAll('input[type="checkbox"]:checked'));
+      if (checked.length === 0) {
+        labelEl.textContent = 'Select departments';
+      } else if (checked.length <= 2) {
+        labelEl.textContent = checked.map(c => c.value).join(', ');
+      } else {
+        labelEl.textContent = checked.length + ' depts selected';
+      }
+    }
+
+    // Close dropdowns when clicking outside
     document.addEventListener('click', function(e) {
       const ms = document.getElementById('role-multi-select');
       if (ms && !ms.contains(e.target)) {
         document.getElementById('role-dropdown').classList.remove('open');
+      }
+      // Close all dept panels if click is outside any dept-multi-select
+      if (!e.target.closest('.dept-multi-select')) {
+        document.querySelectorAll('.dept-multi-panel.open').forEach(p => p.classList.remove('open'));
       }
     });
 

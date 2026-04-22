@@ -91,6 +91,7 @@
           {% if can_update and next_statuses %}
           <div class="card-head" style="margin-top:1.5rem;"><div><p class="kicker">Action</p><h3>Update Status</h3></div></div>
           <form method="post" action="{{ url_for('authority_update_status', ticket_id=ticket.id) }}" class="status-action-form" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="status" required>
               {% for s in next_statuses %}
                 <option value="{{ s }}">{{ s }}</option>

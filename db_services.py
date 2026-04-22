@@ -136,6 +136,27 @@ class LiveDbService(BaseMySQLService):
             cursor.execute(sql, params)
             return cursor.fetchall()
 
+    def lookup_teacher_by_email(self, email):
+        """Look up a teacher from teacher_info by email. Returns dict with name, sap_id, department, org_id or None."""
+        if not self.enabled:
+            return None
+        sql = """
+            SELECT
+                t.TEACHER_NAME AS name,
+                t.SAP_ID AS sap_id,
+                t.EMAIL_ID AS email,
+                CAST(t.ORG_ID AS CHAR) AS org_id,
+                b.BRANCH_CODE AS department
+            FROM teacher_info t
+            LEFT JOIN branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
+            WHERE LOWER(COALESCE(t.EMAIL_ID, '')) = LOWER(%s)
+              AND COALESCE(t.ACTIVE, 1) = 1
+            LIMIT 1
+        """
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(sql, (email,))
+            return cursor.fetchone()
+
     def resolve_org_id(self, email="", department=""):
         if not self.enabled:
             return "2000"
@@ -226,6 +247,18 @@ class DemoDbService(BaseMySQLService):
             del user["password"]
             return user
 
+    def change_password(self, user_id, old_password, new_password):
+        """Verify old password and update to new password. Raises ValueError on mismatch."""
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT password FROM demo_users WHERE id = %s", (user_id,))
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError("User not found.")
+            if not check_password_hash(row["password"], old_password):
+                raise ValueError("Current password is incorrect.")
+            hashed = generate_password_hash(new_password)
+            cursor.execute("UPDATE demo_users SET password = %s WHERE id = %s", (hashed, user_id))
+
     def get_user(self, user_id):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT id, name, email, role, department, created_at FROM demo_users WHERE id = %s", (user_id,))
@@ -268,16 +301,26 @@ class DemoDbService(BaseMySQLService):
             return cursor.lastrowid
 
     def update_user(self, user_id, payload):
-        hashed = generate_password_hash(payload["password"])
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE demo_users
-                SET name = %s, email = %s, password = %s, role = %s, department = %s
-                WHERE id = %s
-                """,
-                (payload["name"], payload["email"], hashed, payload["role"], payload["department"], user_id),
-            )
+            if payload.get("password"):
+                hashed = generate_password_hash(payload["password"])
+                cursor.execute(
+                    """
+                    UPDATE demo_users
+                    SET name = %s, email = %s, password = %s, role = %s, department = %s
+                    WHERE id = %s
+                    """,
+                    (payload["name"], payload["email"], hashed, payload["role"], payload["department"], user_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    UPDATE demo_users
+                    SET name = %s, email = %s, role = %s, department = %s
+                    WHERE id = %s
+                    """,
+                    (payload["name"], payload["email"], payload["role"], payload["department"], user_id),
+                )
 
     def delete_user(self, user_id):
         with self.connection() as connection, connection.cursor() as cursor:

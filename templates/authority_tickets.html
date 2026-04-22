@@ -65,6 +65,7 @@
                   <td><span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">{{ ticket.status }}</span></td>
                   <td>
                     <form method="post" action="{{ url_for('authority_update_status', ticket_id=ticket.id) }}" class="inline-form stacked-form" enctype="multipart/form-data">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <select name="status">
                         {% for status in ['PENDING','IN_PROGRESS','RESOLVED'] %}
                           <option value="{{ status }}" {% if ticket.status == status %}selected{% endif %}>{{ status }}</option>

@@ -59,6 +59,7 @@
         <section class="admin-card">
           <div class="card-head"><div><p class="kicker">New Mapping</p><h3>Assign category to CA</h3></div></div>
           <form method="post" action="{{ url_for('management_category') }}" class="admin-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-grid">
               {% if current_role == 'SUPER_ADMIN' %}
                 <label class="field">
@@ -124,6 +125,7 @@
                   </tr>
                   <tr id="cat-edit-{{ item.id }}" class="edit-row" style="display:none;">
                     <form method="post" action="{{ url_for('update_category', category_id=item.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <td><input type="text" name="category_name" value="{{ item.category_name }}" required></td>
                       <td>
                         {% if current_role == 'SUPER_ADMIN' %}
@@ -169,6 +171,7 @@
       <p>Are you sure you want to delete <strong id="delete-cat-name"></strong>? Categories with existing tickets cannot be deleted.</p>
       <div class="btn-group">
         <form id="delete-form" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="delete-btn">Yes, Delete</button>
         </form>
         <button type="button" class="cancel-btn" onclick="closeCatDelete()">Cancel</button>

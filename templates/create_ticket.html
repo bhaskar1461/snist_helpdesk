@@ -43,6 +43,7 @@
 
       <section class="admin-card">
         <form class="admin-form" method="post" action="{{ url_for('create_ticket_for_role') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-grid">
             <label class="field">
               <span>Title</span>

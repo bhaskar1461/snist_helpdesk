@@ -11,6 +11,8 @@ from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, Response, abort, flash, jsonify, redirect, render_template, request, send_from_directory, session, url_for
+from flask_wtf.csrf import CSRFProtect
+from markupsafe import escape
 from werkzeug.utils import secure_filename
 
 from db_services import APP_ROLE_TO_DB, ROLE_MAP, DemoDbService, LiveDbService, env_db_config
@@ -20,12 +22,18 @@ load_dotenv()
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "snist-helpdesk-demo-secret")
+_secret = os.getenv("SECRET_KEY", "")
+if not _secret or _secret in ("change-me-in-production", "snist-helpdesk-demo-secret"):
+    import secrets as _s
+    _secret = _s.token_hex(32)
+    log.warning("SECRET_KEY not set — using a random key. Sessions will NOT persist across restarts.")
+app.secret_key = _secret
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
 )
+csrf = CSRFProtect(app)
 
 BASE_DIR = Path(__file__).resolve().parent
 SCHEMA_PATH = BASE_DIR / "sql" / "demo_schema.sql"
@@ -176,6 +184,8 @@ def sidebar_links(role):
         ],
     }
     links = mapping.get(role, [])
+    if role != "SUPER_ADMIN":
+        links = links + [("change_password", "Change Password")]
     return links + [("logout", "Logout")]
 
 
@@ -262,7 +272,7 @@ def export_response(tickets, export_format, filename):
         writer.writerows(rows)
         return Response(buffer.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}.csv"})
 
-    table_rows = "".join("<tr>" + "".join(f"<td>{row.get(key, '')}</td>" for key in fieldnames) + "</tr>" for row in rows)
+    table_rows = "".join("<tr>" + "".join(f"<td>{escape(row.get(key, ''))}</td>" for key in fieldnames) + "</tr>" for row in rows)
     table_html = "<table><thead><tr>" + "".join(f"<th>{key}</th>" for key in fieldnames) + f"</tr></thead><tbody>{table_rows}</tbody></table>"
     return Response(table_html, mimetype="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename={filename}.xls"})
 
@@ -274,10 +284,43 @@ def login():
             flash("MySQL demo database is not configured. Start the app with MYSQL_* environment variables.", "error")
             return render_template("login.html")
 
-        user = demo_db.authenticate_user(
-            request.form.get("email", "").strip().lower(),
-            request.form.get("password", "").strip(),
-        )
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "").strip()
+
+        # 1) Try demo_users first (existing accounts)
+        user = demo_db.authenticate_user(email, password)
+
+        # 2) If not found and email is @sreenidhi.edu.in, try teacher_info
+        if not user and email.endswith("@sreenidhi.edu.in"):
+            teacher = live_db.lookup_teacher_by_email(email)
+            if teacher and teacher.get("sap_id"):
+                # Verify password against SAP ID
+                sap_id = str(teacher["sap_id"]).strip()
+                if password == sap_id:
+                    # Auto-provision into demo_users as FACULTY
+                    teacher_name = (teacher.get("name") or "Faculty").strip()
+                    teacher_dept = (teacher.get("department") or "").strip() or "General"
+                    try:
+                        user_id = demo_db.create_user({
+                            "name": teacher_name,
+                            "email": email,
+                            "password": sap_id,  # stored as hash by create_user
+                            "role": "FACULTY",
+                            "department": teacher_dept,
+                        })
+                        user = {
+                            "id": user_id,
+                            "name": teacher_name,
+                            "email": email,
+                            "role": "FACULTY",
+                            "department": teacher_dept,
+                        }
+                        log.info("Auto-provisioned teacher %s (%s) as FACULTY.", teacher_name, email)
+                    except Exception as exc:
+                        log.error("Failed to auto-provision teacher %s: %s", email, exc)
+                        flash("Account setup failed. Please contact the administrator.", "error")
+                        return render_template("login.html")
+
         if not user:
             flash("Invalid email or password.", "error")
             return render_template("login.html")
@@ -648,13 +691,15 @@ def update_user(user_id):
         department = ",".join([d.strip() for d in request.form.getlist("department") if d.strip()])
     else:
         department = request.form.get("department", "").strip()
+    password = request.form.get("password", "").strip()
     payload = {
         "name": request.form.get("name", "").strip(),
         "email": request.form.get("email", "").strip().lower(),
-        "password": request.form.get("password", "").strip() or "123",
         "role": role,
         "department": department,
     }
+    if password:
+        payload["password"] = password
     if not all([payload["name"], payload["email"], payload["role"], payload["department"]]):
         flash("All user fields are required.", "error")
         return redirect(url_for("user_management"))
@@ -827,6 +872,7 @@ def api_live_users():
 
 
 @app.route("/api/demo/users", methods=["GET", "POST"])
+@csrf.exempt
 @role_required("SUPER_ADMIN", "ADMIN")
 def api_demo_users():
     if request.method == "GET":
@@ -863,6 +909,7 @@ def api_demo_users():
 
 
 @app.route("/api/demo/users/<int:user_id>", methods=["PUT", "DELETE"])
+@csrf.exempt
 @role_required("SUPER_ADMIN", "ADMIN")
 def api_demo_user_detail(user_id):
     if request.method == "DELETE":
@@ -883,20 +930,21 @@ def api_demo_user_detail(user_id):
         return jsonify({"error": "name, email, role, and department are required."}), 400
     if not is_valid_email(email):
         return jsonify({"error": "Invalid email format."}), 400
-    demo_db.update_user(
-        user_id,
-        {
-            "name": name,
-            "email": email,
-            "password": (payload.get("password") or "123").strip(),
-            "role": role,
-            "department": department,
-        },
-    )
+    update_payload = {
+        "name": name,
+        "email": email,
+        "role": role,
+        "department": department,
+    }
+    pw = (payload.get("password") or "").strip()
+    if pw:
+        update_payload["password"] = pw
+    demo_db.update_user(user_id, update_payload)
     return "", 204
 
 
 @app.route("/api/demo/categories", methods=["GET", "POST"])
+@csrf.exempt
 @role_required("SUPER_ADMIN", "HOD")
 def api_demo_categories():
     if request.method == "GET":
@@ -922,6 +970,7 @@ def api_demo_categories():
 
 
 @app.route("/api/demo/categories/<int:category_id>", methods=["PUT", "DELETE"])
+@csrf.exempt
 @role_required("SUPER_ADMIN", "HOD")
 def api_demo_category_detail(category_id):
     if request.method == "DELETE":
@@ -951,6 +1000,7 @@ def api_demo_category_detail(category_id):
 
 
 @app.route("/api/demo/tickets", methods=["GET", "POST"])
+@csrf.exempt
 @role_required("SUPER_ADMIN", "ADMIN", "HOD", "CA", "FACULTY")
 def api_demo_tickets():
     user = current_user()
@@ -984,6 +1034,7 @@ def api_demo_tickets():
 
 
 @app.route("/api/demo/tickets/<int:ticket_id>", methods=["GET", "PUT"])
+@csrf.exempt
 @role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
 def api_demo_ticket_detail(ticket_id):
     user = current_user()
@@ -1059,6 +1110,33 @@ def api_analytics_summary():
     })
 
 
+@app.route("/change-password", methods=["GET", "POST"])
+@role_required("ADMIN", "HOD", "CA", "FACULTY")
+def change_password():
+    user = current_user()
+    if request.method == "POST":
+        old_password = request.form.get("old_password", "").strip()
+        new_password = request.form.get("new_password", "").strip()
+        confirm_password = request.form.get("confirm_password", "").strip()
+        if not old_password or not new_password:
+            flash("All fields are required.", "error")
+            return redirect(url_for("change_password"))
+        if len(new_password) < 4:
+            flash("New password must be at least 4 characters.", "error")
+            return redirect(url_for("change_password"))
+        if new_password != confirm_password:
+            flash("New password and confirmation do not match.", "error")
+            return redirect(url_for("change_password"))
+        try:
+            demo_db.change_password(user["id"], old_password, new_password)
+            flash("Password changed successfully.", "success")
+            return redirect(url_for("change_password"))
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("change_password"))
+    return render_template("change_password.html", **page_context("Change Password"))
+
+
 @app.route("/logout")
 def logout():
     session.clear()
@@ -1087,4 +1165,4 @@ def not_found_error(error):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    app.run(debug=True)
+    app.run(debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")
