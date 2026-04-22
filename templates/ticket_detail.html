@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ticket #{{ ticket.id }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <style>
+    .detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1.5rem; }
+    .detail-item { padding:.6rem 0; }
+    .detail-item .label { font-size:.75rem; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; font-weight:600; }
+    .detail-item .value { font-size:1rem; color:#1e293b; margin-top:2px; }
+    .desc-block { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:1rem 1.2rem; white-space:pre-wrap; font-size:.92rem; line-height:1.6; color:#334155; }
+    .timeline { position:relative; padding-left:1.5rem; margin-top:1rem; }
+    .timeline::before { content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background:#e2e8f0; }
+    .timeline-item { position:relative; padding:.8rem 0 .8rem 1rem; }
+    .timeline-item::before { content:''; position:absolute; left:-1.62rem; top:1rem; width:10px; height:10px; border-radius:50%; background:#4f46e5; border:2px solid #fff; box-shadow:0 0 0 2px #e2e8f0; }
+    .timeline-item.create::before { background:#10b981; }
+    .timeline-item.resolve::before { background:#f59e0b; }
+    .tl-header { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+    .tl-who { font-weight:600; font-size:.9rem; }
+    .tl-when { font-size:.75rem; color:#9ca3af; }
+    .tl-transition { display:inline-flex; align-items:center; gap:4px; font-size:.8rem; margin-top:2px; }
+    .tl-transition .arrow { color:#9ca3af; }
+    .tl-remarks { margin-top:4px; font-size:.85rem; color:#475569; background:#f1f5f9; border-radius:6px; padding:.4rem .6rem; }
+    .tl-meta { font-size:.78rem; color:#9ca3af; margin-top:2px; }
+    .location-tag { display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; padding:4px 10px; border-radius:6px; font-size:.82rem; font-weight:500; }
+    .status-action-form { display:flex; gap:.5rem; flex-wrap:wrap; align-items:flex-start; margin-top:1rem; }
+    .status-action-form select, .status-action-form input, .status-action-form textarea { padding:6px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:.85rem; }
+    .status-action-form textarea { min-width:200px; }
+    @media (max-width:768px) { .detail-grid{grid-template-columns:1fr;} }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="admin-brand"><img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo"><div><p>{{ role_title }}</p><h1>SNIST Helpdesk</h1></div></div>
+      <nav class="admin-nav">
+        {% for route_name, label in sidebar_links %}
+          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </aside>
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div>
+          <p class="kicker">Ticket #{{ ticket.id }}</p>
+          <h2>{{ ticket.title }}</h2>
+          <span>{{ ticket.category_name }} &bull; {{ ticket.department }}</span>
+        </div>
+        <div class="profile-pill"><div class="avatar">{{ role_title[0] }}</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="admin-grid">
+        <!-- Ticket Info Card -->
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">Details</p><h3>Ticket Information</h3></div>
+            <span class="status-pill {{ ticket.status|lower|replace('_','-') }}">{{ ticket.status }}</span>
+          </div>
+
+          <div class="detail-grid">
+            <div class="detail-item"><div class="label">Created By</div><div class="value">{{ ticket.created_by_name }} ({{ ticket.created_by_email }})</div></div>
+            <div class="detail-item"><div class="label">Assigned To</div><div class="value">{{ ticket.assigned_to_name }} ({{ ticket.assigned_to_email }})</div></div>
+            <div class="detail-item"><div class="label">Created</div><div class="value">{{ ticket.created_at.strftime('%d %b %Y, %I:%M %p') }}</div></div>
+            <div class="detail-item"><div class="label">Last Updated</div><div class="value">{{ ticket.updated_at.strftime('%d %b %Y, %I:%M %p') }}</div></div>
+            <div class="detail-item"><div class="label">Category</div><div class="value">{{ ticket.category_name }}</div></div>
+            <div class="detail-item"><div class="label">Department</div><div class="value">{{ ticket.department }}</div></div>
+            {% if ticket.location_block %}
+            <div class="detail-item"><div class="label">Location</div>
+              <div class="value"><span class="location-tag">📍 {{ ticket.location_block }} &bull; {{ ticket.location_floor }} &bull; {{ ticket.location_room_no }} — {{ ticket.location_room_name }}</span></div>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="label" style="margin-bottom:6px;">Description</div>
+          <div class="desc-block">{{ ticket.description }}</div>
+
+          {% if can_update and next_statuses %}
+          <div class="card-head" style="margin-top:1.5rem;"><div><p class="kicker">Action</p><h3>Update Status</h3></div></div>
+          <form method="post" action="{{ url_for('authority_update_status', ticket_id=ticket.id) }}" class="status-action-form" enctype="multipart/form-data">
+            <select name="status" required>
+              {% for s in next_statuses %}
+                <option value="{{ s }}">{{ s }}</option>
+              {% endfor %}
+            </select>
+            <textarea name="remarks" rows="2" placeholder="Remarks / resolution notes"></textarea>
+            <input type="text" name="time_taken" placeholder="Time taken">
+            <input type="file" name="attachment">
+            <button type="submit" class="primary-btn">Update</button>
+          </form>
+          {% endif %}
+        </section>
+
+        <!-- Activity Timeline -->
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">History</p><h3>Activity Timeline</h3></div></div>
+          {% if activity %}
+          <div class="timeline">
+            {% for event in activity %}
+            <div class="timeline-item {% if event.to_status == 'PENDING' %}create{% elif event.to_status == 'RESOLVED' %}resolve{% endif %}">
+              <div class="tl-header">
+                <span class="tl-who">{{ event.action_by_name }}</span>
+                <span class="tl-when">{{ event.created_at.strftime('%d %b %Y, %I:%M %p') }}</span>
+              </div>
+              <div class="tl-transition">
+                {% if event.from_status %}
+                  <span class="status-pill {{ event.from_status|lower|replace('_','-') }}" style="font-size:.72rem;padding:2px 8px;">{{ event.from_status }}</span>
+                  <span class="arrow">→</span>
+                {% endif %}
+                <span class="status-pill {{ event.to_status|lower|replace('_','-') }}" style="font-size:.72rem;padding:2px 8px;">{{ event.to_status }}</span>
+              </div>
+              {% if event.remarks %}<div class="tl-remarks">{{ event.remarks }}</div>{% endif %}
+              {% if event.time_taken %}<div class="tl-meta">⏱ {{ event.time_taken }}</div>{% endif %}
+              {% if event.attachment_path %}<div class="tl-meta">📎 <a href="{{ url_for('view_attachment', filename=event.attachment_path) }}">{{ event.attachment_path }}</a></div>{% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+            <p style="color:#9ca3af;font-size:.9rem;">No activity recorded yet.</p>
+          {% endif %}
+        </section>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

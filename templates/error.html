@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ error_title | default('Error') }} – SNIST Helpdesk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .error-card {
+      text-align: center;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 1rem;
+      padding: 3rem 2.5rem;
+      max-width: 480px;
+      backdrop-filter: blur(12px);
+    }
+    .error-code {
+      font-size: 5rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1;
+    }
+    .error-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0.75rem 0 0.5rem;
+    }
+    .error-message {
+      color: #aaa; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem;
+    }
+    .back-link {
+      display: inline-block;
+      padding: 0.65rem 1.5rem;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+      border-radius: 0.5rem;
+      text-decoration: none;
+      font-weight: 500;
+      transition: opacity .2s;
+    }
+    .back-link:hover { opacity: .85; }
+  </style>
+</head>
+<body>
+  <div class="error-card">
+    <div class="error-code">{{ error_code | default(500) }}</div>
+    <h1 class="error-title">{{ error_title | default('Something went wrong') }}</h1>
+    <p class="error-message">{{ error_message | default('An unexpected error occurred. Please try again later.') }}</p>
+    <a href="/" class="back-link">← Back to Login</a>
+  </div>
+</body>
+</html>

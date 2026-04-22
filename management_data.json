@@ -1,0 +1,23 @@
+{
+  "category_assignments": [
+    {
+      "id": "CAT-1",
+      "department": "CSE",
+      "org": "SNIST",
+      "category": "Internet",
+      "authority_email": "ca@gmail.com",
+      "authority_name": "Chandini",
+      "created_by_role": "hod"
+    },
+    {
+      "id": "CAT-2",
+      "department": "Facilities",
+      "org": "SNIST",
+      "category": "Plumbing",
+      "authority_email": "bhaskar.ca@gmail.com",
+      "authority_name": "Bhaskar",
+      "created_by_role": "admin"
+    }
+  ],
+  "ticket_manager_assignments": {}
+}

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ role_title }} | Create Ticket</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="admin-brand">
+        <img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo">
+        <div>
+          <p>{{ role_title }}</p>
+          <h1>SNIST Helpdesk</h1>
+        </div>
+      </div>
+      <nav class="admin-nav">
+        {% for route_name, label in sidebar_links %}
+          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == create_route %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </aside>
+
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div>
+          <p class="kicker">New Complaint</p>
+          <h2>Create ticket as {{ role_title }}</h2>
+          <span>Org and department are included so the ticket can be filtered, assigned, and exported correctly.</span>
+        </div>
+        <div class="profile-pill">
+          <div class="avatar">{{ role_title[0] }}</div>
+          <div>
+            <strong>{{ user_name }}</strong>
+            <span>{{ role_email }}</span>
+          </div>
+        </div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="admin-card">
+        <form class="admin-form" method="post" action="{{ url_for(create_route) }}">
+          <div class="form-grid">
+            <label class="field">
+              <span>Org</span>
+              <select name="org" required>
+                <option value="SNIST" {% if current_org == "SNIST" %}selected{% endif %}>SNIST</option>
+                <option value="SNU" {% if current_org == "SNU" %}selected{% endif %}>SNU</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Department</span>
+              <select name="department" required>
+                {% for department in departments %}
+                  <option value="{{ department }}" {% if department == current_department %}selected{% endif %}>{{ department }}</option>
+                {% endfor %}
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Complaint From Block</span>
+              <select name="block" required>
+                <option>Academic Block 1</option>
+                <option>Academic Block 2</option>
+                <option>Admin Block</option>
+                <option>Library Block</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Room / Lab No</span>
+              <input type="text" name="room_lab" placeholder="Enter room or lab number" required>
+            </label>
+
+            <label class="field">
+              <span>Complaint Related</span>
+              <select name="complaint_related" required>
+                <option>ICT</option>
+                <option>Facilities</option>
+                <option>Maintenance</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Category</span>
+              <select name="category" required>
+                {% for category in categories %}
+                  <option value="{{ category }}">{{ category }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+
+          <label class="field field-large">
+            <span>Complaint Description</span>
+            <textarea name="description" rows="8" placeholder="Describe the issue and any useful details..." required></textarea>
+          </label>
+
+          <div class="form-actions">
+            <button type="submit" class="primary-btn submit-btn">Submit Ticket</button>
+            <a href="{{ url_for(list_route) }}" class="secondary-btn">View All Tickets</a>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

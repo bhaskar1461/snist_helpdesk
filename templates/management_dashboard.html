@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page_title }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="admin-brand"><img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo"><div><p>{{ role_title }}</p><h1>SNIST Helpdesk</h1></div></div>
+      <nav class="admin-nav">
+        {% for route_name, label in sidebar_links %}
+          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name in request.endpoint %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </aside>
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div><p class="kicker">{{ kicker }}</p><h2>{{ page_heading }}</h2><span>{{ page_description }}</span></div>
+        <div class="profile-pill"><div class="avatar">{{ role_title[0] }}</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
+      </header>
+
+      <section class="summary-strip summary-strip-management">
+        <div class="summary-box"><span>Total</span><strong>{{ summary.total or 0 }}</strong></div>
+        <div class="summary-box"><span>Pending</span><strong>{{ summary.pending or 0 }}</strong></div>
+        <div class="summary-box"><span>In Progress</span><strong>{{ summary.in_progress or 0 }}</strong></div>
+        <div class="summary-box"><span>Resolved</span><strong>{{ summary.resolved or 0 }}</strong></div>
+      </section>
+
+      <section class="admin-grid">
+        <section class="admin-card">
+          <div class="card-head">
+            <div><p class="kicker">{{ highlight_title }}</p><h3>Overview</h3></div>
+            <div class="action-row">
+              <a href="{{ url_for(primary_cta[0]) }}" class="primary-btn">{{ primary_cta[1] }}</a>
+              <a href="{{ url_for(secondary_cta[0]) }}" class="secondary-btn">{{ secondary_cta[1] }}</a>
+            </div>
+          </div>
+          <p class="panel-note">{{ highlight_note }}</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name / Title</th><th>Department</th><th>Contact</th><th>Categories</th><th>Tickets</th></tr></thead>
+              <tbody>
+                {% for item in highlights %}
+                  <tr>
+                    <td class="ticket-id-cell">{{ item.name or item.category_name }}</td>
+                    <td>{{ item.department }}</td>
+                    <td>{{ item.email or item.assigned_ca_name or '-' }}</td>
+                    <td>{{ item.category_count if item.category_count is defined else item.category_name }}</td>
+                    <td>{{ item.ticket_count if item.ticket_count is defined else item.assigned_ca_name }}</td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5" class="empty-cell">No records found.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {% if dept_stats is defined and dept_stats %}
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">Analytics</p><h3>Tickets by Department</h3></div></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Department</th><th>Total</th><th>Pending</th><th>In Progress</th><th>Resolved</th></tr></thead>
+              <tbody>
+                {% for row in dept_stats %}
+                  <tr>
+                    <td class="ticket-id-cell">{{ row.department }}</td>
+                    <td>{{ row.ticket_count or 0 }}</td>
+                    <td><span class="status-pill pending" style="font-size:.75rem;padding:2px 8px;">{{ row.pending or 0 }}</span></td>
+                    <td><span class="status-pill in-progress" style="font-size:.75rem;padding:2px 8px;">{{ row.in_progress or 0 }}</span></td>
+                    <td><span class="status-pill resolved" style="font-size:.75rem;padding:2px 8px;">{{ row.resolved or 0 }}</span></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if cat_stats is defined and cat_stats %}
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">Analytics</p><h3>Tickets by Category</h3></div></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Category</th><th>Department</th><th>Total</th><th>Pending</th><th>In Progress</th><th>Resolved</th></tr></thead>
+              <tbody>
+                {% for row in cat_stats %}
+                  <tr>
+                    <td class="ticket-id-cell">{{ row.category_name }}</td>
+                    <td>{{ row.department }}</td>
+                    <td>{{ row.ticket_count or 0 }}</td>
+                    <td><span class="status-pill pending" style="font-size:.75rem;padding:2px 8px;">{{ row.pending or 0 }}</span></td>
+                    <td><span class="status-pill in-progress" style="font-size:.75rem;padding:2px 8px;">{{ row.in_progress or 0 }}</span></td>
+                    <td><span class="status-pill resolved" style="font-size:.75rem;padding:2px 8px;">{{ row.resolved or 0 }}</span></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endif %}
+
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">Architecture</p><h3>Data safety</h3></div></div>
+          <div class="notice-panel">
+            <strong>Live DB is read-only.</strong>
+            <span>All writes happen only in `demo_users`, `demo_categories`, `demo_tickets`, and `demo_ticket_activity`.</span>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

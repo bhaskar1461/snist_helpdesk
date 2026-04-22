@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <style>
+    .role-badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:.75rem; font-weight:600; text-transform:uppercase; }
+    .role-badge.hod { background:#e0e7ff; color:#3730a3; }
+    .role-badge.super_admin { background:#fce7f3; color:#9d174d; }
+    .role-badge.admin { background:#dbeafe; color:#1d4ed8; }
+    .role-badge.ca { background:#d1fae5; color:#065f46; }
+    .role-badge.faculty { background:#f3f4f6; color:#374151; }
+    .btn-group { display:flex; gap:6px; }
+    .edit-btn { background:#4f46e5; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .edit-btn:hover { background:#4338ca; }
+    .delete-btn { background:#ef4444; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .delete-btn:hover { background:#dc2626; }
+    .cancel-btn { background:#6b7280; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .cancel-btn:hover { background:#4b5563; }
+    .save-btn { background:#10b981; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .save-btn:hover { background:#059669; }
+    .edit-row td { background:#f8fafc !important; }
+    .edit-row input, .edit-row select { width:100%; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:.82rem; }
+    .confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; align-items:center; justify-content:center; }
+    .confirm-overlay.active { display:flex; }
+    .confirm-box { background:#fff; border-radius:12px; padding:1.5rem 2rem; max-width:400px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+    .confirm-box h3 { margin:0 0 .5rem; font-size:1.1rem; }
+    .confirm-box p { color:#6b7280; font-size:.9rem; margin-bottom:1rem; }
+    .confirm-box .btn-group { justify-content:center; }
+    .user-count { font-size:.85rem; color:#6b7280; margin-top:4px; }
+
+    /* Multi-role checkbox dropdown */
+    .multi-select { position:relative; display:inline-block; min-width:160px; }
+    .multi-select-btn { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; background:#fff; cursor:pointer;
+      font-size:.88rem; text-align:left; display:flex; justify-content:space-between; align-items:center; }
+    .multi-select-btn::after { content:'▾'; font-size:.7rem; color:#6b7280; margin-left:8px; }
+    .multi-select-dropdown { display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; background:#fff;
+      border:1px solid #d1d5db; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); z-index:50; padding:6px 0; max-height:220px; overflow-y:auto; }
+    .multi-select-dropdown.open { display:block; }
+    .multi-select-dropdown label { display:flex; align-items:center; gap:8px; padding:6px 12px; cursor:pointer; font-size:.85rem; transition:background .15s; }
+    .multi-select-dropdown label:hover { background:#f3f4f6; }
+    .multi-select-dropdown input[type="checkbox"] { accent-color:#4f46e5; width:16px; height:16px; }
+
+    .dept-hint { font-size:.72rem; color:#6b7280; margin-top:2px; font-style:italic; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="admin-brand"><img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo"><div><p>{{ role_title }}</p><h1>SNIST Helpdesk</h1></div></div>
+      <nav class="admin-nav">
+        {% for route_name, label in sidebar_links %}
+          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == 'user_management' %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </aside>
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div><p class="kicker">demo_users</p><h2>User Management</h2><span>Create, edit, or remove demo users. Admins control roles, departments, and HOD assignment through the role field.</span></div>
+        <div class="profile-pill"><div class="avatar">U</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="admin-grid">
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">Create User</p><h3>New demo user</h3></div></div>
+          <form method="post" action="{{ url_for('user_management') }}" class="admin-form">
+            <div class="form-grid">
+              <label class="field"><span>Name</span><input type="text" name="name" required></label>
+              <label class="field"><span>Email</span><input type="email" name="email" required></label>
+              <label class="field"><span>Password</span><input type="text" name="password" value="123" required></label>
+              <label class="field">
+                <span>Role</span>
+                <select name="role" id="create-role" required onchange="filterDepartments('create')">
+                  <option value="">Select Role</option>
+                  {% for role in roles %}
+                    <option value="{{ role }}">{{ role }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="field" style="align-items: flex-start;">
+                <span style="margin-top: 8px;">Department</span>
+                <div style="flex:1;">
+                  <select name="department" id="create-department" required style="width: 100%;">
+                    <option value="">Select Department</option>
+                    {% for department in departments %}
+                      <option value="{{ department.code }}" data-all="true">{{ department.code }}</option>
+                    {% endfor %}
+                  </select>
+                  <div id="create-department-multi" class="checkbox-grid" style="display: none; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 120px; overflow-y: auto; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #fff;">
+                    {% for department in departments %}
+                      <label data-all="true" style="display: flex; align-items: center; gap: 4px; font-weight: normal; margin: 0; white-space: nowrap;">
+                        <input type="checkbox" name="department" value="{{ department.code }}"> {{ department.code }}
+                      </label>
+                    {% endfor %}
+                  </div>
+                  <span class="dept-hint" id="create-dept-hint"></span>
+                </div>
+              </label>
+            </div>
+            <div class="form-actions"><button type="submit" class="primary-btn">Create User</button></div>
+          </form>
+        </section>
+
+        <section class="admin-card">
+          <form class="search-bar filter-grid" method="get" action="{{ url_for('user_management') }}" id="filter-form">
+            <input type="text" name="q" value="{{ filters.q }}" placeholder="Search users">
+            <!-- Multi-role checkbox dropdown -->
+            <div class="multi-select" id="role-multi-select">
+              <button type="button" class="multi-select-btn" onclick="toggleRoleDropdown()">
+                <span id="role-btn-label">All Roles</span>
+              </button>
+              <div class="multi-select-dropdown" id="role-dropdown">
+                {% for role in roles %}
+                  <label>
+                    <input type="checkbox" name="role" value="{{ role }}" {% if role in filters.get('roles', []) %}checked{% endif %}>
+                    <span class="role-badge {{ role|lower }}">{{ role }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+            <select name="department">
+              <option value="">All Departments</option>
+              {% for department in departments %}
+                <option value="{{ department.code }}" {% if filters.department == department.code %}selected{% endif %}>{{ department.code }}</option>
+              {% endfor %}
+            </select>
+            <button class="primary-btn" type="submit">Filter</button>
+          </form>
+          <p class="user-count">{{ users|length }} user{{ 's' if users|length != 1 else '' }} found</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Actions</th></tr></thead>
+              <tbody>
+                {% for item in users %}
+                  <tr id="user-view-{{ item.id }}">
+                    <td class="ticket-id-cell">{{ item.name }}</td>
+                    <td>{{ item.email }}</td>
+                    <td><span class="role-badge {{ item.role|lower }}">{{ item.role }}</span></td>
+                    <td>{{ item.department }}</td>
+                    <td>
+                      <div class="btn-group">
+                        <button type="button" class="edit-btn" onclick="toggleEdit({{ item.id }})">Edit</button>
+                        <button type="button" class="delete-btn" onclick="confirmDelete({{ item.id }}, '{{ item.name|e }}')">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr id="user-edit-{{ item.id }}" class="edit-row" style="display:none;">
+                    <form method="post" action="{{ url_for('update_user', user_id=item.id) }}">
+                      <td><input type="text" name="name" value="{{ item.name }}" required></td>
+                      <td><input type="email" name="email" value="{{ item.email }}" required></td>
+                      <td>
+                        <select name="role" required onchange="filterDepartments('edit-{{ item.id }}')">
+                          {% for role in roles %}
+                            <option value="{{ role }}" {% if item.role == role %}selected{% endif %}>{{ role }}</option>
+                          {% endfor %}
+                        </select>
+                      </td>
+                      <td>
+                        <select name="department" id="edit-{{ item.id }}-department" required style="width: 100%;">
+                          {% set item_depts = item.department.split(',') | map('trim') | list %}
+                          {% for department in departments %}
+                            <option value="{{ department.code }}" data-all="true" {% if department.code in item_depts %}selected{% endif %}>{{ department.code }}</option>
+                          {% endfor %}
+                        </select>
+                        <div id="edit-{{ item.id }}-department-multi" class="checkbox-grid" style="display: none; grid-template-columns: 1fr 1fr; gap: 8px; max-height: 120px; overflow-y: auto; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #fff; text-align: left;">
+                          {% set item_depts = item.department.split(',') | map('trim') | list %}
+                          {% for department in departments %}
+                            <label data-all="true" style="display: flex; align-items: center; gap: 4px; font-weight: normal; margin: 0; white-space: nowrap;">
+                              <input type="checkbox" name="department" value="{{ department.code }}" {% if department.code in item_depts %}checked{% endif %}> {{ department.code }}
+                            </label>
+                          {% endfor %}
+                        </div>
+                      </td>
+                      <td>
+                        <input type="hidden" name="password" value="{{ item.email }}">
+                        <div class="btn-group">
+                          <button type="submit" class="save-btn">Save</button>
+                          <button type="button" class="cancel-btn" onclick="toggleEdit({{ item.id }})">Cancel</button>
+                        </div>
+                      </td>
+                    </form>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5" class="empty-cell">No users found.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <!-- Delete confirmation dialog -->
+  <div id="delete-overlay" class="confirm-overlay">
+    <div class="confirm-box">
+      <h3>⚠️ Delete User</h3>
+      <p>Are you sure you want to delete <strong id="delete-user-name"></strong>? This cannot be undone. Users referenced by tickets or categories cannot be deleted.</p>
+      <div class="btn-group">
+        <form id="delete-form" method="post">
+          <button type="submit" class="delete-btn">Yes, Delete</button>
+        </form>
+        <button type="button" class="cancel-btn" onclick="closeDelete()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ── Role → Department mapping ──
+       SUPER_ADMIN & ADMIN  → Administration only
+       HOD, CA, FACULTY     → All academic/operational departments (excludes Administration)
+    */
+    const ROLE_DEPARTMENTS = {
+      'SUPER_ADMIN': ['Administration'],
+      'ADMIN':       ['Administration'],
+      'HOD':         {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code),
+      'CA':          {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code),
+      'FACULTY':     {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code)
+    };
+
+    function filterDepartments(prefix) {
+      let roleSelect, deptSelect, hintEl;
+
+      if (prefix === 'create') {
+        roleSelect = document.getElementById('create-role');
+        deptSelect = document.getElementById('create-department');
+        hintEl = document.getElementById('create-dept-hint');
+      } else {
+        // For inline edit rows: prefix is "edit-{userId}"
+        const editRow = document.getElementById('user-' + prefix);
+        if (!editRow) return;
+        roleSelect = editRow.querySelector('select[name="role"]');
+        deptSelect = document.getElementById(prefix + '-department');
+        hintEl = null;
+      }
+
+      const selectedRole = roleSelect.value;
+      const allowedDepts = ROLE_DEPARTMENTS[selectedRole] || [];
+      const options = deptSelect.querySelectorAll('option[data-all]');
+      const currentVals = Array.from(deptSelect.selectedOptions).map(opt => opt.value);
+      let firstVisible = '';
+
+      const isCA = selectedRole === 'CA';
+      const multiBox = document.getElementById(prefix + '-department-multi');
+
+      if (isCA) {
+        deptSelect.style.display = 'none';
+        deptSelect.required = false;
+        if (multiBox) multiBox.style.display = 'grid';
+      } else {
+        deptSelect.style.display = '';
+        deptSelect.required = true;
+        if (multiBox) multiBox.style.display = 'none';
+      }
+
+      options.forEach(opt => {
+        if (allowedDepts.length === 0 || allowedDepts.includes(opt.value)) {
+          opt.style.display = '';
+          opt.disabled = false;
+          if (!firstVisible) firstVisible = opt.value;
+        } else {
+          opt.style.display = 'none';
+          opt.disabled = true;
+        }
+      });
+      
+      if (multiBox) {
+        multiBox.querySelectorAll('label[data-all]').forEach(lbl => {
+            const val = lbl.querySelector('input').value;
+            if (allowedDepts.length === 0 || allowedDepts.includes(val)) {
+                lbl.style.display = 'flex';
+            } else {
+                lbl.style.display = 'none';
+            }
+        });
+      }
+
+      // Auto-select if current value is now hidden
+      if (!isCA && allowedDepts.length > 0 && !allowedDepts.includes(deptSelect.value)) {
+        deptSelect.value = firstVisible;
+      }
+
+      // Show hint
+      if (hintEl) {
+        if (selectedRole === 'SUPER_ADMIN' || selectedRole === 'ADMIN') {
+          hintEl.textContent = 'Admin roles → Administration department';
+        } else if (selectedRole) {
+          hintEl.textContent = selectedRole + ' → Academic / operational departments';
+        } else {
+          hintEl.textContent = '';
+        }
+      }
+    }
+
+    /* ── Multi-role filter dropdown ── */
+    function toggleRoleDropdown() {
+      document.getElementById('role-dropdown').classList.toggle('open');
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+      const ms = document.getElementById('role-multi-select');
+      if (ms && !ms.contains(e.target)) {
+        document.getElementById('role-dropdown').classList.remove('open');
+      }
+    });
+
+    // Update button label when checkboxes change
+    document.querySelectorAll('#role-dropdown input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', updateRoleLabel);
+    });
+
+    function updateRoleLabel() {
+      const checked = Array.from(document.querySelectorAll('#role-dropdown input[type="checkbox"]:checked'));
+      const label = document.getElementById('role-btn-label');
+      if (checked.length === 0) {
+        label.textContent = 'All Roles';
+      } else if (checked.length === 1) {
+        label.textContent = checked[0].value;
+      } else {
+        label.textContent = checked.length + ' roles selected';
+      }
+    }
+    updateRoleLabel();
+
+    /* ── Edit / Delete ── */
+    function toggleEdit(userId) {
+      const viewRow = document.getElementById('user-view-' + userId);
+      const editRow = document.getElementById('user-edit-' + userId);
+      if (editRow.style.display === 'none') {
+        viewRow.style.display = 'none';
+        editRow.style.display = '';
+        // Trigger department filter for this edit row
+        filterDepartments('edit-' + userId);
+      } else {
+        viewRow.style.display = '';
+        editRow.style.display = 'none';
+      }
+    }
+
+    function confirmDelete(userId, userName) {
+      document.getElementById('delete-user-name').textContent = userName;
+      document.getElementById('delete-form').action = '/user-management/' + userId + '/delete';
+      document.getElementById('delete-overlay').classList.add('active');
+    }
+    function closeDelete() {
+      document.getElementById('delete-overlay').classList.remove('active');
+    }
+    document.getElementById('delete-overlay').addEventListener('click', function(e) {
+      if (e.target === this) closeDelete();
+    });
+  </script>
+</body>
+</html>

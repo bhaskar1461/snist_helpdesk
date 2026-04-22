@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Ticket</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <style>
+    .location-group { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+    .location-group .field { margin:0; }
+    .location-hint { font-size:.75rem; color:#6b7280; margin-top:2px; font-style:italic; }
+    @media (max-width: 768px) { .location-group { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="admin-brand"><img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo"><div><p>{{ role_title }}</p><h1>SNIST Helpdesk</h1></div></div>
+      <nav class="admin-nav">
+        {% for route_name, label in sidebar_links %}
+          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == 'create_ticket_for_role' %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </aside>
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div><p class="kicker">Ticket Creation</p><h2>Create a new complaint</h2><span>When you submit, the selected category automatically assigns the mapped Concerned Authority.</span></div>
+        <div class="profile-pill"><div class="avatar">{{ role_title[0] }}</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="admin-card">
+        <form class="admin-form" method="post" action="{{ url_for('create_ticket_for_role') }}">
+          <div class="form-grid">
+            <label class="field">
+              <span>Title</span>
+              <input type="text" name="title" placeholder="Short complaint title" required>
+            </label>
+            <label class="field">
+              <span>Category</span>
+              <select name="category_id" required>
+                <option value="">Select category</option>
+                {% for category in categories %}
+                  <option value="{{ category.id }}">{{ category.category_name }} | {{ category.department }} | {{ category.assigned_ca_name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+
+          <!-- Location: Block → Floor → Room cascading dropdowns -->
+          <div class="card-head" style="margin-top:1rem;"><div><p class="kicker">Location</p><h3>Block / Floor / Room</h3></div></div>
+          <div class="location-group">
+            <label class="field">
+              <span>Block</span>
+              <select id="block-select" onchange="updateFloors()">
+                <option value="">Select Block</option>
+              </select>
+              <span class="location-hint" id="block-count"></span>
+            </label>
+            <label class="field">
+              <span>Floor</span>
+              <select id="floor-select" onchange="updateRooms()" disabled>
+                <option value="">Select Floor</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Room / Lab</span>
+              <select id="room-select" name="location_id" disabled>
+                <option value="">Select Room</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="field field-large">
+            <span>Description</span>
+            <textarea name="description" rows="8" placeholder="Describe the complaint in detail..." required></textarea>
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="primary-btn">Submit Ticket</button>
+            {% if current_role == 'FACULTY' %}
+              <a href="{{ url_for('my_tickets') }}" class="secondary-btn">My Tickets</a>
+            {% else %}
+              <a href="{{ url_for('authority_tickets') }}" class="secondary-btn">Back to Dashboard</a>
+            {% endif %}
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // Build location data from server-side locations list
+    const ALL_LOCATIONS = {{ locations | tojson }};
+
+    // Group: block → floor → rooms
+    const LOCATION_MAP = {};
+    ALL_LOCATIONS.forEach(loc => {
+      const block = loc.block || 'Unknown';
+      const floor = loc.floor || 'Unknown';
+      if (!LOCATION_MAP[block]) LOCATION_MAP[block] = {};
+      if (!LOCATION_MAP[block][floor]) LOCATION_MAP[block][floor] = [];
+      LOCATION_MAP[block][floor].push({ id: loc.id, room_no: loc.room_no, name: loc.name });
+    });
+
+    // Populate blocks
+    const blockSelect = document.getElementById('block-select');
+    const floorSelect = document.getElementById('floor-select');
+    const roomSelect = document.getElementById('room-select');
+    const blockCount = document.getElementById('block-count');
+
+    Object.keys(LOCATION_MAP).sort().forEach(block => {
+      const opt = document.createElement('option');
+      opt.value = block;
+      opt.textContent = block;
+      blockSelect.appendChild(opt);
+    });
+    blockCount.textContent = Object.keys(LOCATION_MAP).length + ' blocks available';
+
+    function updateFloors() {
+      const block = blockSelect.value;
+      floorSelect.innerHTML = '<option value="">Select Floor</option>';
+      roomSelect.innerHTML = '<option value="">Select Room</option>';
+      floorSelect.disabled = true;
+      roomSelect.disabled = true;
+
+      if (block && LOCATION_MAP[block]) {
+        const floors = Object.keys(LOCATION_MAP[block]);
+        floors.forEach(floor => {
+          const opt = document.createElement('option');
+          opt.value = floor;
+          opt.textContent = floor + ' (' + LOCATION_MAP[block][floor].length + ')';
+          floorSelect.appendChild(opt);
+        });
+        floorSelect.disabled = false;
+      }
+    }
+
+    function updateRooms() {
+      const block = blockSelect.value;
+      const floor = floorSelect.value;
+      roomSelect.innerHTML = '<option value="">Select Room</option>';
+      roomSelect.disabled = true;
+
+      if (block && floor && LOCATION_MAP[block] && LOCATION_MAP[block][floor]) {
+        LOCATION_MAP[block][floor].forEach(room => {
+          const opt = document.createElement('option');
+          opt.value = room.id;
+          opt.textContent = room.room_no + ' — ' + room.name;
+          roomSelect.appendChild(opt);
+        });
+        roomSelect.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

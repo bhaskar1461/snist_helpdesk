@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Faculty Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+</head>
+<body>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <div class="admin-brand">
+        <img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo">
+        <div><p>Faculty</p><h1>SNIST Helpdesk</h1></div>
+      </div>
+      <nav class="admin-nav">
+        {% for route_name, label in sidebar_links %}
+          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == 'faculty_dashboard' %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </aside>
+    <main class="admin-main">
+      <header class="admin-topbar">
+        <div>
+          <p class="kicker">Faculty Dashboard</p>
+          <h2>Welcome, {{ user_name }}</h2>
+          <span>Create tickets and track only your own complaints. Category selection will auto-assign the mapped Concerned Authority.</span>
+        </div>
+        <div class="profile-pill"><div class="avatar">F</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="summary-strip summary-strip-management">
+        <div class="summary-box"><span>Total</span><strong>{{ summary.total or 0 }}</strong></div>
+        <div class="summary-box"><span>Pending</span><strong>{{ summary.pending or 0 }}</strong></div>
+        <div class="summary-box"><span>In Progress</span><strong>{{ summary.in_progress or 0 }}</strong></div>
+        <div class="summary-box"><span>Resolved</span><strong>{{ summary.resolved or 0 }}</strong></div>
+      </section>
+
+      <section class="admin-card">
+        <div class="card-head">
+          <div><p class="kicker">Recent Tickets</p><h3>Your latest complaints</h3></div>
+          <div class="action-row">
+            <a href="{{ url_for('create_ticket_for_role') }}" class="primary-btn">Create Ticket</a>
+            <a href="{{ url_for('my_tickets') }}" class="secondary-btn">View All</a>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Title</th><th>Category</th><th>Assigned To</th><th>Status</th><th>Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ticket in tickets %}
+                <tr class="ticket-row" title="{{ ticket.description }}">
+                  <td class="ticket-id-cell">#{{ ticket.id }}</td>
+                  <td>{{ ticket.title }}</td>
+                  <td>{{ ticket.category_name }}</td>
+                  <td>{{ ticket.assigned_to_name }}</td>
+                  <td><span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">{{ ticket.status }}</span></td>
+                  <td>{{ ticket.updated_at }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6" class="empty-cell">No tickets yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
