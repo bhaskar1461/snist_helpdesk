@@ -11,14 +11,12 @@
 </head>
 <body>
   <div class="admin-shell">
-    <aside class="admin-sidebar">
-      <div class="admin-brand"><img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo"><div><p>Concerned Authority</p><h1>SNIST Helpdesk</h1></div></div>
-      <nav class="admin-nav">
-        {% for route_name, label in sidebar_links %}
-          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == 'authority_tickets' %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
-        {% endfor %}
-      </nav>
-    </aside>
+        <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
     <main class="admin-main">
       <header class="admin-topbar">
         <div><p class="kicker">CA Dashboard</p><h2>Assigned and self-created tickets</h2><span>CA can update only tickets assigned to them. Resolution remarks are stored in `demo_ticket_activity`.</span></div>
@@ -40,7 +38,7 @@
           <input type="text" name="q" value="{{ filters.q }}" placeholder="Search your assigned or self-created tickets">
           <select name="status">
             <option value="">Status</option>
-            {% for status in ['PENDING','IN_PROGRESS','RESOLVED'] %}
+            {% for status in ['PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED'] %}
               <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>{{ status }}</option>
             {% endfor %}
           </select>
@@ -55,19 +53,35 @@
         <div class="card-head"><div><p class="kicker">Assigned Tickets</p><h3>Tickets mapped to you</h3></div></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>ID</th><th>Title</th><th>Description</th><th>Status</th><th>Action</th></tr></thead>
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>Ticket ID</th>
+                <th>Complaint Regarding</th>
+                <th>Block</th>
+                <th>Room/Lab</th>
+                <th>Status</th>
+                <th>Complaint Date&nbsp;Time</th>
+                <th>Created By</th>
+                <th>Action</th>
+              </tr>
+            </thead>
             <tbody>
               {% for ticket in assigned_tickets %}
-                <tr class="ticket-row" title="{{ ticket.description }}">
+                <tr class="ticket-row">
+                  <td>{{ loop.index }}</td>
                   <td class="ticket-id-cell"><a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
-                  <td>{{ ticket.title }}</td>
-                  <td>{{ ticket.description }}</td>
+                  <td><strong>{{ ticket.category_name }}</strong> – {{ ticket.title }}</td>
+                  <td>{{ ticket.location_block or '—' }}</td>
+                  <td>{{ ticket.location_room_no or '—' }}</td>
                   <td><span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">{{ ticket.status }}</span></td>
+                  <td style="white-space:nowrap;">{{ ticket.created_at }}</td>
+                  <td>{{ ticket.created_by_name }}</td>
                   <td>
                     <form method="post" action="{{ url_for('authority_update_status', ticket_id=ticket.id) }}" class="inline-form stacked-form" enctype="multipart/form-data">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <select name="status">
-                        {% for status in ['PENDING','IN_PROGRESS','RESOLVED'] %}
+                        {% for status in ['PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED'] %}
                           <option value="{{ status }}" {% if ticket.status == status %}selected{% endif %}>{{ status }}</option>
                         {% endfor %}
                       </select>
@@ -79,7 +93,7 @@
                   </td>
                 </tr>
               {% else %}
-                <tr><td colspan="5" class="empty-cell">No assigned tickets.</td></tr>
+                <tr><td colspan="9" class="empty-cell">No assigned tickets.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -90,18 +104,40 @@
         <div class="card-head"><div><p class="kicker">My Tickets</p><h3>Tickets created by you</h3></div></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>ID</th><th>Title</th><th>Category</th><th>Assigned To</th><th>Status</th></tr></thead>
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>Ticket ID</th>
+                <th>Complaint Regarding</th>
+                <th>Block</th>
+                <th>Room/Lab</th>
+                <th>Status</th>
+                <th>Complaint Date&nbsp;Time</th>
+                <th>Allocated To</th>
+                <th>Action</th>
+              </tr>
+            </thead>
             <tbody>
               {% for ticket in own_tickets %}
-                <tr class="ticket-row" title="{{ ticket.description }}">
+                <tr class="ticket-row">
+                  <td>{{ loop.index }}</td>
                   <td class="ticket-id-cell"><a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
-                  <td>{{ ticket.title }}</td>
-                  <td>{{ ticket.category_name }}</td>
-                  <td>{{ ticket.assigned_to_name }}</td>
+                  <td><strong>{{ ticket.category_name }}</strong> – {{ ticket.title }}</td>
+                  <td>{{ ticket.location_block or '—' }}</td>
+                  <td>{{ ticket.location_room_no or '—' }}</td>
                   <td><span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">{{ ticket.status }}</span></td>
+                  <td style="white-space:nowrap;">{{ ticket.created_at }}</td>
+                  <td>{{ ticket.assigned_to_name }}</td>
+                  <td>
+                    {% if ticket.status == 'RESOLVED' %}
+                      <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="status-pill reopened" style="text-decoration:none;">Re-open</a>
+                    {% else %}
+                      <span class="muted-cell">—</span>
+                    {% endif %}
+                  </td>
                 </tr>
               {% else %}
-                <tr><td colspan="5" class="empty-cell">You have not created any tickets.</td></tr>
+                <tr><td colspan="9" class="empty-cell">You have not created any tickets.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -109,5 +145,8 @@
       </section>
     </main>
   </div>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>

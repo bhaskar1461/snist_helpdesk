@@ -167,12 +167,61 @@ When `INIT_DEMO_DB=true`, the following demo accounts are created automatically:
 
 ---
 
+## 👥 User Roles, Hierarchy & Permissions
+
+The platform uses a granular Role-Based Access Control (RBAC) system to partition features, dashboards, and ticket visibility:
+
+### 1. Hierarchy & Permissions Matrix
+
+| Role | Hierarchy Level | Key Permissions | Scoping & Data Visibility Restrictions |
+|:---|:---:|:---|:---|
+| **Super Admin** | 1 (Highest) | Full system control. Create, update, or delete all users (including Admins/Super Admins). Manage Category-to-CA mappings across all departments. | Organization-wide control |
+| **Admin** | 2 | Organization panel. Create, update, or delete users (except Super Admin). Manage Category-to-CA mappings. | Scoped to own organization |
+| **HOD (Head of Department)** | 3 | Manage CAs and Faculty members strictly within their department. Manage Category-to-CA mappings for their department. Monitor department-specific tickets. | Strictly scoped to own department |
+| **Concerned Authority (CA)** | 4 | Track assigned tickets. Transition ticket states (Pending ➔ In Progress ➔ On Hold ➔ Resolved). Add resolution remarks and upload files. View resolution reports. | Scoped to tickets assigned to them |
+| **Faculty (User)** | 5 | Create tickets. View and search own raised tickets. Reopen resolved tickets (requires explanation). | Scoped to tickets raised by them |
+
+---
+
+## 🔄 Ticketing & User Management Workflows
+
+### A. The Ticketing Lifecycle Flow
+
+```mermaid
+graph TD
+    A[Faculty Logs In] --> B[Create Ticket with Category]
+    B -->|Auto-Assigns to mapped CA| C[Status: PENDING]
+    C --> D[CA Logs In & Accepts Ticket]
+    D --> E[Status: IN PROGRESS]
+    E -->|If blocked| F[Status: ON HOLD]
+    F -->|When resumed| E
+    E -->|CA Solves Ticket & Uploads Attachment| G[Status: RESOLVED]
+    G --> H{Faculty satisfied?}
+    H -->|No| I[Reopen Ticket + Reason]
+    I -->|Re-assigned| E
+    H -->|Yes| J[Closed / Done]
+```
+
+1. **Ticket Raising:** A **Faculty** member logs in, chooses a Category (e.g. `Internet` or `Plumbing`), enters the title/description, and optionally links a physical location.
+2. **Auto Routing:** The database automatically routes the ticket to the mapped **Concerned Authority (CA)** assigned to that category. The status is initialized to `PENDING`.
+3. **Acceptance:** The **CA** views their assigned queue and moves the ticket to `IN_PROGRESS`.
+4. **On Hold State:** If the issue requires external parts or is blocked, the CA can change the status to `ON_HOLD` (adding a remarks note). When ready, they transition it back to `IN_PROGRESS`.
+5. **Resolution:** The CA sets the ticket status to `RESOLVED`, typing out clear resolution remarks and uploading optional files (such as photo evidence).
+6. **Reopening:** If the problem persists, the **Faculty** can reopen the ticket to `REOPENED` status (remarks required), which re-assigns it back to the CA for further work.
+
+### B. HOD Management Workflow
+1. **Login & Interface:** The HOD logs in and accesses their department-specific dashboard, showing Category-to-CA mapping stats and active tickets.
+2. **Restricted User Management:** The HOD can access the **User Management** screen. They can view, create, edit, or delete `CA` and `FACULTY` users who belong to their department. Admins and other departments' users are hidden and cannot be updated.
+3. **Category Mappings:** The HOD maps category names to CAs in their department. If creating/editing a multi-department CA (e.g., handling Maintenance across CSE and ECE), the HOD's own department is locked as selected, but they can associate other departments as needed.
+
+---
+
 ## 📁 Project Structure
 
 ```
 snist_helpdesk/
-├── app.py                  # Main Flask application
-├── db_services.py          # Database service layer
+├── app.py                  # Main Flask application (routes & RBAC checks)
+├── db_services.py          # Database service layer (MySQL queries & model methods)
 ├── requirements.txt        # Python dependencies
 ├── .env.example            # Environment variable template
 ├── .gitignore              # Git ignore rules
@@ -183,7 +232,7 @@ snist_helpdesk/
 ├── scripts/
 │   └── init_demo_db.py     # Standalone DB initialization script
 ├── static/
-│   ├── css/                # Stylesheets
+│   ├── css/                # Stylesheets (super_admin.css contains form & input styling)
 │   └── images/             # Static images
 ├── templates/              # Jinja2 HTML templates
 │   ├── login.html

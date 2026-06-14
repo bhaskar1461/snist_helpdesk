@@ -11,14 +11,12 @@
 </head>
 <body>
   <div class="admin-shell">
-    <aside class="admin-sidebar">
-      <div class="admin-brand"><img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo"><div><p>{{ role_title }}</p><h1>SNIST Helpdesk</h1></div></div>
-      <nav class="admin-nav">
-        {% for route_name, label in sidebar_links %}
-          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name in request.endpoint %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
-        {% endfor %}
-      </nav>
-    </aside>
+        <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
     <main class="admin-main">
       <header class="admin-topbar">
         <div><p class="kicker">{{ kicker }}</p><h2>{{ page_heading }}</h2><span>{{ page_description }}</span></div>
@@ -29,7 +27,9 @@
         <div class="summary-box"><span>Total</span><strong>{{ summary.total or 0 }}</strong></div>
         <div class="summary-box"><span>Pending</span><strong>{{ summary.pending or 0 }}</strong></div>
         <div class="summary-box"><span>In Progress</span><strong>{{ summary.in_progress or 0 }}</strong></div>
+        <div class="summary-box"><span>On Hold</span><strong>{{ summary.on_hold or 0 }}</strong></div>
         <div class="summary-box"><span>Resolved</span><strong>{{ summary.resolved or 0 }}</strong></div>
+        <div class="summary-box"><span>Reopened</span><strong>{{ summary.reopened or 0 }}</strong></div>
       </section>
 
       <section class="admin-grid">
@@ -67,7 +67,7 @@
           <div class="card-head"><div><p class="kicker">Analytics</p><h3>Tickets by Department</h3></div></div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Department</th><th>Total</th><th>Pending</th><th>In Progress</th><th>Resolved</th></tr></thead>
+              <thead><tr><th>Department</th><th>Total</th><th>Pending</th><th>In Progress</th><th>On Hold</th><th>Resolved</th><th>Reopened</th></tr></thead>
               <tbody>
                 {% for row in dept_stats %}
                   <tr>
@@ -75,7 +75,9 @@
                     <td>{{ row.ticket_count or 0 }}</td>
                     <td><span class="status-pill pending" style="font-size:.75rem;padding:2px 8px;">{{ row.pending or 0 }}</span></td>
                     <td><span class="status-pill in-progress" style="font-size:.75rem;padding:2px 8px;">{{ row.in_progress or 0 }}</span></td>
+                    <td><span class="status-pill on-hold" style="font-size:.75rem;padding:2px 8px;">{{ row.on_hold or 0 }}</span></td>
                     <td><span class="status-pill resolved" style="font-size:.75rem;padding:2px 8px;">{{ row.resolved or 0 }}</span></td>
+                    <td><span class="status-pill reopened" style="font-size:.75rem;padding:2px 8px;">{{ row.reopened or 0 }}</span></td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -89,7 +91,7 @@
           <div class="card-head"><div><p class="kicker">Analytics</p><h3>Tickets by Category</h3></div></div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Category</th><th>Department</th><th>Total</th><th>Pending</th><th>In Progress</th><th>Resolved</th></tr></thead>
+              <thead><tr><th>Category</th><th>Department</th><th>Total</th><th>Pending</th><th>In Progress</th><th>On Hold</th><th>Resolved</th><th>Reopened</th></tr></thead>
               <tbody>
                 {% for row in cat_stats %}
                   <tr>
@@ -98,7 +100,9 @@
                     <td>{{ row.ticket_count or 0 }}</td>
                     <td><span class="status-pill pending" style="font-size:.75rem;padding:2px 8px;">{{ row.pending or 0 }}</span></td>
                     <td><span class="status-pill in-progress" style="font-size:.75rem;padding:2px 8px;">{{ row.in_progress or 0 }}</span></td>
+                    <td><span class="status-pill on-hold" style="font-size:.75rem;padding:2px 8px;">{{ row.on_hold or 0 }}</span></td>
                     <td><span class="status-pill resolved" style="font-size:.75rem;padding:2px 8px;">{{ row.resolved or 0 }}</span></td>
+                    <td><span class="status-pill reopened" style="font-size:.75rem;padding:2px 8px;">{{ row.reopened or 0 }}</span></td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -117,5 +121,8 @@
       </section>
     </main>
   </div>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>

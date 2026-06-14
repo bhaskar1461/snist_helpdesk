@@ -11,18 +11,16 @@
 </head>
 <body>
   <div class="admin-shell">
-    <aside class="admin-sidebar">
-      <div class="admin-brand"><img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo"><div><p>Faculty</p><h1>SNIST Helpdesk</h1></div></div>
-      <nav class="admin-nav">
-        {% for route_name, label in sidebar_links %}
-          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == 'my_tickets' %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
-        {% endfor %}
-      </nav>
-    </aside>
+    <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
     <main class="admin-main">
       <header class="admin-topbar">
-        <div><p class="kicker">My Tickets</p><h2>Only your complaints</h2><span>Faculty can view only tickets they created.</span></div>
-        <div class="profile-pill"><div class="avatar">F</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
+        <div><p class="kicker">My Tickets</p><h2>Only your complaints</h2><span>Users can view only tickets they created.</span></div>
+        <div class="profile-pill"><div class="avatar">U</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
       </header>
 
       <section class="admin-card">
@@ -30,7 +28,7 @@
           <input type="text" name="q" value="{{ filters.q }}" placeholder="Search your tickets">
           <select name="status">
             <option value="">Status</option>
-            {% for status in ['PENDING','IN_PROGRESS','RESOLVED'] %}
+            {% for status in ['PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED'] %}
               <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>{{ status }}</option>
             {% endfor %}
           </select>
@@ -42,20 +40,44 @@
 
         <div class="table-wrap">
           <table>
-            <thead><tr><th>ID</th><th>Title</th><th>Description</th><th>Category</th><th>Assigned To</th><th>Status</th><th>Org</th></tr></thead>
+            <thead>
+              <tr>
+                <th>S.No</th>
+                <th>Ticket ID</th>
+                <th>Complaint Regarding</th>
+                <th>Block</th>
+                <th>Room/Lab</th>
+                <th>Status</th>
+                <th>Complaint Date&nbsp;Time</th>
+                <th>Allocated To</th>
+                <th>Allocated Date&nbsp;Time</th>
+                <th>Closed Date&nbsp;Time</th>
+                <th>Action</th>
+              </tr>
+            </thead>
             <tbody>
               {% for ticket in tickets %}
-                <tr class="ticket-row" title="{{ ticket.description }}">
+                <tr class="ticket-row">
+                  <td>{{ loop.index }}</td>
                   <td class="ticket-id-cell"><a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
-                  <td>{{ ticket.title }}</td>
-                  <td>{{ ticket.description }}</td>
-                  <td>{{ ticket.category_name }}</td>
-                  <td>{{ ticket.assigned_to_name }}</td>
+                  <td><strong>{{ ticket.category_name }}</strong> – {{ ticket.title }}</td>
+                  <td>{{ ticket.location_block or '—' }}</td>
+                  <td>{{ ticket.location_room_no or '—' }}</td>
                   <td><span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">{{ ticket.status }}</span></td>
-                  <td>{{ ticket.org_id }}</td>
+                  <td style="white-space:nowrap;">{{ ticket.created_at }}</td>
+                  <td>{{ ticket.assigned_to_name }}</td>
+                  <td style="white-space:nowrap;">{{ ticket.updated_at if ticket.status != 'PENDING' else '—' }}</td>
+                  <td style="white-space:nowrap;">{{ ticket.updated_at if ticket.status == 'RESOLVED' else '—' }}</td>
+                  <td>
+                    {% if ticket.status == 'RESOLVED' %}
+                      <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="status-pill reopened" style="text-decoration:none;">Re-open</a>
+                    {% else %}
+                      <span class="muted-cell">—</span>
+                    {% endif %}
+                  </td>
                 </tr>
               {% else %}
-                <tr><td colspan="7" class="empty-cell">No tickets found.</td></tr>
+                <tr><td colspan="11" class="empty-cell">No tickets found.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -63,5 +85,8 @@
       </section>
     </main>
   </div>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>

@@ -50,17 +50,51 @@ def env_db_config() -> DbConfig | None:
     )
 
 
+from queue import Queue, Empty
+
+class PooledConnection:
+    def __init__(self, conn, pool):
+        self._conn = conn
+        self._pool = pool
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+
+    def close(self):
+        # Return connection back to the pool
+        if self._conn is not None:
+            try:
+                self._pool.put_nowait(self._conn)
+            except Exception:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+            self._conn = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+
 class BaseMySQLService:
     def __init__(self, config: DbConfig | None):
         self.config = config
+        self._pool = Queue(maxsize=10)
 
     @property
     def enabled(self) -> bool:
         return self.config is not None and pymysql is not None
 
-    def connection(self):
-        if not self.enabled:
-            raise RuntimeError("MySQL is not configured.")
+    def _create_new_connection(self):
+        ssl_config = None
+        if os.getenv("MYSQL_SSL", "").lower() == "true":
+            ssl_config = {"ca": None}  # Use system default CA bundle
         return pymysql.connect(
             host=self.config.host,
             port=self.config.port,
@@ -69,7 +103,18 @@ class BaseMySQLService:
             database=self.config.database,
             cursorclass=pymysql.cursors.DictCursor,
             autocommit=True,
+            ssl=ssl_config,
         )
+
+    def connection(self):
+        if not self.enabled:
+            raise RuntimeError("MySQL is not configured.")
+        try:
+            conn = self._pool.get_nowait()
+            conn.ping(reconnect=True)
+        except (Empty, Exception):
+            conn = self._create_new_connection()
+        return PooledConnection(conn, self._pool)
 
 
 class LiveDbService(BaseMySQLService):
@@ -103,7 +148,7 @@ class LiveDbService(BaseMySQLService):
             cursor.execute(sql)
             return cursor.fetchall()
 
-    def fetch_reference_users(self, search="", department=None, limit=100):
+    def fetch_reference_users(self, search="", department=None, limit=100, org_id=None):
         if not self.enabled:
             return []
         sql = """
@@ -126,6 +171,9 @@ class LiveDbService(BaseMySQLService):
         if department:
             sql += " AND (b.BRANCH_CODE = %s OR b.BRANCH_NAME = %s)"
             params.extend([department, department])
+        if org_id:
+            sql += " AND CAST(t.ORG_ID AS CHAR) = %s"
+            params.append(org_id)
         if search:
             sql += " AND (t.TEACHER_NAME LIKE %s OR t.EMAIL_ID LIKE %s OR t.SAP_ID LIKE %s OR t.TEACHER_CODE LIKE %s)"
             like = f"%{search}%"
@@ -204,30 +252,37 @@ class DemoDbService(BaseMySQLService):
         if not self.enabled:
             return
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) AS total FROM demo_users")
-            if cursor.fetchone()["total"] == 0:
-                cursor.executemany(
-                    """
-                    INSERT INTO demo_users (name, email, password, role, department)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    [(u["name"], u["email"], generate_password_hash(u["password"]), u["role"], u["department"]) for u in users],
-                )
-
-            cursor.execute("SELECT COUNT(*) AS total FROM demo_categories")
-            if cursor.fetchone()["total"] == 0 and categories:
-                for category in categories:
-                    cursor.execute("SELECT id FROM demo_users WHERE email = %s LIMIT 1", (category["authority_email"],))
-                    row = cursor.fetchone()
-                    if not row:
-                        continue
+            # Seed users individually if they do not exist
+            for u in users:
+                cursor.execute("SELECT id FROM demo_users WHERE LOWER(email) = LOWER(%s) LIMIT 1", (u["email"],))
+                if not cursor.fetchone():
                     cursor.execute(
                         """
-                        INSERT INTO demo_categories (category_name, department, assigned_ca_id)
-                        VALUES (%s, %s, %s)
+                        INSERT INTO demo_users (name, email, password, role, department)
+                        VALUES (%s, %s, %s, %s, %s)
                         """,
-                        (category["category_name"], category["department"], row["id"]),
+                        (u["name"], u["email"], generate_password_hash(u["password"]), u["role"], u["department"]),
                     )
+
+            # Seed categories individually if they do not exist
+            if categories:
+                for category in categories:
+                    cursor.execute(
+                        "SELECT id FROM demo_categories WHERE LOWER(category_name) = LOWER(%s) AND department = %s LIMIT 1",
+                        (category["category_name"], category["department"])
+                    )
+                    if not cursor.fetchone():
+                        cursor.execute("SELECT id FROM demo_users WHERE email = %s LIMIT 1", (category["authority_email"],))
+                        row = cursor.fetchone()
+                        if not row:
+                            continue
+                        cursor.execute(
+                            """
+                            INSERT INTO demo_categories (category_name, department, assigned_ca_id)
+                            VALUES (%s, %s, %s)
+                            """,
+                            (category["category_name"], category["department"], row["id"]),
+                        )
 
     def authenticate_user(self, email, password):
         with self.connection() as connection, connection.cursor() as cursor:
@@ -264,7 +319,15 @@ class DemoDbService(BaseMySQLService):
             cursor.execute("SELECT id, name, email, role, department, created_at FROM demo_users WHERE id = %s", (user_id,))
             return cursor.fetchone()
 
-    def list_users(self, role=None, department=None, search=""):
+    def get_user_by_email(self, email):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, name, email, role, department, created_at FROM demo_users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
+                (email,),
+            )
+            return cursor.fetchone()
+
+    def list_users(self, role=None, department=None, search="", org_id=None, limit=None, offset=None):
         sql = "SELECT id, name, email, role, department, created_at FROM demo_users WHERE 1=1"
         params = []
         if role:
@@ -277,16 +340,55 @@ class DemoDbService(BaseMySQLService):
                 sql += " AND role = %s"
                 params.append(role)
         if department:
-            sql += " AND department = %s"
-            params.append(department)
+            sql += " AND (department = %s OR FIND_IN_SET(%s, department) > 0)"
+            params.extend([department, department])
         if search:
             like = f"%{search}%"
             sql += " AND (name LIKE %s OR email LIKE %s OR department LIKE %s)"
             params.extend([like, like, like])
         sql += " ORDER BY created_at DESC"
-        with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.fetchall()
+        
+        with self.connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                users = cursor.fetchall()
+
+            if not org_id:
+                if limit is not None:
+                    offset_val = offset or 0
+                    return users[offset_val : offset_val + limit]
+                return users
+
+            # Find which branch_codes belong to this org_id
+            branch_codes = set()
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT BRANCH_CODE FROM branch_detail WHERE CAST(ORG_ID AS CHAR) = %s",
+                    (org_id,)
+                )
+                for r in cursor.fetchall():
+                    if r.get("BRANCH_CODE"):
+                        branch_codes.add(r["BRANCH_CODE"])
+
+        filtered_users = []
+        for u in users:
+            u_email = u["email"]
+            u_dept = u["department"]
+            
+            # Determine user's org
+            u_org = "3000" if (u_email and "snu" in u_email.lower()) else "2000"
+            if u_org == "2000" and u_dept:
+                depts = [d.strip() for d in u_dept.split(",")]
+                if any(d in branch_codes for d in depts):
+                    u_org = org_id
+
+            if u_org == org_id:
+                filtered_users.append(u)
+
+        if limit is not None:
+            offset_val = offset or 0
+            filtered_users = filtered_users[offset_val : offset_val + limit]
+        return filtered_users
 
     def create_user(self, payload):
         hashed = generate_password_hash(payload["password"])
@@ -338,26 +440,37 @@ class DemoDbService(BaseMySQLService):
                 raise ValueError("Cannot delete a user that is referenced by categories, tickets, or activity.")
             cursor.execute("DELETE FROM demo_users WHERE id = %s", (user_id,))
 
-    def list_categories(self, department=None, search="", ca_id=None):
+    def list_categories(self, department=None, search="", ca_id=None, org_id=None, active_only=False, limit=None, offset=None):
         sql = """
-            SELECT c.id, c.category_name, c.department, c.assigned_ca_id, c.created_at,
+            SELECT c.id, c.category_name, c.department, c.assigned_ca_id, c.is_active, c.created_at,
                    u.name AS assigned_ca_name, u.email AS assigned_ca_email
             FROM demo_categories c
             INNER JOIN demo_users u ON u.id = c.assigned_ca_id
             WHERE 1=1
         """
         params = []
+        if active_only:
+            sql += " AND c.is_active = 1"
         if department:
             sql += " AND c.department = %s"
             params.append(department)
         if ca_id:
             sql += " AND c.assigned_ca_id = %s"
             params.append(ca_id)
+        if org_id:
+            sql += " AND c.department IN (SELECT BRANCH_CODE FROM branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
+            params.append(org_id)
         if search:
             like = f"%{search}%"
             sql += " AND (c.category_name LIKE %s OR u.name LIKE %s)"
             params.extend([like, like])
         sql += " ORDER BY c.department, c.category_name"
+        if limit is not None:
+            sql += " LIMIT %s"
+            params.append(limit)
+            if offset is not None:
+                sql += " OFFSET %s"
+                params.append(offset)
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.fetchall()
@@ -406,7 +519,7 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT c.id, c.category_name, c.department, c.assigned_ca_id, u.name AS assigned_ca_name
+                SELECT c.id, c.category_name, c.department, c.assigned_ca_id, c.is_active, u.name AS assigned_ca_name
                 FROM demo_categories c
                 INNER JOIN demo_users u ON u.id = c.assigned_ca_id
                 WHERE c.id = %s
@@ -414,6 +527,17 @@ class DemoDbService(BaseMySQLService):
                 (category_id,),
             )
             return cursor.fetchone()
+
+    def toggle_category_status(self, category_id, is_active):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE demo_categories
+                SET is_active = %s
+                WHERE id = %s
+                """,
+                (1 if is_active else 0, category_id),
+            )
 
     def create_ticket(self, title, description, category_id, created_by, org_id, location_id=None):
         category = self.get_category(category_id)
@@ -466,10 +590,14 @@ class DemoDbService(BaseMySQLService):
             WHERE 1=1
         """
 
-    def list_tickets(self, viewer, scope="all", filters=None):
+    def list_tickets(self, viewer, scope="all", filters=None, limit=None, offset=None):
         filters = filters or {}
         sql = self.ticket_query_base()
         params = []
+
+        # Enforce org partitioning for all queries
+        sql += " AND t.org_id = %s"
+        params.append(viewer.get("org_id", "2000"))
 
         if scope == "own":
             sql += " AND t.created_by = %s"
@@ -491,6 +619,8 @@ class DemoDbService(BaseMySQLService):
             sql += " AND t.category_id = %s"
             params.append(filters["category_id"])
         if filters.get("org_id"):
+            # If viewer is SUPER_ADMIN/ADMIN they might filter by org, but it's already scoped
+            # Still, we can append it just in case
             sql += " AND t.org_id = %s"
             params.append(filters["org_id"])
         if filters.get("from_date"):
@@ -505,6 +635,12 @@ class DemoDbService(BaseMySQLService):
             params.extend([like, like, like, like, like])
 
         sql += " ORDER BY t.updated_at DESC"
+        if limit is not None:
+            sql += " LIMIT %s"
+            params.append(limit)
+            if offset is not None:
+                sql += " OFFSET %s"
+                params.append(offset)
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.fetchall()
@@ -532,8 +668,10 @@ class DemoDbService(BaseMySQLService):
 
     ALLOWED_TRANSITIONS = {
         "PENDING": {"IN_PROGRESS"},
-        "IN_PROGRESS": {"RESOLVED"},
-        "RESOLVED": set(),  # terminal state – no further transitions
+        "IN_PROGRESS": {"ON_HOLD", "RESOLVED"},
+        "ON_HOLD": {"IN_PROGRESS"},
+        "RESOLVED": {"REOPENED"},
+        "REOPENED": {"IN_PROGRESS"},
     }
 
     def update_ticket_status(self, ticket_id, actor, status, remarks="", time_taken="", attachment_path=""):
@@ -541,10 +679,21 @@ class DemoDbService(BaseMySQLService):
         if not ticket:
             raise ValueError("Ticket not found.")
 
-        # Permission: only the assigned CA (or SUPER_ADMIN) can update
+        if ticket["org_id"] != actor["org_id"]:
+            raise PermissionError("Access denied: Ticket belongs to a different organization.")
+
+        # Permission check:
+        # - Assigned CA can update their own assigned tickets
+        # - SUPER_ADMIN can update any ticket
+        # - Ticket creator can REOPEN a RESOLVED ticket
         is_assigned_ca = actor["role"] == "CA" and ticket["assigned_to_email"].lower() == actor["email"].lower()
         is_super_admin = actor["role"] == "SUPER_ADMIN"
-        if not is_assigned_ca and not is_super_admin:
+        is_creator_reopening = (
+            ticket["created_by_email"].lower() == actor["email"].lower()
+            and ticket["status"] == "RESOLVED"
+            and status == "REOPENED"
+        )
+        if not is_assigned_ca and not is_super_admin and not is_creator_reopening:
             raise PermissionError("Only the assigned Concerned Authority can update this ticket.")
 
         # Enforce valid status transitions
@@ -572,40 +721,66 @@ class DemoDbService(BaseMySQLService):
 
     # ── Analytics ────────────────────────────────────────
 
-    def ticket_stats_by_category(self, department=None):
-        sql = """
+    def ticket_stats_by_category(self, department=None, org_id=None):
+        on_clause = "ON t.category_id = c.id"
+        params = []
+        if org_id:
+            on_clause += " AND t.org_id = %s"
+            params.append(org_id)
+
+        sql = f"""
             SELECT c.category_name, c.department,
                    COUNT(t.id) AS ticket_count,
                    SUM(CASE WHEN t.status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
                    SUM(CASE WHEN t.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS in_progress,
-                   SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved
+                   SUM(CASE WHEN t.status = 'ON_HOLD' THEN 1 ELSE 0 END) AS on_hold,
+                   SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved,
+                   SUM(CASE WHEN t.status = 'REOPENED' THEN 1 ELSE 0 END) AS reopened
             FROM demo_categories c
-            LEFT JOIN demo_tickets t ON t.category_id = c.id
+            LEFT JOIN demo_tickets t {on_clause}
             WHERE 1=1
         """
-        params = []
         if department:
             sql += " AND c.department = %s"
             params.append(department)
+        if org_id:
+            sql += " AND c.department IN (SELECT BRANCH_CODE FROM branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
+            params.append(org_id)
+
         sql += " GROUP BY c.id, c.category_name, c.department ORDER BY ticket_count DESC"
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.fetchall()
 
-    def ticket_stats_by_department(self):
-        sql = """
+    def ticket_stats_by_department(self, org_id=None):
+        on_clause = "ON t.category_id = c.id"
+        params = []
+        if org_id:
+            on_clause += " AND t.org_id = %s"
+            params.append(org_id)
+
+        sql = f"""
             SELECT c.department,
                    COUNT(t.id) AS ticket_count,
                    SUM(CASE WHEN t.status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
                    SUM(CASE WHEN t.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS in_progress,
-                   SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved
+                   SUM(CASE WHEN t.status = 'ON_HOLD' THEN 1 ELSE 0 END) AS on_hold,
+                   SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved,
+                   SUM(CASE WHEN t.status = 'REOPENED' THEN 1 ELSE 0 END) AS reopened
             FROM demo_categories c
-            LEFT JOIN demo_tickets t ON t.category_id = c.id
+            LEFT JOIN demo_tickets t {on_clause}
+            WHERE 1=1
+        """
+        if org_id:
+            sql += " AND c.department IN (SELECT BRANCH_CODE FROM branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
+            params.append(org_id)
+
+        sql += """
             GROUP BY c.department
             ORDER BY ticket_count DESC
         """
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(sql)
+            cursor.execute(sql, params)
             return cursor.fetchall()
 
     def dashboard_summary(self, viewer):
@@ -614,7 +789,9 @@ class DemoDbService(BaseMySQLService):
                 COUNT(*) AS total,
                 SUM(CASE WHEN t.status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
                 SUM(CASE WHEN t.status = 'IN_PROGRESS' THEN 1 ELSE 0 END) AS in_progress,
-                SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved
+                SUM(CASE WHEN t.status = 'ON_HOLD' THEN 1 ELSE 0 END) AS on_hold,
+                SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved,
+                SUM(CASE WHEN t.status = 'REOPENED' THEN 1 ELSE 0 END) AS reopened
             FROM demo_tickets t
             INNER JOIN demo_categories c ON c.id = t.category_id
             WHERE 1=1
@@ -630,11 +807,15 @@ class DemoDbService(BaseMySQLService):
             sql += " AND c.department = %s"
             params.append(viewer["department"])
 
+        if viewer.get("org_id"):
+            sql += " AND t.org_id = %s"
+            params.append(viewer["org_id"])
+
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.fetchone()
 
-    def hod_overview(self):
+    def hod_overview(self, org_id=None):
         sql = """
             SELECT
                 u.id,
@@ -647,9 +828,16 @@ class DemoDbService(BaseMySQLService):
             LEFT JOIN demo_categories c ON c.department = u.department
             LEFT JOIN demo_tickets t ON t.category_id = c.id
             WHERE u.role = 'HOD'
+        """
+        params = []
+        if org_id:
+            sql += " AND u.department IN (SELECT BRANCH_CODE FROM branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
+            params.append(org_id)
+
+        sql += """
             GROUP BY u.id, u.name, u.email, u.department
             ORDER BY u.department
         """
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(sql)
+            cursor.execute(sql, params)
             return cursor.fetchall()

@@ -15,10 +15,12 @@ CREATE TABLE IF NOT EXISTS demo_categories (
   category_name VARCHAR(120) NOT NULL,
   department VARCHAR(80) NOT NULL,
   assigned_ca_id INT UNSIGNED NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_demo_categories_name_dept (category_name, department),
-  KEY idx_demo_categories_ca (assigned_ca_id)
+  KEY idx_demo_categories_ca (assigned_ca_id),
+  CONSTRAINT fk_demo_categories_ca FOREIGN KEY (assigned_ca_id) REFERENCES demo_users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS demo_tickets (
@@ -28,7 +30,7 @@ CREATE TABLE IF NOT EXISTS demo_tickets (
   category_id INT UNSIGNED NOT NULL,
   created_by INT UNSIGNED NOT NULL,
   assigned_to INT UNSIGNED NOT NULL,
-  status ENUM('PENDING', 'IN_PROGRESS', 'RESOLVED') NOT NULL DEFAULT 'PENDING',
+  status ENUM('PENDING', 'IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'REOPENED') NOT NULL DEFAULT 'PENDING',
   org_id VARCHAR(20) NOT NULL,
   location_id INT UNSIGNED NULL COMMENT 'FK to location table (block/room)',
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -37,20 +39,25 @@ CREATE TABLE IF NOT EXISTS demo_tickets (
   KEY idx_demo_tickets_status (status),
   KEY idx_demo_tickets_assigned_to (assigned_to),
   KEY idx_demo_tickets_created_by (created_by),
-  KEY idx_demo_tickets_category (category_id)
+  KEY idx_demo_tickets_category (category_id),
+  CONSTRAINT fk_demo_tickets_category FOREIGN KEY (category_id) REFERENCES demo_categories (id),
+  CONSTRAINT fk_demo_tickets_created_by FOREIGN KEY (created_by) REFERENCES demo_users (id),
+  CONSTRAINT fk_demo_tickets_assigned_to FOREIGN KEY (assigned_to) REFERENCES demo_users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS demo_ticket_activity (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   ticket_id INT UNSIGNED NOT NULL,
   action_by INT UNSIGNED NOT NULL,
-  from_status ENUM('PENDING', 'IN_PROGRESS', 'RESOLVED') NULL,
-  to_status ENUM('PENDING', 'IN_PROGRESS', 'RESOLVED') NOT NULL,
+  from_status ENUM('PENDING', 'IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'REOPENED') NULL,
+  to_status ENUM('PENDING', 'IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'REOPENED') NOT NULL,
   remarks TEXT NULL,
   time_taken VARCHAR(120) NULL,
   attachment_path VARCHAR(255) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_demo_ticket_activity_ticket (ticket_id),
-  KEY idx_demo_ticket_activity_user (action_by)
+  KEY idx_demo_ticket_activity_user (action_by),
+  CONSTRAINT fk_demo_ticket_activity_ticket FOREIGN KEY (ticket_id) REFERENCES demo_tickets (id) ON DELETE CASCADE,
+  CONSTRAINT fk_demo_ticket_activity_user FOREIGN KEY (action_by) REFERENCES demo_users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

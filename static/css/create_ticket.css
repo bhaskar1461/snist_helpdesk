@@ -5,13 +5,19 @@
   --card: #ffffff;
   --text: #1b2740;
   --muted: #6c7991;
-  --line: rgba(19, 54, 125, 0.1);
+  --line: rgba(19, 54, 125, 0.28);
   --shadow: 0 18px 48px rgba(20, 44, 98, 0.12);
   --rose: #d95f77;
 }
 
 * {
   box-sizing: border-box;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #5c6b8a;
+  opacity: 1;
 }
 
 body {

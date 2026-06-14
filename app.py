@@ -17,6 +17,9 @@ from werkzeug.utils import secure_filename
 
 from db_services import APP_ROLE_TO_DB, ROLE_MAP, DemoDbService, LiveDbService, env_db_config
 
+from collections import defaultdict
+import time
+
 load_dotenv()
 
 log = logging.getLogger(__name__)
@@ -31,9 +34,24 @@ app.secret_key = _secret
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true",
     PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
 )
 csrf = CSRFProtect(app)
+
+# Brute-force protection / Rate limiting (H-3)
+LOGIN_ATTEMPTS = defaultdict(list)
+LOCKOUT_TIME = 60  # 1 minute lockout
+MAX_ATTEMPTS = 5   # 5 attempts in 1 minute
+
+def is_login_rate_limited(ip):
+    now = time.time()
+    # Clean up old attempts
+    LOGIN_ATTEMPTS[ip] = [t for t in LOGIN_ATTEMPTS[ip] if now - t < LOCKOUT_TIME]
+    return len(LOGIN_ATTEMPTS[ip]) >= MAX_ATTEMPTS
+
+def record_login_attempt(ip):
+    LOGIN_ATTEMPTS[ip].append(time.time())
 
 BASE_DIR = Path(__file__).resolve().parent
 SCHEMA_PATH = BASE_DIR / "sql" / "demo_schema.sql"
@@ -49,14 +67,17 @@ live_db = LiveDbService(DB_CONFIG)
 demo_db = DemoDbService(DB_CONFIG)
 
 DEFAULT_DEMO_USERS = [
-    {"name": "Super Admin", "email": "admin@gmail.com", "password": "123", "role": "SUPER_ADMIN", "department": "Administration"},
-    {"name": "Campus Admin", "email": "campus.admin@gmail.com", "password": "123", "role": "ADMIN", "department": "Administration"},
-    {"name": "Dr. Kavya", "email": "hod@gmail.com", "password": "123", "role": "HOD", "department": "CSE"},
-    {"name": "Dr. Harini", "email": "hod.ece@gmail.com", "password": "123", "role": "HOD", "department": "ECE"},
-    {"name": "Chandini", "email": "ca@gmail.com", "password": "123", "role": "CA", "department": "CSE"},
-    {"name": "Sravan", "email": "sravan.ca@gmail.com", "password": "123", "role": "CA", "department": "Facilities"},
-    {"name": "Bhaskar", "email": "bhaskar.ca@gmail.com", "password": "123", "role": "CA", "department": "Maintenance"},
-    {"name": "Faculty User", "email": "faculty@gmail.com", "password": "123", "role": "FACULTY", "department": "CSE"},
+    # SNIST org (2000)
+    {"name": "Super Admin", "email": "admin@gmail.com", "password": "123", "role": "SUPER_ADMIN", "department": "Administration", "org_id": "2000"},
+    {"name": "Campus Admin", "email": "campus.admin@gmail.com", "password": "123", "role": "ADMIN", "department": "Administration", "org_id": "2000"},
+    {"name": "Dr. Kavya", "email": "hod@gmail.com", "password": "123", "role": "HOD", "department": "CSE", "org_id": "2000"},
+    {"name": "Dr. Harini", "email": "hod.ece@gmail.com", "password": "123", "role": "HOD", "department": "ECE", "org_id": "2000"},
+    {"name": "Chandini", "email": "ca@gmail.com", "password": "123", "role": "CA", "department": "CSE", "org_id": "2000"},
+    {"name": "Sravan", "email": "sravan.ca@gmail.com", "password": "123", "role": "CA", "department": "Facilities", "org_id": "2000"},
+    {"name": "Bhaskar", "email": "bhaskar.ca@gmail.com", "password": "123", "role": "CA", "department": "Maintenance", "org_id": "2000"},
+    {"name": "Demo User", "email": "faculty@gmail.com", "password": "123", "role": "FACULTY", "department": "CSE", "org_id": "2000"},
+    # SNU org (3000)
+    {"name": "SNU Admin", "email": "snu.admin@gmail.com", "password": "123", "role": "SUPER_ADMIN", "department": "Administration", "org_id": "3000"},
 ]
 
 DEFAULT_DEMO_CATEGORIES = [
@@ -79,16 +100,34 @@ def bootstrap_demo_database():
         demo_db.seed_defaults(DEFAULT_DEMO_USERS, DEFAULT_DEMO_CATEGORIES)
         # Migration: add location_id if it doesn't exist yet
         try:
-            conn = demo_db.connection()
-            cur = conn.cursor()
-            cur.execute("SHOW COLUMNS FROM demo_tickets LIKE 'location_id'")
-            if not cur.fetchone():
-                cur.execute("ALTER TABLE demo_tickets ADD COLUMN location_id INT UNSIGNED NULL COMMENT 'FK to location table' AFTER org_id")
-                log.info("Migration: added location_id column to demo_tickets.")
-            cur.close()
-            conn.close()
+            with demo_db.connection() as conn, conn.cursor() as cur:
+                cur.execute("SHOW COLUMNS FROM demo_tickets LIKE 'location_id'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE demo_tickets ADD COLUMN location_id INT UNSIGNED NULL COMMENT 'FK to location table' AFTER org_id")
+                    log.info("Migration: added location_id column to demo_tickets.")
         except Exception as mig_exc:
             log.warning("Migration check for location_id: %s", mig_exc)
+        # Migration: add is_active to demo_categories if it doesn't exist yet
+        try:
+            with demo_db.connection() as conn, conn.cursor() as cur:
+                cur.execute("SHOW COLUMNS FROM demo_categories LIKE 'is_active'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE demo_categories ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER assigned_ca_id")
+                    log.info("Migration: added is_active column to demo_categories.")
+        except Exception as mig_exc:
+            log.warning("Migration check for is_active in demo_categories: %s", mig_exc)
+        # Migration: add ON_HOLD and REOPENED to status ENUM
+        try:
+            with demo_db.connection() as conn, conn.cursor() as cur:
+                cur.execute("SHOW COLUMNS FROM demo_tickets LIKE 'status'")
+                col = cur.fetchone()
+                if col and 'ON_HOLD' not in str(col.get('Type', '')):
+                    cur.execute("ALTER TABLE demo_tickets MODIFY COLUMN status ENUM('PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED') NOT NULL DEFAULT 'PENDING'")
+                    cur.execute("ALTER TABLE demo_ticket_activity MODIFY COLUMN from_status ENUM('PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED') NULL")
+                    cur.execute("ALTER TABLE demo_ticket_activity MODIFY COLUMN to_status ENUM('PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED') NOT NULL")
+                    log.info("Migration: added ON_HOLD and REOPENED to status ENUMs.")
+        except Exception as mig_exc:
+            log.warning("Migration check for status ENUM: %s", mig_exc)
         log.info("Demo database bootstrapped successfully.")
     except Exception as exc:
         log.error("Demo DB bootstrap failed: %s", exc)
@@ -112,15 +151,42 @@ def safe_int(value, default=0):
         return default
 
 
+def resolve_user_org(email, department):
+    email_lower = (email or "").lower().strip()
+    domain = ""
+    if "@" in email_lower:
+        domain = email_lower.split("@", 1)[1]
+
+    if domain in ("suh.edu.in", "snu.edu.in") or "snu" in domain:
+        return "3000"
+    if domain == "sreenidhi.edu.in" or "sreenidhi" in domain:
+        return "2000"
+    if email_lower in ("admin@gmail.com", "campus.admin@gmail.com"):
+        return "2000"
+    if email_lower == "snu.admin@gmail.com":
+        return "3000"
+    
+    if department:
+        # Check department mapping in live_db
+        if live_db.enabled:
+            resolved = live_db.resolve_org_id(department=department)
+            if resolved:
+                return resolved
+    return "2000"
+
+
 def current_user():
     if not session.get("user_id"):
         return None
+    email = session["user_email"]
+    dept = session["department"]
     return {
         "id": session["user_id"],
         "name": session["user_name"],
-        "email": session["user_email"],
+        "email": email,
         "role": session["role"],
-        "department": session["department"],
+        "department": dept,
+        "org_id": session.get("org_id") or resolve_user_org(email, dept),
     }
 
 
@@ -148,49 +214,55 @@ def route_for_role(role):
         "ADMIN": "admin_dashboard",
         "HOD": "hod_dashboard",
         "CA": "authority_tickets",
-        "FACULTY": "faculty_dashboard",
+        "FACULTY": "user_dashboard",
     }.get(role, "login")
 
 
 def sidebar_links(role):
     mapping = {
         "SUPER_ADMIN": [
-            ("super_admin_dashboard", "Dashboard"),
-            ("super_admin_all_tickets", "All Tickets"),
-            ("user_management", "User Management"),
-            ("create_ticket_for_role", "Create Ticket"),
+            ("super_admin_dashboard", "Dashboard", "layout-dashboard"),
+            ("super_admin_all_tickets", "All Tickets", "ticket"),
+            ("user_management", "User Management", "users"),
+            ("management_category", "Category Management", "folder-open"),
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "ADMIN": [
-            ("admin_dashboard", "Dashboard"),
-            ("admin_all_tickets", "All Tickets"),
-            ("user_management", "User Management"),
-            ("create_ticket_for_role", "Create Ticket"),
+            ("admin_dashboard", "Dashboard", "layout-dashboard"),
+            ("admin_all_tickets", "All Tickets", "ticket"),
+            ("user_management", "User Management", "users"),
+            ("management_category", "Category Management", "folder-open"),
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "HOD": [
-            ("hod_dashboard", "Dashboard"),
-            ("hod_all_tickets", "Department Tickets"),
-            ("management_category", "CA Mapping"),
-            ("create_ticket_for_role", "Create Ticket"),
+            ("hod_dashboard", "Dashboard", "layout-dashboard"),
+            ("hod_all_tickets", "Department Tickets", "ticket"),
+            ("user_management", "User Management", "users"),
+            ("management_category", "Category Management", "folder-open"),
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "CA": [
-            ("authority_tickets", "CA Dashboard"),
-            ("ca_report", "Reports"),
-            ("create_ticket_for_role", "Create Ticket"),
+            ("authority_tickets", "CA Dashboard", "layout-dashboard"),
+            ("ca_report", "Reports", "bar-chart-3"),
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "FACULTY": [
-            ("faculty_dashboard", "Dashboard"),
-            ("my_tickets", "My Tickets"),
-            ("create_ticket_for_role", "Create Ticket"),
+            ("user_dashboard", "Dashboard", "layout-dashboard"),
+            ("my_tickets", "My Tickets", "ticket"),
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
     }
     links = mapping.get(role, [])
     if role != "SUPER_ADMIN":
-        links = links + [("change_password", "Change Password")]
-    return links + [("logout", "Logout")]
+        links = links + [("change_password", "Change Password", "lock")]
+    return links + [("logout", "Logout", "log-out")]
 
 
 def page_context(role_title):
     user = current_user()
+    org_id = user["org_id"] if user else "2000"
+    org_label = ORG_LABELS.get(org_id, "SNIST")
+    logo_filename = "images/snu_logo.webp" if org_id == "3000" else "images/snist_logo.jpg"
     return {
         "role_title": role_title,
         "user_name": user["name"] if user else "",
@@ -198,14 +270,19 @@ def page_context(role_title):
         "current_role": user["role"] if user else "",
         "sidebar_links": sidebar_links(user["role"]) if user else [],
         "db_ready": demo_db.enabled,
+        "org_label": org_label,
+        "logo_filename": logo_filename,
     }
 
 
-def live_departments():
+def live_departments(org_id=None):
     rows = live_db.fetch_departments() if live_db.enabled else []
     departments = []
     seen = set()
     for row in rows:
+        row_org_id = row.get("org_id") or "2000"
+        if org_id and row_org_id != org_id:
+            continue
         code = row.get("department_code") or row.get("department_name")
         if not code or code in seen:
             continue
@@ -214,16 +291,17 @@ def live_departments():
             {
                 "code": code,
                 "name": row.get("department_name") or code,
-                "org_id": row.get("org_id") or "2000",
+                "org_id": row_org_id,
             }
         )
     if not departments:
-        departments = [
+        default_list = [
             {"code": "CSE", "name": "Computer Science and Engineering", "org_id": "2000"},
             {"code": "ECE", "name": "Electronics and Communication Engineering", "org_id": "2000"},
             {"code": "Facilities", "name": "Facilities", "org_id": "2000"},
             {"code": "Maintenance", "name": "Maintenance", "org_id": "2000"},
         ]
+        departments = [d for d in default_list if not org_id or d["org_id"] == org_id]
     return departments
 
 
@@ -259,8 +337,21 @@ def serialize_tickets(tickets):
     return rows
 
 
+def sanitize_for_csv(value):
+    if value is None:
+        return ""
+    val_str = str(value)
+    if val_str and val_str[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + val_str
+    return val_str
+
+
 def export_response(tickets, export_format, filename):
     rows = serialize_tickets(tickets)
+    sanitized_rows = []
+    for r in rows:
+        sanitized_rows.append({k: sanitize_for_csv(v) for k, v in r.items()})
+    
     fieldnames = list(rows[0].keys()) if rows else [
         "Ticket ID", "Title", "Description", "Category", "Department",
         "Created By", "Assigned To", "Status", "Org ID", "Created At", "Updated At",
@@ -269,10 +360,10 @@ def export_response(tickets, export_format, filename):
         buffer = io.StringIO()
         writer = csv.DictWriter(buffer, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(sanitized_rows)
         return Response(buffer.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}.csv"})
 
-    table_rows = "".join("<tr>" + "".join(f"<td>{escape(row.get(key, ''))}</td>" for key in fieldnames) + "</tr>" for row in rows)
+    table_rows = "".join("<tr>" + "".join(f"<td>{escape(row.get(key, ''))}</td>" for key in fieldnames) + "</tr>" for row in sanitized_rows)
     table_html = "<table><thead><tr>" + "".join(f"<th>{key}</th>" for key in fieldnames) + f"</tr></thead><tbody>{table_rows}</tbody></table>"
     return Response(table_html, mimetype="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename={filename}.xls"})
 
@@ -284,21 +375,42 @@ def login():
             flash("MySQL demo database is not configured. Start the app with MYSQL_* environment variables.", "error")
             return render_template("login.html")
 
+        ip = request.remote_addr
+        if is_login_rate_limited(ip):
+            flash("Too many failed login attempts. Please try again in 1 minute.", "error")
+            return render_template("login.html")
+
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "").strip()
 
         # 1) Try demo_users first (existing accounts)
         user = demo_db.authenticate_user(email, password)
 
-        # 2) If not found and email is @sreenidhi.edu.in, try teacher_info
-        if not user and email.endswith("@sreenidhi.edu.in"):
+        # 2) If not found and email is a valid Sreenidhi domain, try teacher_info
+        teacher_lookup_occurred = False
+        if not user and email.endswith(("@sreenidhi.edu.in", "@suh.edu.in", "@sreegroup.edu.in")):
+            # If the email already exists in demo_users, it means they have already been provisioned
+            # and simply entered an incorrect password. Avoid duplicate entry error.
+            if demo_db.get_user_by_email(email):
+                record_login_attempt(ip)
+                if live_db.enabled:
+                    try:
+                        with live_db.connection() as conn, conn.cursor() as cur:
+                            cur.execute("SELECT 1")
+                            cur.fetchone()
+                    except Exception:
+                        pass
+                flash("Invalid email or password.", "error")
+                return render_template("login.html")
+
+            teacher_lookup_occurred = True
             teacher = live_db.lookup_teacher_by_email(email)
             if teacher and teacher.get("sap_id"):
                 # Verify password against SAP ID
                 sap_id = str(teacher["sap_id"]).strip()
                 if password == sap_id:
                     # Auto-provision into demo_users as FACULTY
-                    teacher_name = (teacher.get("name") or "Faculty").strip()
+                    teacher_name = (teacher.get("name") or "User").strip()
                     teacher_dept = (teacher.get("department") or "").strip() or "General"
                     try:
                         user_id = demo_db.create_user({
@@ -321,15 +433,30 @@ def login():
                         flash("Account setup failed. Please contact the administrator.", "error")
                         return render_template("login.html")
 
+        # Normalize timing for non-Sreenidhi emails or already found users
+        if not teacher_lookup_occurred:
+            if live_db.enabled:
+                try:
+                    with live_db.connection() as conn, conn.cursor() as cur:
+                        cur.execute("SELECT 1")
+                        cur.fetchone()
+                except Exception:
+                    pass
+
         if not user:
+            record_login_attempt(ip)
             flash("Invalid email or password.", "error")
             return render_template("login.html")
+
+        if ip in LOGIN_ATTEMPTS:
+            del LOGIN_ATTEMPTS[ip]
 
         session["user_id"] = user["id"]
         session["user_name"] = user["name"]
         session["user_email"] = user["email"]
         session["role"] = user["role"]
         session["department"] = user["department"]
+        session["org_id"] = user.get("org_id") or resolve_user_org(email, user["department"])
         return redirect(url_for(route_for_role(user["role"])))
 
     if current_user():
@@ -337,16 +464,16 @@ def login():
     return render_template("login.html")
 
 
-@app.route("/faculty/dashboard")
+@app.route("/user/dashboard")
 @role_required("FACULTY")
-def faculty_dashboard():
+def user_dashboard():
     user = current_user()
     summary = demo_db.dashboard_summary(user)
     tickets = demo_db.list_tickets(user, scope="own")
-    return render_template("faculty_dashboard.html", summary=summary, tickets=tickets[:5], **page_context("Faculty"))
+    return render_template("user_dashboard.html", summary=summary, tickets=tickets[:5], **page_context("User"))
 
 
-@app.route("/faculty/my-tickets")
+@app.route("/user/my-tickets")
 @role_required("FACULTY")
 def my_tickets():
     user = current_user()
@@ -358,7 +485,8 @@ def my_tickets():
 @role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
 def create_ticket_for_role():
     user = current_user()
-    categories = demo_db.list_categories(department=user["department"])
+    # Show categories for the user's organization
+    categories = demo_db.list_categories(org_id=user["org_id"], active_only=True)
     if request.method == "POST":
         category_id = safe_int(request.form.get("category_id", "0"))
         title = request.form.get("title", "").strip()
@@ -367,13 +495,19 @@ def create_ticket_for_role():
         if not title or not description or not category_id:
             flash("Title, description, and category are required.", "error")
             return redirect(url_for("create_ticket_for_role"))
-        org_id = live_db.resolve_org_id(email=user["email"], department=user["department"])
+        if len(title) > 180:
+            flash("Title cannot exceed 180 characters.", "error")
+            return redirect(url_for("create_ticket_for_role"))
+        if len(description) > 5000:
+            flash("Description cannot exceed 5000 characters.", "error")
+            return redirect(url_for("create_ticket_for_role"))
+        org_id = user["org_id"]
         demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id)
         flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
     locations = live_db.fetch_locations()
-    return render_template("create_ticket.html", categories=categories, locations=locations, departments=live_departments(), **page_context("Create Ticket"))
+    return render_template("create_ticket.html", categories=categories, locations=locations, departments=live_departments(user["org_id"]), **page_context("Create Ticket"))
 
 
 @app.route("/api/locations")
@@ -397,21 +531,27 @@ def api_locations():
     return jsonify(grouped)
 
 
+# Org label helper
+ORG_LABELS = {"2000": "SNIST", "3000": "SNU"}
+
+
 @app.route("/super-admin/dashboard")
 @role_required("SUPER_ADMIN")
 def super_admin_dashboard():
     user = current_user()
+    org_id = user["org_id"]
+    org_label = ORG_LABELS.get(org_id, org_id)
     summary = demo_db.dashboard_summary(user)
     return render_template(
         "management_dashboard.html",
         summary=summary,
-        highlights=demo_db.hod_overview(),
-        dept_stats=demo_db.ticket_stats_by_department(),
-        cat_stats=demo_db.ticket_stats_by_category(),
-        page_title="Super Admin Dashboard",
+        highlights=demo_db.hod_overview(org_id=org_id),
+        dept_stats=demo_db.ticket_stats_by_department(org_id=org_id),
+        cat_stats=demo_db.ticket_stats_by_category(org_id=org_id),
+        page_title=f"{org_label} Super Admin Dashboard",
         kicker="RBAC Control",
-        page_heading="Super Admin overview",
-        page_description="Full control over users, roles, departments, and ticket visibility.",
+        page_heading=f"{org_label} Super Admin overview",
+        page_description=f"Full control over users, roles, departments, and ticket visibility for {org_label}.",
         highlight_title="HOD overview",
         highlight_note="HOD rows below are powered by demo users and department-level ticket/category counts.",
         primary_cta=("user_management", "Manage Users"),
@@ -566,7 +706,7 @@ def ticket_detail(ticket_id):
     ticket = demo_db.get_ticket(ticket_id)
     if not ticket:
         flash("Ticket not found.", "error")
-        return redirect(url_for("faculty_dashboard" if user["role"] == "FACULTY" else "authority_tickets"))
+        return redirect(url_for("user_dashboard" if user["role"] == "FACULTY" else "authority_tickets"))
     # Access check: creator, assigned CA, same department HOD, or admin/super_admin
     allowed = False
     if user["role"] in ("SUPER_ADMIN", "ADMIN"):
@@ -577,25 +717,32 @@ def ticket_detail(ticket_id):
         allowed = True
     elif ticket["assigned_to_email"].lower() == user["email"].lower():
         allowed = True
-    if not allowed:
+    if not allowed or ticket["org_id"] != user["org_id"]:
         flash("You do not have access to this ticket.", "error")
-        return redirect(url_for("faculty_dashboard" if user["role"] == "FACULTY" else "authority_tickets"))
+        return redirect(url_for("user_dashboard" if user["role"] == "FACULTY" else "authority_tickets"))
     activity = demo_db.list_ticket_activity(ticket_id)
     # Determine next allowed transitions for status action
     next_statuses = list(demo_db.ALLOWED_TRANSITIONS.get(ticket["status"], set()))
+    # CA or SUPER_ADMIN can update ticket status
     can_update = user["role"] == "SUPER_ADMIN" or (user["role"] == "CA" and ticket["assigned_to_email"].lower() == user["email"].lower())
+    # Ticket creator can REOPEN a resolved ticket
+    can_reopen = (
+        ticket["status"] == "RESOLVED"
+        and ticket["created_by_email"].lower() == user["email"].lower()
+    )
     return render_template(
         "ticket_detail.html",
         ticket=ticket,
         activity=activity,
         next_statuses=next_statuses,
         can_update=can_update,
+        can_reopen=can_reopen,
         **page_context("Ticket #" + str(ticket_id)),
     )
 
 
 @app.route("/authority/update-status/<int:ticket_id>", methods=["POST"])
-@role_required("CA")
+@role_required("CA", "SUPER_ADMIN")
 def authority_update_status(ticket_id):
     user = current_user()
     status = request.form.get("status", "").strip().upper()
@@ -603,24 +750,24 @@ def authority_update_status(ticket_id):
     time_taken = request.form.get("time_taken", "").strip()
     attachment = request.files.get("attachment")
 
-    if status not in {"PENDING", "IN_PROGRESS", "RESOLVED"}:
+    if status not in {"PENDING", "IN_PROGRESS", "ON_HOLD", "RESOLVED", "REOPENED"}:
         flash("Invalid status selected.", "error")
-        return redirect(url_for("authority_tickets"))
+        return redirect(url_for("ticket_detail", ticket_id=ticket_id))
     if status == "RESOLVED" and not remarks:
         flash("Resolution remarks are required.", "error")
-        return redirect(url_for("authority_tickets"))
+        return redirect(url_for("ticket_detail", ticket_id=ticket_id))
 
     attachment_path = ""
     if attachment and attachment.filename:
         if not allowed_file(attachment.filename):
             flash(f"File type not allowed. Accepted: {', '.join(sorted(ALLOWED_EXTENSIONS))}.", "error")
-            return redirect(url_for("authority_tickets"))
+            return redirect(url_for("ticket_detail", ticket_id=ticket_id))
         attachment.seek(0, 2)
         size = attachment.tell()
         attachment.seek(0)
         if size > MAX_UPLOAD_SIZE:
             flash(f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)} MB.", "error")
-            return redirect(url_for("authority_tickets"))
+            return redirect(url_for("ticket_detail", ticket_id=ticket_id))
         safe_name = secure_filename(attachment.filename)
         attachment_name = f"{ticket_id}-{int(datetime.now().timestamp())}-{safe_name}"
         attachment.save(UPLOAD_DIR / attachment_name)
@@ -633,19 +780,58 @@ def authority_update_status(ticket_id):
         flash(str(exc), "error")
     except ValueError as exc:
         flash(str(exc), "error")
-    return redirect(url_for("authority_tickets"))
+    return redirect(url_for("ticket_detail", ticket_id=ticket_id))
+
+
+@app.route("/tickets/<int:ticket_id>/reopen", methods=["POST"])
+@role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
+def reopen_ticket(ticket_id):
+    """Allow the ticket creator to reopen a resolved ticket."""
+    user = current_user()
+    remarks = request.form.get("remarks", "").strip()
+    if not remarks:
+        flash("Please provide a reason for reopening.", "error")
+        return redirect(url_for("ticket_detail", ticket_id=ticket_id))
+    try:
+        demo_db.update_ticket_status(ticket_id, actor=user, status="REOPENED", remarks=remarks)
+        flash("Ticket has been reopened.", "success")
+    except PermissionError as exc:
+        flash(str(exc), "error")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("ticket_detail", ticket_id=ticket_id))
 
 
 @app.route("/user-management", methods=["GET", "POST"])
-@role_required("SUPER_ADMIN", "ADMIN")
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def user_management():
     user = current_user()
     if request.method == "POST":
         role = request.form.get("role", "").strip().upper()
-        if role == "CA":
-            department = ",".join([d.strip() for d in request.form.getlist("department") if d.strip()])
+        if user["role"] == "HOD":
+            if role not in ("CA", "FACULTY"):
+                flash("Access denied: HOD can only create CA or FACULTY users.", "error")
+                return redirect(url_for("user_management"))
+            if role == "CA":
+                selected_depts = [d.strip() for d in request.form.getlist("department") if d.strip()]
+                if user["department"] not in selected_depts:
+                    flash(f"Access denied: You can only create CAs that belong to your department ({user['department']}).", "error")
+                    return redirect(url_for("user_management"))
+                department = ",".join(selected_depts)
+            else:
+                department = request.form.get("department", "").strip()
+                if department != user["department"]:
+                    flash(f"Access denied: You can only create users in your department ({user['department']}).", "error")
+                    return redirect(url_for("user_management"))
         else:
-            department = request.form.get("department", "").strip()
+            if user["role"] != "SUPER_ADMIN" and role == "SUPER_ADMIN":
+                flash("Access denied: Only SUPER_ADMIN can create SUPER_ADMIN users.", "error")
+                return redirect(url_for("user_management"))
+            if role == "CA":
+                department = ",".join([d.strip() for d in request.form.getlist("department") if d.strip()])
+            else:
+                department = request.form.get("department", "").strip()
+
         payload = {
             "name": request.form.get("name", "").strip(),
             "email": request.form.get("email", "").strip().lower(),
@@ -656,9 +842,22 @@ def user_management():
         if not all([payload["name"], payload["email"], payload["role"], payload["department"]]):
             flash("All user fields are required.", "error")
             return redirect(url_for("user_management"))
+        if len(payload["name"]) > 120:
+            flash("Name cannot exceed 120 characters.", "error")
+            return redirect(url_for("user_management"))
+        if len(payload["email"]) > 190:
+            flash("Email cannot exceed 190 characters.", "error")
+            return redirect(url_for("user_management"))
         if not is_valid_email(payload["email"]):
             flash("Please enter a valid email address.", "error")
             return redirect(url_for("user_management"))
+        
+        # Enforce that the user resolves to the admin's organization
+        target_org = resolve_user_org(payload["email"], payload["department"])
+        if target_org != user["org_id"]:
+            flash(f"Access denied: User details do not resolve to your organization ({user['org_id']}).", "error")
+            return redirect(url_for("user_management"))
+
         existing = demo_db.list_users(search=payload["email"])
         if any(u["email"].lower() == payload["email"] for u in existing):
             flash(f"A user with email '{payload['email']}' already exists.", "error")
@@ -670,27 +869,83 @@ def user_management():
     search = request.args.get("q", "").strip()
     roles_filter = [r.upper() for r in request.args.getlist("role") if r.strip()]
     department = request.args.get("department", "").strip() or None
+    
+    if user["role"] == "HOD":
+        department = user["department"]
+        roles_list = ["CA", "FACULTY"]
+    else:
+        roles_list = list(ROLE_MAP.keys()) if user["role"] == "SUPER_ADMIN" else [r for r in ROLE_MAP.keys() if r != "SUPER_ADMIN"]
+
     role_arg = roles_filter if len(roles_filter) > 1 else (roles_filter[0] if roles_filter else None)
-    users = demo_db.list_users(role=role_arg, department=department, search=search)
-    departments = live_departments()
+    users = demo_db.list_users(role=role_arg, department=department, search=search, org_id=user["org_id"])
+    if user["role"] == "HOD":
+        users = [u for u in users if u["role"] in ("CA", "FACULTY")]
+    departments = live_departments(user["org_id"])
     return render_template(
         "user_management.html",
         users=users,
         departments=departments,
         filters={"q": search, "role": roles_filter[0] if len(roles_filter) == 1 else "", "roles": roles_filter, "department": department or ""},
-        roles=list(ROLE_MAP.keys()),
+        roles=roles_list,
         **page_context("User Management"),
     )
 
 
 @app.route("/user-management/<int:user_id>/update", methods=["POST"])
-@role_required("SUPER_ADMIN", "ADMIN")
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def update_user(user_id):
-    role = request.form.get("role", "").strip().upper()
-    if role == "CA":
-        department = ",".join([d.strip() for d in request.form.getlist("department") if d.strip()])
+    user = current_user()
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        flash("User not found.", "error")
+        return redirect(url_for("user_management"))
+        
+    # Check if the user belongs to the admin's organization
+    target_org = resolve_user_org(target_user["email"], target_user["department"])
+    if target_org != user["org_id"]:
+        flash("Access denied: User belongs to a different organization.", "error")
+        return redirect(url_for("user_management"))
+
+    if user["role"] == "HOD":
+        target_depts = [d.strip() for d in target_user["department"].split(",")]
+        if user["department"] not in target_depts:
+            flash("Access denied: You can only modify users in your own department.", "error")
+            return redirect(url_for("user_management"))
+        if target_user["role"] not in ("CA", "FACULTY"):
+            flash("Access denied: You can only modify CA or FACULTY users.", "error")
+            return redirect(url_for("user_management"))
+        
+        role = request.form.get("role", "").strip().upper()
+        if role not in ("CA", "FACULTY"):
+            flash("Access denied: You can only assign CA or FACULTY role.", "error")
+            return redirect(url_for("user_management"))
+            
+        if role == "CA":
+            selected_depts = [d.strip() for d in request.form.getlist("department") if d.strip()]
+            if user["department"] not in selected_depts:
+                flash(f"Access denied: The updated department list must contain your department ({user['department']}).", "error")
+                return redirect(url_for("user_management"))
+            department = ",".join(selected_depts)
+        else:
+            department = request.form.get("department", "").strip()
+            if department != user["department"]:
+                flash(f"Access denied: You can only assign users to your department ({user['department']}).", "error")
+                return redirect(url_for("user_management"))
     else:
-        department = request.form.get("department", "").strip()
+        role = request.form.get("role", "").strip().upper()
+        if user["role"] != "SUPER_ADMIN":
+            if target_user["role"] == "SUPER_ADMIN":
+                flash("Access denied: Cannot modify SUPER_ADMIN users.", "error")
+                return redirect(url_for("user_management"))
+            if role == "SUPER_ADMIN":
+                flash("Access denied: Cannot assign SUPER_ADMIN role.", "error")
+                return redirect(url_for("user_management"))
+
+        if role == "CA":
+            department = ",".join([d.strip() for d in request.form.getlist("department") if d.strip()])
+        else:
+            department = request.form.get("department", "").strip()
+
     password = request.form.get("password", "").strip()
     payload = {
         "name": request.form.get("name", "").strip(),
@@ -703,17 +958,54 @@ def update_user(user_id):
     if not all([payload["name"], payload["email"], payload["role"], payload["department"]]):
         flash("All user fields are required.", "error")
         return redirect(url_for("user_management"))
+    if len(payload["name"]) > 120:
+        flash("Name cannot exceed 120 characters.", "error")
+        return redirect(url_for("user_management"))
+    if len(payload["email"]) > 190:
+        flash("Email cannot exceed 190 characters.", "error")
+        return redirect(url_for("user_management"))
     if not is_valid_email(payload["email"]):
         flash("Please enter a valid email address.", "error")
         return redirect(url_for("user_management"))
+
+    # Enforce that the updated details still resolve to the admin's organization
+    new_org = resolve_user_org(payload["email"], payload["department"])
+    if new_org != user["org_id"]:
+        flash(f"Access denied: Updated details do not resolve to your organization ({user['org_id']}).", "error")
+        return redirect(url_for("user_management"))
+
     demo_db.update_user(user_id, payload)
     flash("Demo user updated.", "success")
     return redirect(url_for("user_management"))
 
 
 @app.route("/user-management/<int:user_id>/delete", methods=["POST"])
-@role_required("SUPER_ADMIN", "ADMIN")
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def delete_user(user_id):
+    user = current_user()
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        flash("User not found.", "error")
+        return redirect(url_for("user_management"))
+        
+    target_org = resolve_user_org(target_user["email"], target_user["department"])
+    if target_org != user["org_id"]:
+        flash("Access denied: User belongs to a different organization.", "error")
+        return redirect(url_for("user_management"))
+
+    if user["role"] == "HOD":
+        target_depts = [d.strip() for d in target_user["department"].split(",")]
+        if user["department"] not in target_depts:
+            flash("Access denied: You can only delete users in your own department.", "error")
+            return redirect(url_for("user_management"))
+        if target_user["role"] not in ("CA", "FACULTY"):
+            flash("Access denied: You can only delete CA or FACULTY users.", "error")
+            return redirect(url_for("user_management"))
+    else:
+        if user["role"] != "SUPER_ADMIN" and target_user["role"] == "SUPER_ADMIN":
+            flash("Access denied: Cannot delete SUPER_ADMIN users.", "error")
+            return redirect(url_for("user_management"))
+
     try:
         demo_db.delete_user(user_id)
         flash("Demo user deleted.", "success")
@@ -753,13 +1045,13 @@ def management_category():
     department = user["department"] if user["role"] == "HOD" else request.args.get("department", "").strip() or None
     search = request.args.get("q", "").strip()
     ca_filter = safe_int(request.args.get("ca", "0")) or None
-    categories = demo_db.list_categories(department=department, search=search, ca_id=ca_filter)
-    ca_users = demo_db.list_users(role="CA", department=department)
+    categories = demo_db.list_categories(department=department, search=search, ca_id=ca_filter, org_id=user["org_id"])
+    ca_users = demo_db.list_users(role="CA", department=department, org_id=user["org_id"])
     return render_template(
         "category_management.html",
         categories=categories,
         ca_users=ca_users,
-        departments=live_departments(),
+        departments=live_departments(user["org_id"]),
         selected_department=department or "",
         filters={"q": search, "department": department or "", "ca": ca_filter or ""},
         **page_context("Category Mapping"),
@@ -817,6 +1109,31 @@ def delete_category(category_id):
     return redirect(url_for("management_category"))
 
 
+@app.route("/management/category-management/<int:category_id>/toggle", methods=["POST"])
+@role_required("HOD", "SUPER_ADMIN")
+def toggle_category(category_id):
+    user = current_user()
+    existing_cat = demo_db.get_category(category_id)
+    if not existing_cat:
+        flash("Category not found.", "error")
+        return redirect(url_for("management_category"))
+
+    # HOD can only modify categories in their department
+    if user["role"] == "HOD" and existing_cat["department"] != user["department"]:
+        flash("You can only modify categories in your own department.", "error")
+        return redirect(url_for("management_category"))
+
+    # Toggle the active state
+    new_state = 0 if existing_cat.get("is_active", 1) == 1 else 1
+    try:
+        demo_db.toggle_category_status(category_id, new_state)
+        status_str = "activated" if new_state else "deactivated"
+        flash(f"Category '{existing_cat['category_name']}' has been {status_str}.", "success")
+    except Exception as exc:
+        flash(f"Failed to toggle category status: {exc}", "error")
+    return redirect(url_for("management_category"))
+
+
 @app.route("/tickets/export/<scope>.<export_format>")
 @role_required("SUPER_ADMIN", "ADMIN", "HOD", "CA", "FACULTY")
 def export_tickets(scope, export_format):
@@ -859,29 +1176,36 @@ def user_json(row):
 @app.route("/api/live/departments")
 @role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def api_live_departments():
-    return jsonify(live_departments())
-
-
+    user = current_user()
+    return jsonify(live_departments(user["org_id"]))
+ 
+ 
 @app.route("/api/live/users")
 @role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def api_live_users():
+    user = current_user()
     search = request.args.get("q", "").strip()
-    department = request.args.get("department", "").strip() or None
-    rows = live_db.fetch_reference_users(search=search, department=department, limit=100) if live_db.enabled else []
+    department = user["department"] if user["role"] == "HOD" else request.args.get("department", "").strip() or None
+    rows = live_db.fetch_reference_users(search=search, department=department, limit=100, org_id=user["org_id"]) if live_db.enabled else []
     return jsonify(rows)
-
-
+ 
+ 
 @app.route("/api/demo/users", methods=["GET", "POST"])
-@csrf.exempt
-@role_required("SUPER_ADMIN", "ADMIN")
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def api_demo_users():
+    user = current_user()
     if request.method == "GET":
-        return jsonify([user_json(row) for row in demo_db.list_users(
+        department = user["department"] if user["role"] == "HOD" else request.args.get("department", "").strip() or None
+        users = demo_db.list_users(
             role=request.args.get("role", "").strip().upper() or None,
-            department=request.args.get("department", "").strip() or None,
+            department=department,
             search=request.args.get("q", "").strip(),
-        )])
-
+            org_id=user["org_id"],
+        )
+        if user["role"] == "HOD":
+            users = [u for u in users if u["role"] in ("CA", "FACULTY")]
+        return jsonify([user_json(row) for row in users])
+ 
     payload = request.get_json(force=True)
     if not payload:
         return jsonify({"error": "Request body is required."}), 400
@@ -893,6 +1217,26 @@ def api_demo_users():
         return jsonify({"error": "name, email, role, and department are required."}), 400
     if not is_valid_email(email):
         return jsonify({"error": "Invalid email format."}), 400
+
+    if user["role"] == "HOD":
+        if role not in ("CA", "FACULTY"):
+            return jsonify({"error": "Access denied: HOD can only create CA or FACULTY users."}), 403
+        if role == "CA":
+            depts = [d.strip() for d in department.split(",")]
+            if user["department"] not in depts:
+                return jsonify({"error": f"Access denied: CA must belong to your department ({user['department']})."}), 403
+        else:
+            if department != user["department"]:
+                return jsonify({"error": f"Access denied: User must belong to your department ({user['department']})."}), 403
+    else:
+        if user["role"] != "SUPER_ADMIN" and role == "SUPER_ADMIN":
+            return jsonify({"error": "Access denied: Only SUPER_ADMIN can create SUPER_ADMIN users."}), 403
+
+    # Enforce organization scoping on creation
+    target_org = resolve_user_org(email, department)
+    if target_org != user["org_id"]:
+        return jsonify({"error": f"Access denied: User details do not resolve to your organization ({user['org_id']})."}), 403
+
     existing = demo_db.list_users(search=email)
     if any(u["email"].lower() == email for u in existing):
         return jsonify({"error": f"A user with email '{email}' already exists."}), 409
@@ -906,19 +1250,36 @@ def api_demo_users():
         }
     )
     return jsonify({"id": user_id}), 201
-
-
+ 
+ 
 @app.route("/api/demo/users/<int:user_id>", methods=["PUT", "DELETE"])
-@csrf.exempt
-@role_required("SUPER_ADMIN", "ADMIN")
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def api_demo_user_detail(user_id):
+    user = current_user()
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        return jsonify({"error": "User not found."}), 404
+    target_org = resolve_user_org(target_user["email"], target_user["department"])
+    if target_org != user["org_id"]:
+        return jsonify({"error": "Access denied: User belongs to a different organization."}), 403
+
+    if user["role"] == "HOD":
+        target_depts = [d.strip() for d in target_user["department"].split(",")]
+        if user["department"] not in target_depts:
+            return jsonify({"error": "Access denied: You can only modify users in your own department."}), 403
+        if target_user["role"] not in ("CA", "FACULTY"):
+            return jsonify({"error": "Access denied: You can only modify CA or FACULTY users."}), 403
+    else:
+        if user["role"] != "SUPER_ADMIN" and target_user["role"] == "SUPER_ADMIN":
+            return jsonify({"error": "Access denied: Cannot modify/delete SUPER_ADMIN users."}), 403
+
     if request.method == "DELETE":
         try:
             demo_db.delete_user(user_id)
             return "", 204
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
-
+ 
     payload = request.get_json(force=True)
     if not payload:
         return jsonify({"error": "Request body is required."}), 400
@@ -930,6 +1291,26 @@ def api_demo_user_detail(user_id):
         return jsonify({"error": "name, email, role, and department are required."}), 400
     if not is_valid_email(email):
         return jsonify({"error": "Invalid email format."}), 400
+
+    if user["role"] == "HOD":
+        if role not in ("CA", "FACULTY"):
+            return jsonify({"error": "You can only assign CA or FACULTY role."}), 403
+        if role == "CA":
+            depts = [d.strip() for d in department.split(",")]
+            if user["department"] not in depts:
+                return jsonify({"error": f"Access denied: CA must belong to your department ({user['department']})."}), 403
+        else:
+            if department != user["department"]:
+                return jsonify({"error": f"Access denied: User must belong to your department ({user['department']})."}), 403
+    else:
+        if user["role"] != "SUPER_ADMIN" and role == "SUPER_ADMIN":
+            return jsonify({"error": "Access denied: Cannot assign SUPER_ADMIN role."}), 403
+ 
+    # Enforce that updated details still resolve to the admin's organization
+    new_org = resolve_user_org(email, department)
+    if new_org != user["org_id"]:
+        return jsonify({"error": f"Access denied: Updated details do not resolve to your organization ({user['org_id']})."}), 403
+
     update_payload = {
         "name": name,
         "email": email,
@@ -944,21 +1325,27 @@ def api_demo_user_detail(user_id):
 
 
 @app.route("/api/demo/categories", methods=["GET", "POST"])
-@csrf.exempt
 @role_required("SUPER_ADMIN", "HOD")
 def api_demo_categories():
+    user = current_user()
     if request.method == "GET":
-        department = current_user()["department"] if current_user()["role"] == "HOD" else request.args.get("department", "").strip() or None
-        return jsonify(demo_db.list_categories(department=department))
+        department = user["department"] if user["role"] == "HOD" else request.args.get("department", "").strip() or None
+        return jsonify(demo_db.list_categories(department=department, org_id=user["org_id"]))
 
     payload = request.get_json(force=True)
     if not payload:
         return jsonify({"error": "Request body is required."}), 400
     category_name = (payload.get("category_name") or "").strip()
     assigned_ca_id = safe_int(payload.get("assigned_ca_id"))
-    department = current_user()["department"] if current_user()["role"] == "HOD" else (payload.get("department") or "").strip()
+    department = user["department"] if user["role"] == "HOD" else (payload.get("department") or "").strip()
     if not all([category_name, department, assigned_ca_id]):
         return jsonify({"error": "category_name, department, and assigned_ca_id are required."}), 400
+
+    # Enforce department is in user's organization
+    allowed_depts = {d["code"] for d in live_departments(user["org_id"])}
+    if department not in allowed_depts:
+        return jsonify({"error": "Access denied: Department does not belong to your organization."}), 403
+
     category_id = demo_db.create_category(
         {
             "category_name": category_name,
@@ -970,9 +1357,18 @@ def api_demo_categories():
 
 
 @app.route("/api/demo/categories/<int:category_id>", methods=["PUT", "DELETE"])
-@csrf.exempt
 @role_required("SUPER_ADMIN", "HOD")
 def api_demo_category_detail(category_id):
+    user = current_user()
+    existing_cat = demo_db.get_category(category_id)
+    if not existing_cat:
+        return jsonify({"error": "Category not found."}), 404
+
+    # Enforce department of category belongs to user's org
+    allowed_depts = {d["code"] for d in live_departments(user["org_id"])}
+    if existing_cat["department"] not in allowed_depts:
+        return jsonify({"error": "Access denied: Category belongs to a different organization."}), 403
+
     if request.method == "DELETE":
         try:
             demo_db.delete_category(category_id)
@@ -985,9 +1381,14 @@ def api_demo_category_detail(category_id):
         return jsonify({"error": "Request body is required."}), 400
     category_name = (payload.get("category_name") or "").strip()
     assigned_ca_id = safe_int(payload.get("assigned_ca_id"))
-    department = current_user()["department"] if current_user()["role"] == "HOD" else (payload.get("department") or "").strip()
+    department = user["department"] if user["role"] == "HOD" else (payload.get("department") or "").strip()
     if not all([category_name, department, assigned_ca_id]):
         return jsonify({"error": "category_name, department, and assigned_ca_id are required."}), 400
+
+    # Enforce new department is also in user's organization
+    if department not in allowed_depts:
+        return jsonify({"error": "Access denied: New department does not belong to your organization."}), 403
+
     demo_db.update_category(
         category_id,
         {
@@ -1000,7 +1401,6 @@ def api_demo_category_detail(category_id):
 
 
 @app.route("/api/demo/tickets", methods=["GET", "POST"])
-@csrf.exempt
 @role_required("SUPER_ADMIN", "ADMIN", "HOD", "CA", "FACULTY")
 def api_demo_tickets():
     user = current_user()
@@ -1022,6 +1422,10 @@ def api_demo_tickets():
     category_id = safe_int(payload.get("category_id"))
     if not all([title, description, category_id]):
         return jsonify({"error": "title, description, and category_id are required."}), 400
+    if len(title) > 180:
+        return jsonify({"error": "title cannot exceed 180 characters."}), 400
+    if len(description) > 5000:
+        return jsonify({"error": "description cannot exceed 5000 characters."}), 400
     org_id = live_db.resolve_org_id(email=user["email"], department=user["department"])
     ticket_id = demo_db.create_ticket(
         title=title,
@@ -1034,14 +1438,28 @@ def api_demo_tickets():
 
 
 @app.route("/api/demo/tickets/<int:ticket_id>", methods=["GET", "PUT"])
-@csrf.exempt
 @role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
 def api_demo_ticket_detail(ticket_id):
     user = current_user()
+    ticket = demo_db.get_ticket(ticket_id)
+    if not ticket:
+        return jsonify({"error": "Ticket not found."}), 404
+
+    # Access check: creator, assigned CA, same department HOD, or admin/super_admin
+    allowed = False
+    if user["role"] in ("SUPER_ADMIN", "ADMIN"):
+        allowed = True
+    elif user["role"] == "HOD" and ticket["department"] == user["department"]:
+        allowed = True
+    elif ticket["created_by_email"].lower() == user["email"].lower():
+        allowed = True
+    elif ticket["assigned_to_email"].lower() == user["email"].lower():
+        allowed = True
+
+    if not allowed or ticket["org_id"] != user["org_id"]:
+        return jsonify({"error": "Access denied: You do not have access to this ticket."}), 403
+
     if request.method == "GET":
-        ticket = demo_db.get_ticket(ticket_id)
-        if not ticket:
-            return jsonify({"error": "Ticket not found."}), 404
         # Serialize datetime fields
         result = dict(ticket)
         for k in ("created_at", "updated_at"):
@@ -1060,12 +1478,12 @@ def api_demo_ticket_detail(ticket_id):
     if not payload or not (payload.get("status") or "").strip():
         return jsonify({"error": "status is required."}), 400
     status = payload["status"].strip().upper()
-    if status not in {"PENDING", "IN_PROGRESS", "RESOLVED"}:
+    if status not in {"PENDING", "IN_PROGRESS", "ON_HOLD", "RESOLVED", "REOPENED"}:
         return jsonify({"error": f"Invalid status: {status}"}), 400
     try:
         demo_db.update_ticket_status(
             ticket_id,
-            actor=current_user(),
+            actor=user,
             status=status,
             remarks=(payload.get("remarks") or "").strip(),
             time_taken=(payload.get("time_taken") or "").strip(),
@@ -1079,6 +1497,25 @@ def api_demo_ticket_detail(ticket_id):
 @app.route("/api/demo/tickets/<int:ticket_id>/activity")
 @role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
 def api_ticket_activity(ticket_id):
+    user = current_user()
+    ticket = demo_db.get_ticket(ticket_id)
+    if not ticket:
+        return jsonify({"error": "Ticket not found."}), 404
+
+    # Access check: creator, assigned CA, same department HOD, or admin/super_admin
+    allowed = False
+    if user["role"] in ("SUPER_ADMIN", "ADMIN"):
+        allowed = True
+    elif user["role"] == "HOD" and ticket["department"] == user["department"]:
+        allowed = True
+    elif ticket["created_by_email"].lower() == user["email"].lower():
+        allowed = True
+    elif ticket["assigned_to_email"].lower() == user["email"].lower():
+        allowed = True
+
+    if not allowed or ticket["org_id"] != user["org_id"]:
+        return jsonify({"error": "Access denied: You do not have access to this ticket's activity."}), 403
+
     activity = demo_db.list_ticket_activity(ticket_id)
     result = []
     for a in activity:
@@ -1095,8 +1532,8 @@ def api_analytics_summary():
     user = current_user()
     department = user["department"] if user["role"] == "HOD" else request.args.get("department") or None
     summary = demo_db.dashboard_summary(user)
-    dept_stats = demo_db.ticket_stats_by_department()
-    cat_stats = demo_db.ticket_stats_by_category(department=department)
+    dept_stats = demo_db.ticket_stats_by_department(org_id=user["org_id"])
+    cat_stats = demo_db.ticket_stats_by_category(department=department, org_id=user["org_id"])
     # Serialize
     def ser(rows):
         out = []
@@ -1161,6 +1598,23 @@ def internal_error(error):
 @app.errorhandler(404)
 def not_found_error(error):
     return render_template("error.html", error_code=404, error_title="Not Found", error_message="The page you are looking for does not exist."), 404
+
+
+@app.after_request
+def add_security_headers(response):
+    csp = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https://snist.sreenidhi.edu.in https://sreenidhi.edu.in;"
+    )
+    response.headers["Content-Security-Policy"] = csp
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 
 if __name__ == "__main__":

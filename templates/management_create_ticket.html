@@ -11,20 +11,12 @@
 </head>
 <body>
   <div class="admin-shell">
-    <aside class="admin-sidebar">
-      <div class="admin-brand">
-        <img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo">
-        <div>
-          <p>{{ role_title }}</p>
-          <h1>SNIST Helpdesk</h1>
-        </div>
-      </div>
-      <nav class="admin-nav">
-        {% for route_name, label in sidebar_links %}
-          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == create_route %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
-        {% endfor %}
-      </nav>
-    </aside>
+        <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
 
     <main class="admin-main">
       <header class="admin-topbar">
@@ -119,5 +111,8 @@
       </section>
     </main>
   </div>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Faculty Dashboard</title>
+  <title>User Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
@@ -11,25 +11,25 @@
 </head>
 <body>
   <div class="admin-shell">
-    <aside class="admin-sidebar">
-      <div class="admin-brand">
-        <img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo">
-        <div><p>Faculty</p><h1>SNIST Helpdesk</h1></div>
-      </div>
-      <nav class="admin-nav">
-        {% for route_name, label in sidebar_links %}
-          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == 'faculty_dashboard' %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
-        {% endfor %}
-      </nav>
-    </aside>
+    <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    
+    {% include 'sidebar.html' %}
+    
     <main class="admin-main">
       <header class="admin-topbar">
         <div>
-          <p class="kicker">Faculty Dashboard</p>
+          <p class="kicker">User Dashboard</p>
           <h2>Welcome, {{ user_name }}</h2>
           <span>Create tickets and track only your own complaints. Category selection will auto-assign the mapped Concerned Authority.</span>
         </div>
-        <div class="profile-pill"><div class="avatar">F</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
+        <div class="profile-pill">
+          <div class="avatar">U</div>
+          <div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div>
+        </div>
       </header>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -46,7 +46,9 @@
         <div class="summary-box"><span>Total</span><strong>{{ summary.total or 0 }}</strong></div>
         <div class="summary-box"><span>Pending</span><strong>{{ summary.pending or 0 }}</strong></div>
         <div class="summary-box"><span>In Progress</span><strong>{{ summary.in_progress or 0 }}</strong></div>
+        <div class="summary-box"><span>On Hold</span><strong>{{ summary.on_hold or 0 }}</strong></div>
         <div class="summary-box"><span>Resolved</span><strong>{{ summary.resolved or 0 }}</strong></div>
+        <div class="summary-box"><span>Reopened</span><strong>{{ summary.reopened or 0 }}</strong></div>
       </section>
 
       <section class="admin-card">
@@ -61,21 +63,42 @@
           <table>
             <thead>
               <tr>
-                <th>ID</th><th>Title</th><th>Category</th><th>Assigned To</th><th>Status</th><th>Updated</th>
+                <th>S.No</th>
+                <th>Ticket ID</th>
+                <th>Complaint Regarding</th>
+                <th>Block</th>
+                <th>Room/Lab</th>
+                <th>Status</th>
+                <th>Complaint Date&nbsp;Time</th>
+                <th>Allocated To</th>
+                <th>Allocated Date&nbsp;Time</th>
+                <th>Closed Date&nbsp;Time</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {% for ticket in tickets %}
-                <tr class="ticket-row" title="{{ ticket.description }}">
-                  <td class="ticket-id-cell">#{{ ticket.id }}</td>
-                  <td>{{ ticket.title }}</td>
-                  <td>{{ ticket.category_name }}</td>
-                  <td>{{ ticket.assigned_to_name }}</td>
+                <tr class="ticket-row">
+                  <td>{{ loop.index }}</td>
+                  <td class="ticket-id-cell"><a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
+                  <td><strong>{{ ticket.category_name }}</strong> – {{ ticket.title }}</td>
+                  <td>{{ ticket.location_block or '—' }}</td>
+                  <td>{{ ticket.location_room_no or '—' }}</td>
                   <td><span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">{{ ticket.status }}</span></td>
-                  <td>{{ ticket.updated_at }}</td>
+                  <td style="white-space:nowrap;">{{ ticket.created_at }}</td>
+                  <td>{{ ticket.assigned_to_name }}</td>
+                  <td style="white-space:nowrap;">{{ ticket.updated_at if ticket.status != 'PENDING' else '—' }}</td>
+                  <td style="white-space:nowrap;">{{ ticket.updated_at if ticket.status == 'RESOLVED' else '—' }}</td>
+                  <td>
+                    {% if ticket.status == 'RESOLVED' %}
+                      <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="status-pill reopened" style="text-decoration:none;">Re-open</a>
+                    {% else %}
+                      <span class="muted-cell">—</span>
+                    {% endif %}
+                  </td>
                 </tr>
               {% else %}
-                <tr><td colspan="6" class="empty-cell">No tickets yet.</td></tr>
+                <tr><td colspan="11" class="empty-cell">No tickets yet.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -83,5 +106,9 @@
       </section>
     </main>
   </div>
+  
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>

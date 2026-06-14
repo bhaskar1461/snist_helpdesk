@@ -7,12 +7,18 @@
   --card: #ffffff;
   --text: #25324d;
   --muted: #7785a0;
-  --line: rgba(33, 72, 143, 0.1);
+  --line: rgba(33, 72, 143, 0.28);
   --shadow: 0 14px 34px rgba(35, 67, 129, 0.08);
 }
 
 * {
   box-sizing: border-box;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #5c6b8a;
+  opacity: 1;
 }
 
 body {

@@ -20,6 +20,12 @@
     .save-btn:hover { background:#059669; }
     .edit-row td { background:#f8fafc !important; }
     .edit-row input, .edit-row select { width:100%; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:.82rem; }
+    .inactive-row td { opacity: 0.65; background-color: #f3f4f6 !important; color: #9ca3af; }
+    .inactive-row td.actions-cell { opacity: 1 !important; }
+    .toggle-btn { background:#f59e0b; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .toggle-btn:hover { background:#d97706; }
+    .toggle-btn.activate { background:#10b981; }
+    .toggle-btn.activate:hover { background:#059669; }
     .confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; align-items:center; justify-content:center; }
     .confirm-overlay.active { display:flex; }
     .confirm-box { background:#fff; border-radius:12px; padding:1.5rem 2rem; max-width:400px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.2); }
@@ -31,14 +37,12 @@
 </head>
 <body>
   <div class="admin-shell">
-    <aside class="admin-sidebar">
-      <div class="admin-brand"><img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo"><div><p>{{ role_title }}</p><h1>SNIST Helpdesk</h1></div></div>
-      <nav class="admin-nav">
-        {% for route_name, label in sidebar_links %}
-          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == 'management_category' %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
-        {% endfor %}
-      </nav>
-    </aside>
+        <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
     <main class="admin-main">
       <header class="admin-topbar">
         <div><p class="kicker">demo_categories</p><h2>Category to CA Mapping</h2><span>HOD manages Concerned Authorities by assigning categories to CAs in the department.</span></div>
@@ -108,17 +112,32 @@
           <p class="item-count">{{ categories|length }} mapping{{ 's' if categories|length != 1 else '' }} found</p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Category</th><th>Department</th><th>Assigned CA</th><th>Email</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Category</th><th>Department</th><th>Assigned CA</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {% for item in categories %}
-                  <tr id="cat-view-{{ item.id }}">
+                  <tr id="cat-view-{{ item.id }}" {% if item.is_active == 0 %}class="inactive-row"{% endif %}>
                     <td class="ticket-id-cell">{{ item.category_name }}</td>
                     <td>{{ item.department }}</td>
                     <td>{{ item.assigned_ca_name }}</td>
                     <td>{{ item.assigned_ca_email }}</td>
                     <td>
+                      {% if item.is_active == 0 %}
+                        <span class="status-pill hold">Inactive</span>
+                      {% else %}
+                        <span class="status-pill resolved">Active</span>
+                      {% endif %}
+                    </td>
+                    <td class="actions-cell">
                       <div class="btn-group">
                         <button type="button" class="edit-btn" onclick="toggleCatEdit({{ item.id }})">Edit</button>
+                        <form method="post" action="{{ url_for('toggle_category', category_id=item.id) }}" style="display:inline;">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          {% if item.is_active == 0 %}
+                            <button type="submit" class="toggle-btn activate">Activate</button>
+                          {% else %}
+                            <button type="submit" class="toggle-btn">Deactivate</button>
+                          {% endif %}
+                        </form>
                         <button type="button" class="delete-btn" onclick="confirmCatDelete({{ item.id }}, '{{ item.category_name|e }}')">Delete</button>
                       </div>
                     </td>
@@ -138,7 +157,7 @@
                           {{ item.department }}
                         {% endif %}
                       </td>
-                      <td colspan="2">
+                      <td colspan="3">
                         <select name="assigned_ca_id" required>
                           {% for ca in ca_users %}
                             <option value="{{ ca.id }}" {% if item.assigned_ca_id == ca.id %}selected{% endif %}>{{ ca.name }} | {{ ca.department }}</option>
@@ -154,7 +173,7 @@
                     </form>
                   </tr>
                 {% else %}
-                  <tr><td colspan="5" class="empty-cell">No category mappings yet.</td></tr>
+                  <tr><td colspan="6" class="empty-cell">No category mappings yet.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -203,5 +222,8 @@
       if (e.target === this) closeCatDelete();
     });
   </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>

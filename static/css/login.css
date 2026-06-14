@@ -8,7 +8,7 @@
   --field: #f5f7fc;
   --ink: #17233c;
   --muted: #6a7894;
-  --border: rgba(23, 35, 60, 0.1);
+  --border: rgba(23, 35, 60, 0.28);
   --shadow: 0 24px 60px rgba(27, 44, 94, 0.12);
   --soft-shadow: 0 14px 32px rgba(29, 52, 117, 0.08);
 }
@@ -70,7 +70,7 @@ a {
 
 .header-logo {
   display: block;
-  width: min(100%, 140px);
+  width: min(100%, 200px);
   height: auto;
   object-fit: contain;
   border-radius: 8px;
@@ -184,7 +184,7 @@ a {
 }
 
 .field input::placeholder {
-  color: #7a879f;
+  color: #5c6b8a;
 }
 
 .field input:focus {
@@ -276,5 +276,50 @@ a {
 
   .header-copy p {
     font-size: 0.95rem;
+  }
+}
+
+/* ── Entrance Animations ────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.helpdesk-shell {
+  animation: scaleIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.helpdesk-header {
+  animation: fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+}
+
+.login-card {
+  animation: fadeInUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.22s both;
+}
+
+.flash-message {
+  animation: slideInRight 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-btn:active {
+  transform: translateY(0px) scale(0.96);
+}
+
+/* ── Accessibility ────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -67,14 +67,12 @@
 </head>
 <body>
   <div class="admin-shell">
-    <aside class="admin-sidebar">
-      <div class="admin-brand"><img src="{{ url_for('static', filename='images/Sree304.jpg') }}" alt="SNIST logo" class="admin-logo"><div><p>{{ role_title }}</p><h1>SNIST Helpdesk</h1></div></div>
-      <nav class="admin-nav">
-        {% for route_name, label in sidebar_links %}
-          <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == 'user_management' %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">{{ label }}</a>
-        {% endfor %}
-      </nav>
-    </aside>
+    <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
     <main class="admin-main">
       <header class="admin-topbar">
         <div><p class="kicker">demo_users</p><h2>User Management</h2><span>Create, edit, or remove demo users. Admins control roles, departments, and HOD assignment through the role field.</span></div>
@@ -105,7 +103,7 @@
                 <select name="role" id="create-role" required onchange="filterDepartments('create')">
                   <option value="">Select Role</option>
                   {% for role in roles %}
-                    <option value="{{ role }}">{{ role }}</option>
+                    <option value="{{ role }}">{{ 'USER' if role == 'FACULTY' else role }}</option>
                   {% endfor %}
                 </select>
               </label>
@@ -125,8 +123,10 @@
                     </button>
                     <div class="dept-multi-panel" id="create-dept-panel">
                       {% for department in departments %}
-                        <label data-all="true">
-                          <input type="checkbox" name="department" value="{{ department.code }}" onchange="updateDeptLabel('create')"> {{ department.code }}
+                        <label data-all="true" {% if session.get('role') == 'HOD' and department.code == session.get('department') %}style="font-weight: bold;"{% endif %}>
+                          <input type="checkbox" name="department" value="{{ department.code }}"
+                            {% if session.get('role') == 'HOD' and department.code == session.get('department') %}checked onclick="return false;"{% endif %}
+                            onchange="updateDeptLabel('create')"> {{ department.code }}
                         </label>
                       {% endfor %}
                     </div>
@@ -151,7 +151,7 @@
                 {% for role in roles %}
                   <label>
                     <input type="checkbox" name="role" value="{{ role }}" {% if role in filters.get('roles', []) %}checked{% endif %}>
-                    <span class="role-badge {{ role|lower }}">{{ role }}</span>
+                    <span class="role-badge {{ role|lower }}">{{ 'USER' if role == 'FACULTY' else role }}</span>
                   </label>
                 {% endfor %}
               </div>
@@ -173,15 +173,18 @@
                   <tr id="user-view-{{ item.id }}">
                     <td class="ticket-id-cell">{{ item.name }}</td>
                     <td>{{ item.email }}</td>
-                    <td><span class="role-badge {{ item.role|lower }}">{{ item.role }}</span></td>
+                    <td><span class="role-badge {{ item.role|lower }}">{{ 'USER' if item.role == 'FACULTY' else item.role }}</span></td>
                     <td>{{ item.department }}</td>
                     <td>
                       <div class="btn-group">
-                        <button type="button" class="edit-btn" onclick="toggleEdit({{ item.id }})">Edit</button>
-                        <button type="button" class="delete-btn" onclick="confirmDelete({{ item.id }}, '{{ item.name|e }}')">Delete</button>
+                        {% if session.get('role') == 'SUPER_ADMIN' or item.role != 'SUPER_ADMIN' %}
+                          <button type="button" class="edit-btn" onclick="toggleEdit({{ item.id }})">Edit</button>
+                          <button type="button" class="delete-btn" onclick="confirmDelete({{ item.id }}, '{{ item.name|e }}')">Delete</button>
+                        {% endif %}
                       </div>
                     </td>
                   </tr>
+                  {% if session.get('role') == 'SUPER_ADMIN' or item.role != 'SUPER_ADMIN' %}
                   <tr id="user-edit-{{ item.id }}" class="edit-row" style="display:none;">
                     <form method="post" action="{{ url_for('update_user', user_id=item.id) }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -190,7 +193,7 @@
                       <td>
                         <select name="role" required onchange="filterDepartments('edit-{{ item.id }}')">
                           {% for role in roles %}
-                            <option value="{{ role }}" {% if item.role == role %}selected{% endif %}>{{ role }}</option>
+                            <option value="{{ role }}" {% if item.role == role %}selected{% endif %}>{{ 'USER' if role == 'FACULTY' else role }}</option>
                           {% endfor %}
                         </select>
                       </td>
@@ -198,7 +201,11 @@
                         <select name="department" id="edit-{{ item.id }}-department" required style="width: 100%;">
                           {% set item_depts = item.department.split(',') | map('trim') | list %}
                           {% for department in departments %}
-                            <option value="{{ department.code }}" data-all="true" {% if department.code in item_depts %}selected{% endif %}>{{ department.code }}</option>
+                            <option value="{{ department.code }}" data-all="true" 
+                              {% if department.code in item_depts %}selected{% endif %}
+                              {% if session.get('role') == 'HOD' and department.code != session.get('department') %}style="display:none;" disabled{% endif %}>
+                              {{ department.code }}
+                            </option>
                           {% endfor %}
                         </select>
                         <div id="edit-{{ item.id }}-department-multi" class="dept-multi-select" style="display:none;">
@@ -209,8 +216,11 @@
                           <div class="dept-multi-panel" id="edit-{{ item.id }}-dept-panel">
                             {% set item_depts = item.department.split(',') | map('trim') | list %}
                             {% for department in departments %}
-                              <label data-all="true">
-                                <input type="checkbox" name="department" value="{{ department.code }}" {% if department.code in item_depts %}checked{% endif %} onchange="updateDeptLabel('edit-{{ item.id }}')"> {{ department.code }}
+                              <label data-all="true" {% if session.get('role') == 'HOD' and department.code == session.get('department') %}style="font-weight: bold;"{% endif %}>
+                                <input type="checkbox" name="department" value="{{ department.code }}" 
+                                  {% if department.code in item_depts or (session.get('role') == 'HOD' and department.code == session.get('department')) %}checked{% endif %}
+                                  {% if session.get('role') == 'HOD' and department.code == session.get('department') %}onclick="return false;"{% endif %}
+                                  onchange="updateDeptLabel('edit-{{ item.id }}')"> {{ department.code }}
                               </label>
                             {% endfor %}
                           </div>
@@ -224,6 +234,7 @@
                       </td>
                     </form>
                   </tr>
+                  {% endif %}
                 {% else %}
                   <tr><td colspan="5" class="empty-cell">No users found.</td></tr>
                 {% endfor %}
@@ -255,12 +266,15 @@
        SUPER_ADMIN & ADMIN  → Administration only
        HOD, CA, FACULTY     → All academic/operational departments (excludes Administration)
     */
+    const isHodUser = {{ (session.get('role') == 'HOD') | tojson }};
+    const hodDept = {{ session.get('department') | tojson }};
+
     const ROLE_DEPARTMENTS = {
       'SUPER_ADMIN': ['Administration'],
       'ADMIN':       ['Administration'],
-      'HOD':         {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code),
+      'HOD':         isHodUser ? [hodDept] : {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code),
       'CA':          {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code),
-      'FACULTY':     {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code)
+      'FACULTY':     isHodUser ? [hodDept] : {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code)
     };
 
     function filterDepartments(prefix) {
@@ -393,7 +407,8 @@
       if (checked.length === 0) {
         label.textContent = 'All Roles';
       } else if (checked.length === 1) {
-        label.textContent = checked[0].value;
+        const val = checked[0].value;
+        label.textContent = (val === 'FACULTY' ? 'USER' : val);
       } else {
         label.textContent = checked.length + ' roles selected';
       }
@@ -427,5 +442,8 @@
       if (e.target === this) closeDelete();
     });
   </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>
