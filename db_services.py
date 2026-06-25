@@ -285,6 +285,27 @@ class LiveDbService(BaseMySQLService):
 
 
 class DemoDbService(BaseMySQLService):
+    def get_user_phone(self, email):
+        """Query teacher_info for user's MOBILE_PHONE. Returns phone number or fallback."""
+        phone = None
+        if self.enabled and email:
+            sql = """
+                SELECT MOBILE_PHONE
+                FROM teacher_info
+                WHERE LOWER(COALESCE(EMAIL_ID, '')) = LOWER(%s)
+                  AND COALESCE(ACTIVE, 1) = 1
+                LIMIT 1
+            """
+            try:
+                with self.connection() as connection, connection.cursor() as cursor:
+                    cursor.execute(sql, (email,))
+                    row = cursor.fetchone()
+                    if row:
+                        phone = row.get("MOBILE_PHONE")
+            except Exception:
+                pass
+        return phone if phone else os.getenv("SMS_TEST_NUMBER")
+
     def ensure_schema(self, schema_path: Path):
         if not self.enabled:
             return
@@ -652,6 +673,15 @@ class DemoDbService(BaseMySQLService):
                     send_allocation_email(ca_user["name"], ca_user["email"], ticket_id, category["category_name"])
             except Exception:
                 pass
+            try:
+                from sms_services import send_allocation_sms
+                ca_user = self.get_user(assigned_ca_id)
+                if ca_user and ca_user.get("email"):
+                    ca_phone = self.get_user_phone(ca_user["email"])
+                    if ca_phone:
+                        send_allocation_sms(ca_user["name"], ca_phone, ticket_id)
+            except Exception:
+                pass
             return ticket_id
 
     def _has_column(self, table, column):
@@ -830,6 +860,14 @@ class DemoDbService(BaseMySQLService):
                     from email_services import send_closure_email
                     if ticket.get("created_by_email"):
                         send_closure_email(ticket["created_by_email"], ticket_id)
+                except Exception:
+                    pass
+                try:
+                    from sms_services import send_closure_sms
+                    if ticket.get("created_by_email"):
+                        creator_phone = self.get_user_phone(ticket["created_by_email"])
+                        if creator_phone:
+                            send_closure_sms(creator_phone, ticket_id)
                 except Exception:
                     pass
 
