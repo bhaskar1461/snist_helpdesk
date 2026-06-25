@@ -21,7 +21,9 @@ A role-based helpdesk ticketing system built with **Flask** and **MySQL**, desig
 
 - **Role-Based Access Control** — Super Admin, Admin, HOD, Concerned Authority (CA), Faculty
 - **Ticket Lifecycle** — Create → Pending → In Progress → Resolved
-- **Auto-Assignment** — Tickets auto-assigned to the mapped CA based on category
+- **Auto-Assignment** — Tickets auto-assigned to the mapped CA based on category and block locations
+- **Asynchronous SMTP Email Alerts** — Automatically notifies CAs on ticket allocation and notifies creators when tickets are resolved
+- **Dynamic Category Cascading** — Filters category choices in ticket creation based on department (ICT, HCM, Facilities, PM, MM, LSM)
 - **CA Reports** — Resolution time tracking for Concerned Authorities
 - **User & Category Management** — Full CRUD for users and category-to-CA mappings
 - **CSV / Excel Export** — Download filtered ticket data
@@ -113,6 +115,14 @@ SECRET_KEY=your-secret-key-here
 
 # Set to 'false' to skip demo schema initialization on startup
 INIT_DEMO_DB=true
+
+# SMTP Mail Server Configuration
+SMTP_HOST=mail.sreenidhi.edu.in
+SMTP_PORT=587
+SMTP_USER=support.helpdesk@sreenidhi.edu.in
+SMTP_PASSWORD=your_smtp_password_here
+SMTP_USE_TLS=True
+SMTP_SENDER=support.helpdesk@sreenidhi.edu.in
 ```
 
 ### 6. Create the MySQL Database
@@ -163,6 +173,12 @@ When `INIT_DEMO_DB=true`, the following demo accounts are created automatically:
 | CA           | ca@gmail.com               | 123      | CSE            |
 | CA           | sravan.ca@gmail.com        | 123      | Facilities     |
 | CA           | bhaskar.ca@gmail.com       | 123      | Maintenance    |
+| CA (ICT)     | ict.ca@gmail.com           | 123      | ICT            |
+| CA (HCM)     | hcm.ca@gmail.com           | 123      | HCM            |
+| CA (FAC)     | facilities.ca@gmail.com    | 123      | Fecilities     |
+| CA (PM)      | pm.ca@gmail.com            | 123      | PM             |
+| CA (MM)      | mm.ca@gmail.com            | 123      | MM             |
+| CA (LSM)     | lsm.ca@gmail.com           | 123      | LSM            |
 | Faculty      | faculty@gmail.com          | 123      | CSE            |
 
 ---
@@ -222,6 +238,7 @@ graph TD
 snist_helpdesk/
 ├── app.py                  # Main Flask application (routes & RBAC checks)
 ├── db_services.py          # Database service layer (MySQL queries & model methods)
+├── email_services.py      # Email helper module for async SMTP notifications
 ├── requirements.txt        # Python dependencies
 ├── .env.example            # Environment variable template
 ├── .gitignore              # Git ignore rules

@@ -43,14 +43,10 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      <header class="admin-topbar">
-        <div>
-          <p class="kicker">Ticket #{{ ticket.id }}</p>
-          <h2>{{ ticket.title }}</h2>
-          <span>{{ ticket.category_name }} &bull; {{ ticket.department }}</span>
-        </div>
-        <div class="profile-pill"><div class="avatar">{{ role_title[0] }}</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
-      </header>
+      {% set page_kicker = "Ticket #" ~ ticket.id %}
+      {% set page_heading = ticket.title %}
+      {% set page_description = ticket.category_name ~ " • " ~ ticket.department %}
+      {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}

@@ -18,10 +18,10 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      <header class="admin-topbar">
-        <div><p class="kicker">CA Dashboard</p><h2>Assigned and self-created tickets</h2><span>CA can update only tickets assigned to them. Resolution remarks are stored in `demo_ticket_activity`.</span></div>
-        <div class="profile-pill"><div class="avatar">C</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
-      </header>
+      {% set page_kicker = "CA Dashboard" %}
+      {% set page_heading = "Assigned and self-created tickets" %}
+      {% set page_description = "CA can update only tickets assigned to them. Resolution remarks are stored in demo_ticket_activity." %}
+      {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}

@@ -1,0 +1,11 @@
+version: 1.0
+runtime: python311
+build:
+  commands:
+    build:
+      - pip install -r requirements.txt
+run:
+  runtime-version: 3.11.9
+  command: gunicorn app:app --bind 0.0.0.0:8000 --workers 2 --timeout 120
+  network:
+    port: 8000

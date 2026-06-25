@@ -74,10 +74,10 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      <header class="admin-topbar">
-        <div><p class="kicker">demo_users</p><h2>User Management</h2><span>Create, edit, or remove demo users. Admins control roles, departments, and HOD assignment through the role field.</span></div>
-        <div class="profile-pill"><div class="avatar">U</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
-      </header>
+      {% set page_kicker = "demo_users" %}
+      {% set page_heading = "User Management" %}
+      {% set page_description = "Create, edit, or remove demo users. Admins control roles, departments, and HOD assignment through the role field." %}
+      {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}

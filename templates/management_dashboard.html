@@ -18,10 +18,27 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      <header class="admin-topbar">
-        <div><p class="kicker">{{ kicker }}</p><h2>{{ page_heading }}</h2><span>{{ page_description }}</span></div>
-        <div class="profile-pill"><div class="avatar">{{ role_title[0] }}</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
-      </header>
+      {% set page_kicker = kicker %}
+      {% set page_heading = page_heading %}
+      {% set page_description = page_description %}
+      {% include 'topbar.html' %}
+
+      {% if session.get('role') in ('SUPER_ADMIN', 'ADMIN') and not session.get('acting_role') %}
+      <section class="admin-card" style="margin-bottom: 22px; background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);">
+        <div class="card-head"><div><p class="kicker">HOD Impersonation</p><h3>Act as HOD</h3></div></div>
+        <p class="panel-note">Select a department branch to act as HOD and manage categories and CA mapping.</p>
+        <form method="post" action="{{ url_for('impersonate_hod') }}" class="inline-form" style="margin-top: 14px; gap: 16px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="department" required style="min-width: 220px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--input-border);">
+            <option value="">Select Department to Impersonate</option>
+            {% for d in departments %}
+              <option value="{{ d.code }}">{{ d.code }} — {{ d.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="primary-btn" style="padding: 12px 24px;">Enter HOD Mode</button>
+        </form>
+      </section>
+      {% endif %}
 
       <section class="summary-strip summary-strip-management">
         <div class="summary-box"><span>Total</span><strong>{{ summary.total or 0 }}</strong></div>

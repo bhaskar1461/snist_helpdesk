@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Location Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <style>
+    .location-count { font-size:.85rem; color:#6b7280; margin-top:4px; }
+    .btn-group { display:flex; gap:6px; }
+    .edit-btn { background:#4f46e5; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .edit-btn:hover { background:#4338ca; }
+    .delete-btn { background:#ef4444; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .delete-btn:hover { background:#dc2626; }
+    .cancel-btn { background:#6b7280; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .cancel-btn:hover { background:#4b5563; }
+    .save-btn { background:#10b981; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .save-btn:hover { background:#059669; }
+    .edit-row td { background:#f8fafc !important; }
+    .edit-row input { width:100%; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:.82rem; }
+    .confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; align-items:center; justify-content:center; }
+    .confirm-overlay.active { display:flex; }
+    .confirm-box { background:#fff; border-radius:12px; padding:1.5rem 2rem; max-width:400px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+    .confirm-box h3 { margin:0 0 .5rem; font-size:1.1rem; }
+    .confirm-box p { color:#6b7280; font-size:.9rem; margin-bottom:1rem; }
+    .confirm-box .btn-group { justify-content:center; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
+    <main class="admin-main">
+      {% set page_kicker = "location" %}
+      {% set page_heading = "Location Management" %}
+      {% set page_description = "Manage physical campus structure. Create new blocks, floors, and room/lab entries for routing tickets." %}
+      {% include 'topbar.html' %}
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="admin-grid">
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">Create Location</p><h3>New Block / Room</h3></div></div>
+          <form method="post" action="{{ url_for('location_management') }}" class="admin-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-grid">
+              <label class="field"><span>Block Name</span><input type="text" name="block" placeholder="e.g. Block 1, Academic Block 2" required></label>
+              <label class="field"><span>Floor</span><input type="text" name="floor" placeholder="e.g. Ground Floor, 1st Floor" required></label>
+              <label class="field"><span>Room / Lab Number</span><input type="text" name="room_no" placeholder="e.g. 1101, 2203" required></label>
+              <label class="field"><span>Room / Lab Name (Optional)</span><input type="text" name="name" placeholder="e.g. CSE Lab 1, Seminar Hall"></label>
+            </div>
+            <div class="form-actions"><button type="submit" class="primary-btn">Create Location</button></div>
+          </form>
+        </section>
+
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">Existing Locations</p><h3>Campus Rooms</h3></div></div>
+          
+          <!-- Search locations -->
+          <form class="search-bar filter-grid" method="get" action="{{ url_for('location_management') }}" style="margin-bottom:1rem; display: flex; gap: 8px;">
+            <input type="text" name="q" value="{{ search or '' }}" placeholder="Search block, floor, room no..." style="flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
+            <button type="submit" class="primary-btn">Search</button>
+          </form>
+
+          <p class="location-count">{{ locations|length }} location{{ 's' if locations|length != 1 else '' }} found</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Block</th><th>Floor</th><th>Room No</th><th>Room Name</th><th>Actions</th></tr></thead>
+              <tbody>
+                {% for item in locations %}
+                  <tr id="loc-view-{{ item.id }}">
+                    <td class="ticket-id-cell">{{ item.block }}</td>
+                    <td>{{ item.floor }}</td>
+                    <td>{{ item.room_no }}</td>
+                    <td>{{ item.name or '—' }}</td>
+                    <td class="actions-cell">
+                      <div class="btn-group">
+                        <button type="button" class="edit-btn" onclick="toggleLocationEdit({{ item.id }})">Edit</button>
+                        <button type="button" class="delete-btn" onclick="confirmLocationDelete({{ item.id }}, '{{ item.block|e }} - {{ item.room_no|e }}')">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr id="loc-edit-{{ item.id }}" class="edit-row" style="display:none;">
+                    <form method="post" action="{{ url_for('update_location', location_id=item.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <td><input type="text" name="block" value="{{ item.block }}" required></td>
+                      <td><input type="text" name="floor" value="{{ item.floor }}" required></td>
+                      <td><input type="text" name="room_no" value="{{ item.room_no }}" required></td>
+                      <td><input type="text" name="name" value="{{ item.name or '' }}"></td>
+                      <td>
+                        <div class="btn-group">
+                          <button type="submit" class="save-btn">Save</button>
+                          <button type="button" class="cancel-btn" onclick="toggleLocationEdit({{ item.id }})">Cancel</button>
+                        </div>
+                      </td>
+                    </form>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5" class="empty-cell">No locations found.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <!-- Delete confirmation dialog -->
+  <div id="delete-overlay" class="confirm-overlay">
+    <div class="confirm-box">
+      <h3>⚠️ Delete Location</h3>
+      <p>Are you sure you want to delete location <strong id="delete-loc-name"></strong>? Locations with existing tickets cannot be deleted.</p>
+      <div class="btn-group">
+        <form id="delete-form" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="delete-btn">Yes, Delete</button>
+        </form>
+        <button type="button" class="cancel-btn" onclick="closeLocationDelete()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    lucide.createIcons();
+    
+    function toggleLocationEdit(id) {
+      const viewRow = document.getElementById('loc-view-' + id);
+      const editRow = document.getElementById('loc-edit-' + id);
+      if (viewRow.style.display === 'none') {
+        viewRow.style.display = '';
+        editRow.style.display = 'none';
+      } else {
+        viewRow.style.display = 'none';
+        editRow.style.display = '';
+      }
+    }
+
+    function confirmLocationDelete(id, name) {
+      const overlay = document.getElementById('delete-overlay');
+      const nameSpan = document.getElementById('delete-loc-name');
+      const form = document.getElementById('delete-form');
+      nameSpan.textContent = name;
+      form.action = '/super-admin/locations/' + id + '/delete';
+      overlay.classList.add('active');
+    }
+
+    function closeLocationDelete() {
+      document.getElementById('delete-overlay').classList.remove('active');
+    }
+  </script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+</body>
+</html>

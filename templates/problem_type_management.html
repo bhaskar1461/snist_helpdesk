@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Problem Types Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <style>
+    .btn-group { display:flex; gap:6px; }
+    .edit-btn { background:#4f46e5; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .edit-btn:hover { background:#4338ca; }
+    .delete-btn { background:#ef4444; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .delete-btn:hover { background:#dc2626; }
+    .cancel-btn { background:#6b7280; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .cancel-btn:hover { background:#4b5563; }
+    .save-btn { background:#10b981; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .save-btn:hover { background:#059669; }
+    .edit-row td { background:#f8fafc !important; }
+    .edit-row input, .edit-row select { width:100%; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:.82rem; }
+    .inactive-row td { opacity: 0.65; background-color: #f3f4f6 !important; color: #9ca3af; }
+    .inactive-row td.actions-cell { opacity: 1 !important; }
+    .toggle-btn { background:#f59e0b; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
+    .toggle-btn:hover { background:#d97706; }
+    .toggle-btn.activate { background:#10b981; }
+    .toggle-btn.activate:hover { background:#059669; }
+    .confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; align-items:center; justify-content:center; }
+    .confirm-overlay.active { display:flex; }
+    .confirm-box { background:#fff; border-radius:12px; padding:1.5rem 2rem; max-width:400px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+    .confirm-box h3 { margin:0 0 .5rem; font-size:1.1rem; }
+    .confirm-box p { color:#6b7280; font-size:.9rem; margin-bottom:1rem; }
+    .confirm-box .btn-group { justify-content:center; }
+    .item-count { font-size:.85rem; color:#6b7280; margin-top:4px; }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
+    <main class="admin-main">
+      {% set page_kicker = "demo_problem_types" %}
+      {% set page_heading = "Problem Types Management" %}
+      {% set page_description = "Manage specific problem sub-types for each category to simplify ticket creation." %}
+      {% include 'topbar.html' %}
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <section class="admin-grid">
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">New Problem Type</p><h3>Add problem sub-type</h3></div></div>
+          <form method="post" action="{{ url_for('management_problem_types') }}" class="admin-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-grid">
+              <label class="field">
+                <span>Category</span>
+                <select name="category_id" required>
+                  <option value="">Select Category</option>
+                  {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if filter_cat|string == cat.id|string %}selected{% endif %}>{{ cat.category_name }} ({{ cat.department }})</option>
+                  {% endfor %}
+                </select>
+              </label>
+              <label class="field"><span>Problem Name</span><input type="text" name="problem_name" placeholder="e.g. WiFi no internet, Projector no signal" required></label>
+            </div>
+            <div class="form-actions"><button type="submit" class="primary-btn">Save Problem Type</button></div>
+          </form>
+        </section>
+
+        <section class="admin-card">
+          <form class="search-bar filter-grid" method="get" action="{{ url_for('management_problem_types') }}" style="margin-bottom:1rem; display: flex; gap: 8px;">
+            <input type="text" name="q" value="{{ search or '' }}" placeholder="Search problem type name..." style="flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
+            <select name="category_id" style="padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
+              <option value="">All Categories</option>
+              {% for cat in categories %}
+                <option value="{{ cat.id }}" {% if filter_cat|string == cat.id|string %}selected{% endif %}>{{ cat.category_name }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="primary-btn">Filter</button>
+          </form>
+          <p class="item-count">{{ problem_types|length }} problem type{{ 's' if problem_types|length != 1 else '' }} found</p>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Category</th><th>Department</th><th>Problem Name</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {% for item in problem_types %}
+                  <tr id="pt-view-{{ item.id }}" {% if item.is_active == 0 %}class="inactive-row"{% endif %}>
+                    <td>{{ item.category_name }}</td>
+                    <td>{{ item.department }}</td>
+                    <td class="ticket-id-cell">{{ item.problem_name }}</td>
+                    <td>
+                      {% if item.is_active == 0 %}
+                        <span class="status-pill hold">Inactive</span>
+                      {% else %}
+                        <span class="status-pill resolved">Active</span>
+                      {% endif %}
+                    </td>
+                    <td class="actions-cell">
+                      <div class="btn-group">
+                        <button type="button" class="edit-btn" onclick="togglePtEdit({{ item.id }})">Edit</button>
+                        <form method="post" action="{{ url_for('toggle_problem_type', pt_id=item.id) }}" style="display:inline;">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          {% if item.is_active == 0 %}
+                            <button type="submit" class="toggle-btn activate">Activate</button>
+                          {% else %}
+                            <button type="submit" class="toggle-btn">Deactivate</button>
+                          {% endif %}
+                        </form>
+                        <button type="button" class="delete-btn" onclick="confirmPtDelete({{ item.id }}, '{{ item.problem_name|e }}')">Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr id="pt-edit-{{ item.id }}" class="edit-row" style="display:none;">
+                    <form method="post" action="{{ url_for('update_problem_type', pt_id=item.id) }}">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <td>{{ item.category_name }}</td>
+                      <td>{{ item.department }}</td>
+                      <td><input type="text" name="problem_name" value="{{ item.problem_name }}" required></td>
+                      <td>—</td>
+                      <td>
+                        <div class="btn-group">
+                          <button type="submit" class="save-btn">Save</button>
+                          <button type="button" class="cancel-btn" onclick="togglePtEdit({{ item.id }})">Cancel</button>
+                        </div>
+                      </td>
+                    </form>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5" class="empty-cell">No problem types defined yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <!-- Delete confirmation dialog -->
+  <div id="delete-overlay" class="confirm-overlay">
+    <div class="confirm-box">
+      <h3>⚠️ Delete Problem Type</h3>
+      <p>Are you sure you want to delete <strong id="delete-pt-name"></strong>? Problem types already used by tickets cannot be deleted.</p>
+      <div class="btn-group">
+        <form id="delete-form" method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="delete-btn">Yes, Delete</button>
+        </form>
+        <button type="button" class="cancel-btn" onclick="closePtDelete()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    lucide.createIcons();
+    
+    function togglePtEdit(id) {
+      const viewRow = document.getElementById('pt-view-' + id);
+      const editRow = document.getElementById('pt-edit-' + id);
+      if (viewRow.style.display === 'none') {
+        viewRow.style.display = '';
+        editRow.style.display = 'none';
+      } else {
+        viewRow.style.display = 'none';
+        editRow.style.display = '';
+      }
+    }
+
+    function confirmPtDelete(id, name) {
+      const overlay = document.getElementById('delete-overlay');
+      const nameSpan = document.getElementById('delete-pt-name');
+      const form = document.getElementById('delete-form');
+      nameSpan.textContent = name;
+      form.action = '/management/problem-types/' + id + '/delete';
+      overlay.classList.add('active');
+    }
+
+    function closePtDelete() {
+      document.getElementById('delete-overlay').classList.remove('active');
+    }
+  </script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+</body>
+</html>

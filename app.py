@@ -55,6 +55,7 @@ def record_login_attempt(ip):
 
 BASE_DIR = Path(__file__).resolve().parent
 SCHEMA_PATH = BASE_DIR / "sql" / "demo_schema.sql"
+MIGRATION_V2_PATH = BASE_DIR / "sql" / "migration_v2.sql"
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
@@ -96,8 +97,14 @@ def bootstrap_demo_database():
         log.warning("Demo DB not configured – skipping bootstrap.")
         return
     try:
-        demo_db.ensure_schema(SCHEMA_PATH)
-        demo_db.seed_defaults(DEFAULT_DEMO_USERS, DEFAULT_DEMO_CATEGORIES)
+        try:
+            demo_db.ensure_schema(SCHEMA_PATH)
+        except Exception as schema_exc:
+            log.warning("Schema initialization warning: %s", schema_exc)
+        try:
+            demo_db.seed_defaults(DEFAULT_DEMO_USERS, DEFAULT_DEMO_CATEGORIES)
+        except Exception as seed_exc:
+            log.warning("Default seeding warning: %s", seed_exc)
         # Migration: add location_id if it doesn't exist yet
         try:
             with demo_db.connection() as conn, conn.cursor() as cur:
@@ -128,6 +135,55 @@ def bootstrap_demo_database():
                     log.info("Migration: added ON_HOLD and REOPENED to status ENUMs.")
         except Exception as mig_exc:
             log.warning("Migration check for status ENUM: %s", mig_exc)
+        # Migration: create demo_ca_assignments table
+        try:
+            with demo_db.connection() as conn, conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS demo_ca_assignments (
+                      id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                      category_id INT UNSIGNED NOT NULL,
+                      ca_id INT UNSIGNED NOT NULL,
+                      block VARCHAR(100) NOT NULL,
+                      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      PRIMARY KEY (id),
+                      UNIQUE KEY uq_demo_ca_assignments_cat_block_ca (category_id, block, ca_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+                """)
+                log.info("Migration: created demo_ca_assignments table if not exists.")
+        except Exception as mig_exc:
+            log.warning("Migration check for demo_ca_assignments: %s", mig_exc)
+        # Migration v2: run migration_v2.sql for problem_types, audit_events, etc.
+        try:
+            if MIGRATION_V2_PATH.exists():
+                v2_sql = MIGRATION_V2_PATH.read_text(encoding="utf-8")
+                v2_statements = [s.strip() for s in v2_sql.split(";") if s.strip() and not s.strip().startswith("--")]
+                with demo_db.connection() as conn, conn.cursor() as cur:
+                    for stmt in v2_statements:
+                        try:
+                            cur.execute(stmt)
+                        except Exception:
+                            pass  # ignore individual statement failures (e.g. table already exists)
+                log.info("Migration v2 executed successfully.")
+        except Exception as mig_exc:
+            log.warning("Migration v2: %s", mig_exc)
+        # Migration v2: add problem_type_id column to demo_tickets
+        try:
+            with demo_db.connection() as conn, conn.cursor() as cur:
+                cur.execute("SHOW COLUMNS FROM demo_tickets LIKE 'problem_type_id'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE demo_tickets ADD COLUMN problem_type_id INT UNSIGNED NULL AFTER category_id")
+                    log.info("Migration v2: added problem_type_id column to demo_tickets.")
+        except Exception as mig_exc:
+            log.warning("Migration v2 problem_type_id: %s", mig_exc)
+        # Migration v2: add is_archived column to branch_detail
+        try:
+            with demo_db.connection() as conn, conn.cursor() as cur:
+                cur.execute("SHOW COLUMNS FROM branch_detail LIKE 'is_archived'")
+                if not cur.fetchone():
+                    cur.execute("ALTER TABLE branch_detail ADD COLUMN is_archived TINYINT(1) NOT NULL DEFAULT 0")
+                    log.info("Migration v2: added is_archived column to branch_detail.")
+        except Exception as mig_exc:
+            log.warning("Migration v2 is_archived: %s", mig_exc)
         log.info("Demo database bootstrapped successfully.")
     except Exception as exc:
         log.error("Demo DB bootstrap failed: %s", exc)
@@ -179,12 +235,13 @@ def current_user():
     if not session.get("user_id"):
         return None
     email = session["user_email"]
-    dept = session["department"]
+    dept = session.get("acting_department") or session["department"]
+    role = session.get("acting_role") or session["role"]
     return {
         "id": session["user_id"],
         "name": session["user_name"],
         "email": email,
-        "role": session["role"],
+        "role": role,
         "department": dept,
         "org_id": session.get("org_id") or resolve_user_org(email, dept),
     }
@@ -225,6 +282,8 @@ def sidebar_links(role):
             ("super_admin_all_tickets", "All Tickets", "ticket"),
             ("user_management", "User Management", "users"),
             ("management_category", "Category Management", "folder-open"),
+            ("management_problem_types", "Problem Types", "wrench"),
+            ("location_management", "Location Management", "map-pin"),
             ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "ADMIN": [
@@ -239,6 +298,8 @@ def sidebar_links(role):
             ("hod_all_tickets", "Department Tickets", "ticket"),
             ("user_management", "User Management", "users"),
             ("management_category", "Category Management", "folder-open"),
+            ("management_problem_types", "Problem Types", "wrench"),
+            ("ca_assignments", "CA Assignments", "users"),
             ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "CA": [
@@ -289,9 +350,11 @@ def live_departments(org_id=None):
         seen.add(code)
         departments.append(
             {
+                "id": row.get("BRANCH_ID"),
                 "code": code,
                 "name": row.get("department_name") or code,
                 "org_id": row_org_id,
+                "is_archived": row.get("is_archived", 0),
             }
         )
     if not departments:
@@ -489,20 +552,34 @@ def create_ticket_for_role():
     categories = demo_db.list_categories(org_id=user["org_id"], active_only=True)
     if request.method == "POST":
         category_id = safe_int(request.form.get("category_id", "0"))
-        title = request.form.get("title", "").strip()
+        title = request.form.get("title", "").strip()  # may be empty now (auto-generated)
         description = request.form.get("description", "").strip()
         location_id = safe_int(request.form.get("location_id", "0")) or None
-        if not title or not description or not category_id:
-            flash("Title, description, and category are required.", "error")
+        problem_type_id = safe_int(request.form.get("problem_type_id", "0")) or None
+        other_problem = request.form.get("other_problem", "").strip()
+        if not description or not category_id:
+            flash("Description and category are required.", "error")
             return redirect(url_for("create_ticket_for_role"))
-        if len(title) > 180:
+        if title and len(title) > 180:
             flash("Title cannot exceed 180 characters.", "error")
             return redirect(url_for("create_ticket_for_role"))
         if len(description) > 5000:
             flash("Description cannot exceed 5000 characters.", "error")
             return redirect(url_for("create_ticket_for_role"))
+        # Handle "Other" problem type — create on the fly
+        if other_problem and not problem_type_id:
+            try:
+                problem_type_id = demo_db.create_problem_type(category_id, other_problem)
+            except (ValueError, Exception):
+                pass  # If it already exists, try to find it
+            if not problem_type_id:
+                pts = demo_db.list_problem_types(category_id=category_id)
+                for pt in pts:
+                    if pt["problem_name"].lower() == other_problem.lower():
+                        problem_type_id = pt["id"]
+                        break
         org_id = user["org_id"]
-        demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id)
+        demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id, problem_type_id=problem_type_id)
         flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
@@ -548,6 +625,7 @@ def super_admin_dashboard():
         highlights=demo_db.hod_overview(org_id=org_id),
         dept_stats=demo_db.ticket_stats_by_department(org_id=org_id),
         cat_stats=demo_db.ticket_stats_by_category(org_id=org_id),
+        departments=live_departments(org_id),
         page_title=f"{org_label} Super Admin Dashboard",
         kicker="RBAC Control",
         page_heading=f"{org_label} Super Admin overview",
@@ -580,6 +658,7 @@ def admin_dashboard():
         "management_dashboard.html",
         summary=summary,
         highlights=highlights,
+        departments=live_departments(user["org_id"]),
         page_title="Admin Dashboard",
         kicker="Administration",
         page_heading="Admin panel",
@@ -1014,6 +1093,68 @@ def delete_user(user_id):
     return redirect(url_for("user_management"))
 
 
+def check_and_promote_ca(ca_id, target_dept, actor_id, org_id):
+    ca_user = demo_db.get_user(ca_id)
+    if ca_user:
+        target_depts = [d.strip() for d in ca_user["department"].split(",") if d.strip()]
+        dept_updated = False
+        if target_dept not in target_depts:
+            target_depts.append(target_dept)
+            dept_updated = True
+        
+        if ca_user["role"] == "FACULTY" or dept_updated:
+            new_role = "CA"
+            new_dept_str = ",".join(target_depts)
+            demo_db.update_user(ca_id, {
+                "name": ca_user["name"],
+                "email": ca_user["email"],
+                "role": new_role,
+                "department": new_dept_str
+            })
+            if ca_user["role"] == "FACULTY":
+                demo_db.log_audit_event(
+                    "CA_PROMOTED", actor_id, org_id,
+                    target_type="user", target_id=ca_id,
+                    details={"promoted_name": ca_user["name"], "department": target_dept},
+                )
+                flash(f"Promoted {ca_user['name']} to Concerned Authority for {target_dept}.", "success")
+            else:
+                flash(f"Updated Concerned Authority department mapping for {ca_user['name']}.", "success")
+
+
+def resolve_and_promote_ca(assigned_ca_id_str, target_dept, actor_id, org_id):
+    if assigned_ca_id_str.startswith("ref:"):
+        ref_email = assigned_ca_id_str.split(":", 1)[1]
+        teacher = live_db.lookup_teacher_by_email(ref_email)
+        if not teacher:
+            raise ValueError("Selected authority not found in reference directory.")
+        
+        sap_id = str(teacher.get("sap_id", "123")).strip()
+        existing = demo_db.get_user_by_email(teacher["email"])
+        if existing:
+            check_and_promote_ca(existing["id"], target_dept, actor_id, org_id)
+            return existing["id"]
+            
+        new_user_id = demo_db.create_user({
+            "name": teacher["name"],
+            "email": teacher["email"],
+            "password": sap_id,
+            "role": "CA",
+            "department": target_dept
+        })
+        demo_db.log_audit_event(
+            "CA_PROMOTED", actor_id, org_id,
+            target_type="user", target_id=new_user_id,
+            details={"promoted_name": teacher["name"], "department": target_dept},
+        )
+        flash(f"Promoted reference user {teacher['name']} to Concerned Authority for {target_dept}.", "success")
+        return new_user_id
+    else:
+        ca_id = safe_int(assigned_ca_id_str)
+        check_and_promote_ca(ca_id, target_dept, actor_id, org_id)
+        return ca_id
+
+
 @app.route("/management/category-management", methods=["GET", "POST"])
 @role_required("HOD", "SUPER_ADMIN")
 def management_category():
@@ -1022,9 +1163,9 @@ def management_category():
         payload = {
             "category_name": request.form.get("category_name", "").strip(),
             "department": user["department"] if user["role"] == "HOD" else request.form.get("department", "").strip(),
-            "assigned_ca_id": safe_int(request.form.get("assigned_ca_id", "0")),
         }
-        if not payload["category_name"] or not payload["department"] or not payload["assigned_ca_id"]:
+        assigned_ca_id_str = request.form.get("assigned_ca_id", "").strip()
+        if not payload["category_name"] or not payload["department"] or not assigned_ca_id_str:
             flash("Category name, department, and CA are required.", "error")
             return redirect(url_for("management_category"))
         # Duplicate check
@@ -1033,10 +1174,24 @@ def management_category():
             return redirect(url_for("management_category"))
         # HOD can only assign CA within their department
         if user["role"] == "HOD":
-            ca_user = demo_db.get_user(payload["assigned_ca_id"])
-            if not ca_user or user["department"] not in [d.strip() for d in ca_user["department"].split(",")]:
-                flash("You can only assign a CA from your own department.", "error")
-                return redirect(url_for("management_category"))
+            if assigned_ca_id_str.startswith("ref:"):
+                ref_email = assigned_ca_id_str.split(":", 1)[1]
+                teacher = live_db.lookup_teacher_by_email(ref_email)
+                if not teacher or user["department"] != teacher.get("department"):
+                    flash("You can only assign a CA from your own department.", "error")
+                    return redirect(url_for("management_category"))
+            else:
+                ca_user = demo_db.get_user(safe_int(assigned_ca_id_str))
+                if not ca_user or user["department"] not in [d.strip() for d in ca_user["department"].split(",")]:
+                    flash("You can only assign a CA from your own department.", "error")
+                    return redirect(url_for("management_category"))
+        
+        try:
+            payload["assigned_ca_id"] = resolve_and_promote_ca(assigned_ca_id_str, payload["department"], user["id"], user["org_id"])
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("management_category"))
+            
         demo_db.create_category(payload)
         flash("Category mapped to Concerned Authority.", "success")
         return redirect(url_for("management_category"))
@@ -1046,11 +1201,54 @@ def management_category():
     search = request.args.get("q", "").strip()
     ca_filter = safe_int(request.args.get("ca", "0")) or None
     categories = demo_db.list_categories(department=department, search=search, ca_id=ca_filter, org_id=user["org_id"])
-    ca_users = demo_db.list_users(role="CA", department=department, org_id=user["org_id"])
+    
+    # Active CAs for search filtering dropdown
+    active_cas = demo_db.list_users(role="CA", department=department, org_id=user["org_id"])
+    active_cas_list = []
+    for u in active_cas:
+        active_cas_list.append({
+            "id": u["id"],
+            "name": u["name"],
+            "email": u["email"],
+            "role": u["role"],
+            "department": u["department"],
+        })
+        
+    # All candidate users (CA + FACULTY) for category assignment dropdown - do not filter by department on fetch
+    ca_candidates = demo_db.list_users(role=["CA", "FACULTY"], org_id=user["org_id"])
+    ca_candidates_list = []
+    seen_emails = set()
+    for u in ca_candidates:
+        email_lower = u["email"].lower().strip()
+        seen_emails.add(email_lower)
+        ca_candidates_list.append({
+            "id": u["id"],
+            "name": u["name"],
+            "email": u["email"],
+            "role": u["role"],
+            "department": u["department"],
+        })
+        
+    # Also fetch all reference directory users of the organization from live_db
+    if live_db.enabled:
+        ref_users = live_db.fetch_reference_users(org_id=user["org_id"], limit=1000)
+        for r in ref_users:
+            email_lower = (r.get("EMAIL_ID") or "").lower().strip()
+            if email_lower and email_lower not in seen_emails:
+                seen_emails.add(email_lower)
+                ca_candidates_list.append({
+                    "id": f"ref:{r['EMAIL_ID']}",
+                    "name": r.get("TEACHER_NAME") or "Unknown",
+                    "email": r["EMAIL_ID"],
+                    "role": "FACULTY",
+                    "department": r.get("department_code") or r.get("department_name") or "",
+                })
+
     return render_template(
         "category_management.html",
         categories=categories,
-        ca_users=ca_users,
+        active_cas=active_cas_list,
+        ca_candidates=ca_candidates_list,
         departments=live_departments(user["org_id"]),
         selected_department=department or "",
         filters={"q": search, "department": department or "", "ca": ca_filter or ""},
@@ -1071,9 +1269,9 @@ def update_category(category_id):
     payload = {
         "category_name": request.form.get("category_name", "").strip(),
         "department": user["department"] if user["role"] == "HOD" else request.form.get("department", "").strip(),
-        "assigned_ca_id": safe_int(request.form.get("assigned_ca_id", "0")),
     }
-    if not payload["category_name"] or not payload["department"] or not payload["assigned_ca_id"]:
+    assigned_ca_id_str = request.form.get("assigned_ca_id", "").strip()
+    if not payload["category_name"] or not payload["department"] or not assigned_ca_id_str:
         flash("Category name, department, and CA are required.", "error")
         return redirect(url_for("management_category"))
     # Duplicate check (exclude self)
@@ -1082,10 +1280,24 @@ def update_category(category_id):
         return redirect(url_for("management_category"))
     # HOD can only assign CA within their department
     if user["role"] == "HOD":
-        ca_user = demo_db.get_user(payload["assigned_ca_id"])
-        if not ca_user or user["department"] not in [d.strip() for d in ca_user["department"].split(",")]:
-            flash("You can only assign a CA from your own department.", "error")
-            return redirect(url_for("management_category"))
+        if assigned_ca_id_str.startswith("ref:"):
+            ref_email = assigned_ca_id_str.split(":", 1)[1]
+            teacher = live_db.lookup_teacher_by_email(ref_email)
+            if not teacher or user["department"] != teacher.get("department"):
+                flash("You can only assign a CA from your own department.", "error")
+                return redirect(url_for("management_category"))
+        else:
+            ca_user = demo_db.get_user(safe_int(assigned_ca_id_str))
+            if not ca_user or user["department"] not in [d.strip() for d in ca_user["department"].split(",")]:
+                flash("You can only assign a CA from your own department.", "error")
+                return redirect(url_for("management_category"))
+            
+    try:
+        payload["assigned_ca_id"] = resolve_and_promote_ca(assigned_ca_id_str, payload["department"], user["id"], user["org_id"])
+    except ValueError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("management_category"))
+        
     demo_db.update_category(category_id, payload)
     flash("Category mapping updated.", "success")
     return redirect(url_for("management_category"))
@@ -1615,6 +1827,350 @@ def add_security_headers(response):
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
+
+
+@app.route("/impersonate-hod", methods=["POST"])
+@role_required("SUPER_ADMIN", "ADMIN")
+def impersonate_hod():
+    department = request.form.get("department", "").strip()
+    if not department:
+        flash("Department is required to impersonate HOD.", "error")
+        return redirect(url_for(route_for_role(session["role"])))
+    session["acting_role"] = "HOD"
+    session["acting_department"] = department
+    session["available_departments"] = [d["code"] for d in live_departments(session.get("org_id") or resolve_user_org(session["user_email"], session["department"]))]
+    # Audit: impersonation start
+    demo_db.log_audit_event(
+        "IMPERSONATION_START", session["user_id"],
+        session.get("org_id", ""),
+        target_type="department", target_id=None,
+        details={"department": department, "original_role": session["role"]},
+    )
+    flash(f"Now acting as HOD for {department} department.", "success")
+    return redirect(url_for("hod_dashboard"))
+
+
+@app.route("/exit-hod-mode")
+@role_required("HOD")
+def exit_hod_mode():
+    acting_dept = session.get("acting_department", "")
+    if "acting_role" in session:
+        del session["acting_role"]
+    if "acting_department" in session:
+        del session["acting_department"]
+    if "available_departments" in session:
+        del session["available_departments"]
+    # Audit: impersonation end
+    demo_db.log_audit_event(
+        "IMPERSONATION_END", session["user_id"],
+        session.get("org_id", ""),
+        target_type="department", target_id=None,
+        details={"department": acting_dept},
+    )
+    flash("Exited HOD impersonation mode.", "success")
+    return redirect(url_for(route_for_role(session["role"])))
+
+
+@app.route("/switch-acting-department", methods=["POST"])
+@role_required("HOD")
+def switch_acting_department():
+    if "acting_role" not in session:
+        flash("You are not currently impersonating HOD.", "error")
+        return redirect(url_for(route_for_role(session["role"])))
+    old_dept = session.get("acting_department", "")
+    department = request.form.get("department", "").strip()
+    if not department:
+        flash("Invalid department selected.", "error")
+        return redirect(url_for("hod_dashboard"))
+    session["acting_department"] = department
+    # Audit: department switch
+    demo_db.log_audit_event(
+        "IMPERSONATION_SWITCH", session["user_id"],
+        session.get("org_id", ""),
+        target_type="department", target_id=None,
+        details={"from_department": old_dept, "to_department": department},
+    )
+    flash(f"Switched acting HOD department to {department}.", "success")
+    return redirect(url_for("hod_dashboard"))
+
+
+@app.route("/super-admin/locations", methods=["GET", "POST"])
+@role_required("SUPER_ADMIN")
+def location_management():
+    user = current_user()
+    if request.method == "POST":
+        block = request.form.get("block", "").strip()
+        floor = request.form.get("floor", "").strip()
+        room_no = request.form.get("room_no", "").strip()
+        name = request.form.get("name", "").strip()
+        if not all([block, floor, room_no]):
+            flash("Block, Floor, and Room Number are required.", "error")
+            return redirect(url_for("location_management"))
+        try:
+            demo_db.create_location(user["org_id"], block, floor, room_no, name)
+            demo_db.log_audit_event("LOCATION_CREATED", user["id"], user["org_id"],
+                                   target_type="location", details={"block": block, "floor": floor, "room_no": room_no})
+            flash(f"Location {block} - {floor} - {room_no} created successfully.", "success")
+        except Exception as e:
+            flash(f"Failed to create location: {e}", "error")
+        return redirect(url_for("location_management"))
+
+    search = request.args.get("q", "").strip()
+    locations = live_db.fetch_locations()
+    filtered_locations = [loc for loc in locations if str(loc.get("ORG_ID", "2000")) == str(user["org_id"])]
+    if search:
+        search_lower = search.lower()
+        filtered_locations = [loc for loc in filtered_locations
+                              if search_lower in (loc.get("block") or "").lower()
+                              or search_lower in (loc.get("floor") or "").lower()
+                              or search_lower in (loc.get("room_no") or "").lower()
+                              or search_lower in (loc.get("name") or "").lower()]
+    return render_template("location_management.html", locations=filtered_locations, search=search, **page_context("Location Management"))
+
+
+# Department Management removed (handled directly in DB)
+
+
+@app.route("/hod/ca-assignments", methods=["GET", "POST"])
+@role_required("HOD")
+def ca_assignments():
+    user = current_user()
+    if request.method == "POST":
+        faculty_id = safe_int(request.form.get("faculty_id", "0"))
+        category_id = safe_int(request.form.get("category_id", "0"))
+        block = request.form.get("block", "").strip()
+
+        if not faculty_id or not category_id or not block:
+            flash("Faculty, Category, and Block are required.", "error")
+            return redirect(url_for("ca_assignments"))
+
+        faculty_user = demo_db.get_user(faculty_id)
+        if not faculty_user:
+            flash("Selected faculty not found.", "error")
+            return redirect(url_for("ca_assignments"))
+
+        if faculty_user["role"] != "CA":
+            try:
+                demo_db.update_user(faculty_id, {
+                    "name": faculty_user["name"],
+                    "email": faculty_user["email"],
+                    "role": "CA",
+                    "department": user["department"]
+                })
+                demo_db.log_audit_event(
+                    "CA_PROMOTED", user["id"], user["org_id"],
+                    target_type="user", target_id=faculty_id,
+                    details={"promoted_name": faculty_user["name"], "department": user["department"]},
+                )
+                flash(f"Promoted {faculty_user['name']} to Concerned Authority.", "success")
+            except Exception as e:
+                flash(f"Failed to promote faculty: {e}", "error")
+                return redirect(url_for("ca_assignments"))
+
+        try:
+            demo_db.create_ca_assignment(category_id, faculty_id, block)
+            demo_db.log_audit_event(
+                "CA_BLOCK_ASSIGNED", user["id"], user["org_id"],
+                target_type="ca_assignment", target_id=faculty_id,
+                details={"ca_name": faculty_user["name"], "category_id": category_id, "block": block},
+            )
+            flash("CA assigned to category and block successfully.", "success")
+        except Exception as e:
+            flash(f"Assignment failed: {e}", "error")
+        return redirect(url_for("ca_assignments"))
+
+    faculties = demo_db.list_users(role="FACULTY", department=user["department"], org_id=user["org_id"])
+    cas = demo_db.list_users(role="CA", department=user["department"], org_id=user["org_id"])
+    promoteable_users = faculties + cas
+
+    categories = demo_db.list_categories(department=user["department"], org_id=user["org_id"])
+    
+    locations = live_db.fetch_locations()
+    blocks = sorted(list(set(loc["block"] for loc in locations if loc.get("block"))))
+
+    assignments = demo_db.list_ca_assignments(department=user["department"])
+
+    return render_template(
+        "ca_assignments.html",
+        users=promoteable_users,
+        categories=categories,
+        blocks=blocks,
+        assignments=assignments,
+        **page_context("CA Assignments")
+    )
+
+
+@app.route("/hod/ca-assignments/<int:assignment_id>/delete", methods=["POST"])
+@role_required("HOD")
+def delete_ca_assignment(assignment_id):
+    try:
+        demo_db.delete_ca_assignment(assignment_id)
+        flash("CA assignment removed successfully.", "success")
+    except Exception as e:
+        flash(f"Failed to delete assignment: {e}", "error")
+    return redirect(url_for("ca_assignments"))
+
+# ── New Feature Routes ──────────────────────────────────────────────
+
+# Location edit/delete (Feature 2)
+@app.route("/super-admin/locations/<int:location_id>/update", methods=["POST"])
+@role_required("SUPER_ADMIN")
+def update_location(location_id):
+    user = current_user()
+    block = request.form.get("block", "").strip()
+    floor = request.form.get("floor", "").strip()
+    room_no = request.form.get("room_no", "").strip()
+    name = request.form.get("name", "").strip()
+    if not all([block, floor, room_no]):
+        flash("Block, Floor, and Room Number are required.", "error")
+        return redirect(url_for("location_management"))
+    try:
+        live_db.update_location(location_id, block, floor, room_no, name)
+        demo_db.log_audit_event("LOCATION_UPDATED", user["id"], user["org_id"],
+                               target_type="location", target_id=location_id,
+                               details={"block": block, "floor": floor, "room_no": room_no})
+        flash("Location updated successfully.", "success")
+    except Exception as e:
+        flash(f"Failed to update location: {e}", "error")
+    return redirect(url_for("location_management"))
+
+
+@app.route("/super-admin/locations/<int:location_id>/delete", methods=["POST"])
+@role_required("SUPER_ADMIN")
+def delete_location(location_id):
+    user = current_user()
+    try:
+        loc = live_db.get_location(location_id)
+        live_db.delete_location(location_id)
+        demo_db.log_audit_event("LOCATION_DELETED", user["id"], user["org_id"],
+                               target_type="location", target_id=location_id,
+                               details={"block": loc.get("block") if loc else "", "room_no": loc.get("room_no") if loc else ""})
+        flash("Location deleted successfully.", "success")
+    except ValueError as e:
+        flash(str(e), "error")
+    except Exception as e:
+        flash(f"Failed to delete location: {e}", "error")
+    return redirect(url_for("location_management"))
+
+
+# Department edit/archive routes removed
+
+
+# Problem Type Management (Feature 8)
+@app.route("/management/problem-types", methods=["GET", "POST"])
+@role_required("HOD", "SUPER_ADMIN")
+def management_problem_types():
+    user = current_user()
+    if request.method == "POST":
+        category_id = safe_int(request.form.get("category_id", "0"))
+        problem_name = request.form.get("problem_name", "").strip()
+        if not category_id or not problem_name:
+            flash("Category and Problem Name are required.", "error")
+            return redirect(url_for("management_problem_types"))
+        try:
+            pt_id = demo_db.create_problem_type(category_id, problem_name)
+            demo_db.log_audit_event("PROBLEM_TYPE_CREATED", user["id"], user["org_id"],
+                                   target_type="problem_type", target_id=pt_id,
+                                   details={"problem_name": problem_name, "category_id": category_id})
+            flash(f"Problem type '{problem_name}' created.", "success")
+        except ValueError as e:
+            flash(str(e), "error")
+        except Exception as e:
+            flash(f"Failed: {e}", "error")
+        return redirect(url_for("management_problem_types"))
+
+    search = request.args.get("q", "").strip()
+    filter_cat = safe_int(request.args.get("category_id", "0")) or None
+    if user["role"] == "HOD":
+        categories = demo_db.list_categories(department=user["department"], org_id=user["org_id"])
+    else:
+        categories = demo_db.list_categories(org_id=user["org_id"])
+    problem_types = demo_db.list_problem_types(category_id=filter_cat, search=search)
+    # Filter by department for HODs
+    if user["role"] == "HOD":
+        dept_cat_ids = {c["id"] for c in categories}
+        problem_types = [pt for pt in problem_types if pt["category_id"] in dept_cat_ids]
+    return render_template("problem_type_management.html",
+                           categories=categories, problem_types=problem_types,
+                           search=search, filter_cat=filter_cat,
+                           **page_context("Problem Types"))
+
+
+@app.route("/management/problem-types/<int:pt_id>/update", methods=["POST"])
+@role_required("HOD", "SUPER_ADMIN")
+def update_problem_type(pt_id):
+    user = current_user()
+    problem_name = request.form.get("problem_name", "").strip()
+    if not problem_name:
+        flash("Problem name is required.", "error")
+        return redirect(url_for("management_problem_types"))
+    try:
+        demo_db.update_problem_type(pt_id, problem_name)
+        demo_db.log_audit_event("PROBLEM_TYPE_UPDATED", user["id"], user["org_id"],
+                               target_type="problem_type", target_id=pt_id,
+                               details={"problem_name": problem_name})
+        flash("Problem type updated.", "success")
+    except ValueError as e:
+        flash(str(e), "error")
+    except Exception as e:
+        flash(f"Failed: {e}", "error")
+    return redirect(url_for("management_problem_types"))
+
+
+@app.route("/management/problem-types/<int:pt_id>/delete", methods=["POST"])
+@role_required("HOD", "SUPER_ADMIN")
+def delete_problem_type(pt_id):
+    user = current_user()
+    try:
+        demo_db.delete_problem_type(pt_id)
+        demo_db.log_audit_event("PROBLEM_TYPE_DELETED", user["id"], user["org_id"],
+                               target_type="problem_type", target_id=pt_id)
+        flash("Problem type deleted.", "success")
+    except ValueError as e:
+        flash(str(e), "error")
+    except Exception as e:
+        flash(f"Failed: {e}", "error")
+    return redirect(url_for("management_problem_types"))
+
+
+@app.route("/management/problem-types/<int:pt_id>/toggle", methods=["POST"])
+@role_required("HOD", "SUPER_ADMIN")
+def toggle_problem_type(pt_id):
+    user = current_user()
+    try:
+        existing = demo_db.get_problem_type(pt_id)
+        if not existing:
+            flash("Problem type not found.", "error")
+            return redirect(url_for("management_problem_types"))
+        new_state = not existing["is_active"]
+        demo_db.toggle_problem_type(pt_id, new_state)
+        action = "activated" if new_state else "deactivated"
+        flash(f"Problem type {action}.", "success")
+    except Exception as e:
+        flash(f"Failed: {e}", "error")
+    return redirect(url_for("management_problem_types"))
+
+
+# Audit Log route removed (logging happens in DB but not visible in frontend)
+
+
+# API: Categories by department (Feature 7)
+@app.route("/api/categories-by-department")
+def api_categories_by_department():
+    department = request.args.get("department", "").strip()
+    if not department:
+        return jsonify([])
+    user = current_user()
+    cats = demo_db.list_categories(department=department, org_id=user["org_id"], active_only=True)
+    return jsonify([{"id": c["id"], "category_name": c["category_name"], "department": c["department"],
+                     "assigned_ca_name": c.get("assigned_ca_name", "")} for c in cats])
+
+
+# API: Problem types by category (Feature 8)
+@app.route("/api/problem-types/<int:category_id>")
+def api_problem_types(category_id):
+    pts = demo_db.list_problem_types(category_id=category_id, active_only=True)
+    return jsonify([{"id": pt["id"], "problem_name": pt["problem_name"]} for pt in pts])
 
 
 if __name__ == "__main__":

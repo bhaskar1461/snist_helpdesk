@@ -44,10 +44,10 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      <header class="admin-topbar">
-        <div><p class="kicker">demo_categories</p><h2>Category to CA Mapping</h2><span>HOD manages Concerned Authorities by assigning categories to CAs in the department.</span></div>
-        <div class="profile-pill"><div class="avatar">{{ role_title[0] }}</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
-      </header>
+      {% set page_kicker = "demo_categories" %}
+      {% set page_heading = "Category to CA Mapping" %}
+      {% set page_description = "HOD manages Concerned Authorities by assigning categories to CAs in the department." %}
+      {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -68,19 +68,29 @@
               {% if current_role == 'SUPER_ADMIN' %}
                 <label class="field">
                   <span>Department</span>
-                  <select name="department" required>
+                  <select name="department" id="category-dept-select" required>
                     {% for department in departments %}
                       <option value="{{ department.code }}" {% if selected_department == department.code %}selected{% endif %}>{{ department.code }}</option>
                     {% endfor %}
                   </select>
                 </label>
               {% endif %}
-              <label class="field"><span>Category Name</span><input type="text" name="category_name" required></label>
+              <label class="field">
+                <span>Category Name</span>
+                <select id="category-name-select" required onchange="onCategoryNameSelectChange()">
+                  <!-- Dynamically populated -->
+                </select>
+              </label>
+              <label class="field" id="custom-category-field" style="display:none;">
+                <span>Custom Category Name</span>
+                <input type="text" id="custom-category-input">
+              </label>
+              <input type="hidden" name="category_name" id="category-name-hidden" required>
               <label class="field">
                 <span>Concerned Authority</span>
-                <select name="assigned_ca_id" required>
+                <select name="assigned_ca_id" id="category-ca-select" required>
                   <option value="">Select CA</option>
-                  {% for ca in ca_users %}
+                  {% for ca in ca_candidates %}
                     <option value="{{ ca.id }}">{{ ca.name }} | {{ ca.department }}</option>
                   {% endfor %}
                 </select>
@@ -103,7 +113,7 @@
             {% endif %}
             <select name="ca">
               <option value="">All CAs</option>
-              {% for ca in ca_users %}
+              {% for ca in active_cas %}
                 <option value="{{ ca.id }}" {% if filters.ca|string == ca.id|string %}selected{% endif %}>{{ ca.name }}</option>
               {% endfor %}
             </select>
@@ -142,13 +152,13 @@
                       </div>
                     </td>
                   </tr>
-                  <tr id="cat-edit-{{ item.id }}" class="edit-row" style="display:none;">
+                  <tr id="cat-edit-{{ item.id }}" class="edit-row" style="display:none;" data-dept="{{ item.department }}" data-ca-id="{{ item.assigned_ca_id }}">
                     <form method="post" action="{{ url_for('update_category', category_id=item.id) }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <td><input type="text" name="category_name" value="{{ item.category_name }}" required></td>
                       <td>
                         {% if current_role == 'SUPER_ADMIN' %}
-                          <select name="department" required>
+                          <select name="department" required onchange="onEditDeptChange({{ item.id }}, this)">
                             {% for department in departments %}
                               <option value="{{ department.code }}" {% if item.department == department.code %}selected{% endif %}>{{ department.code }}</option>
                             {% endfor %}
@@ -159,7 +169,7 @@
                       </td>
                       <td colspan="3">
                         <select name="assigned_ca_id" required>
-                          {% for ca in ca_users %}
+                          {% for ca in ca_candidates %}
                             <option value="{{ ca.id }}" {% if item.assigned_ca_id == ca.id %}selected{% endif %}>{{ ca.name }} | {{ ca.department }}</option>
                           {% endfor %}
                         </select>
@@ -199,17 +209,187 @@
   </div>
 
   <script>
+    const allUsers = {{ ca_candidates | tojson }};
+
+    function filterCADropdown(deptSelect, caSelect, selectedCaId = '') {
+      let deptVal = '';
+      if (deptSelect) {
+        deptVal = deptSelect.value;
+      } else {
+        deptVal = "{{ current_user.department if current_user else '' }}";
+      }
+
+      // Clear existing options
+      caSelect.innerHTML = '';
+      
+      const placeholderOpt = document.createElement('option');
+      placeholderOpt.value = '';
+      placeholderOpt.textContent = 'Select CA';
+      caSelect.appendChild(placeholderOpt);
+
+      if (!deptVal) return;
+
+      const deptValLower = deptVal.toLowerCase();
+      const deptUsers = [];
+
+      allUsers.forEach(u => {
+        if (!u.department) return;
+        const depts = u.department.split(',').map(d => d.trim().toLowerCase());
+        if (depts.includes(deptValLower)) {
+          deptUsers.push(u);
+        }
+      });
+
+      // Sort group alphabetically
+      const sortByUserName = (a, b) => (a.name || '').localeCompare(b.name || '');
+      deptUsers.sort(sortByUserName);
+
+      // Create optgroup for department users
+      if (deptUsers.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = `${deptVal} Department Users`;
+        deptUsers.forEach(u => {
+          const opt = document.createElement('option');
+          opt.value = u.id;
+          opt.textContent = `${u.name} | ${u.department} (${u.role})`;
+          if (String(u.id) === String(selectedCaId)) {
+            opt.selected = true;
+          }
+          group.appendChild(opt);
+        });
+        caSelect.appendChild(group);
+      }
+    }
+
     function toggleCatEdit(catId) {
       const viewRow = document.getElementById('cat-view-' + catId);
       const editRow = document.getElementById('cat-edit-' + catId);
       if (editRow.style.display === 'none') {
         viewRow.style.display = 'none';
         editRow.style.display = '';
+        
+        const deptSelect = editRow.querySelector('select[name="department"]');
+        const caSelect = editRow.querySelector('select[name="assigned_ca_id"]');
+        const initialDept = editRow.getAttribute('data-dept');
+        const initialCaId = editRow.getAttribute('data-ca-id');
+        
+        filterCADropdown(deptSelect, caSelect, initialCaId);
       } else {
         viewRow.style.display = '';
         editRow.style.display = 'none';
       }
     }
+
+    function onEditDeptChange(catId, deptSelect) {
+      const editRow = document.getElementById('cat-edit-' + catId);
+      const caSelect = editRow.querySelector('select[name="assigned_ca_id"]');
+      filterCADropdown(deptSelect, caSelect);
+    }
+
+    const TYPICAL_CATEGORIES = {
+      "CSE": ["Lab Computer Malfunction", "Projector & Smart Board", "Lab Software Setup", "Networking / LAN Switch", "Classroom Furniture", "Lab Electrical Outlets"],
+      "ECE": ["Lab Equipment / CRO / Multimeter", "Projector Issue", "AC / Fan Malfunction", "Classroom Board", "Lab Components Supply", "Embedded Kits Issue"],
+      "EEE": ["High Voltage Lab Equipment", "Electrical Panel board", "AC / Fan Malfunction", "Lab Workstation", "Wiring issue"],
+      "IT": ["Lab Workstation / Desktop", "Server connectivity", "Projector Issue", "Software Installation", "LAN Outlet issue"],
+      "ME": ["Workshop Machinery Repair", "Lab Tools missing/broken", "AC / Fan Malfunction", "Drawing Board issue", "Safety Equipment"],
+      "ECM": ["Lab Computer Repair", "Embedded Software Setup", "Projector Issue", "AC / Fan Malfunction"],
+      "S and H": ["Physics/Chemistry Lab equipment", "Classroom Benches & Chairs", "Fan / Lighting issue", "Chalkboard replacement"],
+      "MBA": ["Seminar Hall Projector", "Classroom Furniture", "AC / Fan Malfunction", "Smart Display Board"],
+      "EPE": ["Power Lab Equipment", "Panel Board Issue", "AC / Fan Malfunction", "Lab Component Damage"],
+      "ICT": ["Campus WiFi & Internet", "Internet Speed / Outage", "Official Email Access", "Student Portal Issue", "Biometric Attendance Device", "Printers & Copiers"],
+      "SAP": ["ERP Portal Downtime", "User Credentials Reset", "SAP Module Access Error", "Fee Payment Gateway Issue"],
+      "CDC": ["Placement Seminar Hall setup", "Internet for recruitments", "Audio / Video system repair", "Interview Cabins Furniture"],
+      "Dean Trainings depar": ["Training room projector", "Training Lab Computers", "Feedback system portal", "AC / Fan Malfunction"],
+      "Facilities": ["Water Supply & Plumbing", "Restroom Hygiene", "Drinking Water Dispenser", "Housekeeping & Cleaning", "Gardening & Lawn care", "Canteen Hygiene"],
+      "Maintenance": ["Electrical Outage", "Elevator / Lift Breakdowns", "Door Lock & Carpentry", "Building Painting / Plaster", "Window Glass Repair", "Air Conditioning Unit Service"],
+      "Administration": ["ID Card Printing", "Stationery Supply", "Official Document Signing", "Notice Board updates", "Campus Security / Gate pass", "Event Logistic Support"]
+    };
+
+    const GENERAL_CATEGORIES = ["Infrastructure Repair", "Equipment Malfunction", "IT Support", "Cleaning & Housekeeping", "Administrative Request"];
+
+    function updateCategoryNameDropdown() {
+      const deptSelect = document.getElementById('category-dept-select');
+      const catSelect = document.getElementById('category-name-select');
+      
+      if (!catSelect) return;
+
+      let deptVal = '';
+      if (deptSelect) {
+        deptVal = deptSelect.value;
+      } else {
+        deptVal = "{{ current_user.department if current_user else '' }}";
+      }
+
+      // Clear dropdown options
+      catSelect.innerHTML = '';
+
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = 'Select Category Name';
+      catSelect.appendChild(defaultOpt);
+
+      const categories = TYPICAL_CATEGORIES[deptVal] || GENERAL_CATEGORIES;
+      categories.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        catSelect.appendChild(opt);
+      });
+
+      const otherOpt = document.createElement('option');
+      otherOpt.value = 'other';
+      otherOpt.textContent = 'Other (Type Custom Category)';
+      catSelect.appendChild(otherOpt);
+
+      onCategoryNameSelectChange();
+    }
+
+    function onCategoryNameSelectChange() {
+      const catSelect = document.getElementById('category-name-select');
+      const customField = document.getElementById('custom-category-field');
+      const customInput = document.getElementById('custom-category-input');
+      const hiddenInput = document.getElementById('category-name-hidden');
+
+      if (!catSelect || !customField || !customInput || !hiddenInput) return;
+
+      if (catSelect.value === 'other') {
+        customField.style.display = 'block';
+        customInput.required = true;
+        hiddenInput.value = customInput.value;
+      } else {
+        customField.style.display = 'none';
+        customInput.required = false;
+        hiddenInput.value = catSelect.value;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const mainDeptSelect = document.getElementById('category-dept-select');
+      const mainCaSelect = document.getElementById('category-ca-select');
+      const customInput = document.getElementById('custom-category-input');
+      const hiddenInput = document.getElementById('category-name-hidden');
+
+      if (customInput && hiddenInput) {
+        customInput.addEventListener('input', () => {
+          hiddenInput.value = customInput.value;
+        });
+      }
+      
+      if (mainCaSelect) {
+        if (mainDeptSelect) {
+          mainDeptSelect.addEventListener('change', () => {
+            filterCADropdown(mainDeptSelect, mainCaSelect);
+            updateCategoryNameDropdown();
+          });
+          filterCADropdown(mainDeptSelect, mainCaSelect);
+          updateCategoryNameDropdown();
+        } else {
+          filterCADropdown(null, mainCaSelect);
+          updateCategoryNameDropdown();
+        }
+      }
+    });
+
     function confirmCatDelete(catId, catName) {
       document.getElementById('delete-cat-name').textContent = catName;
       document.getElementById('delete-form').action = '/management/category-management/' + catId + '/delete';

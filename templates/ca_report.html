@@ -25,10 +25,10 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      <header class="admin-topbar">
-        <div><p class="kicker">Reports</p><h2>Resolved Tickets Report</h2><span>All tickets assigned to you that have been resolved, with time-to-resolution metrics.</span></div>
-        <div class="profile-pill"><div class="avatar">C</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
-      </header>
+      {% set page_kicker = "Reports" %}
+      {% set page_heading = "Resolved Tickets Report" %}
+      {% set page_description = "All tickets assigned to you that have been resolved, with time-to-resolution metrics." %}
+      {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}

@@ -44,17 +44,33 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-grid">
             <label class="field">
-              <span>Title</span>
-              <input type="text" name="title" placeholder="Short complaint title" required>
+              <span>Department</span>
+              <select id="department-select" onchange="updateCategories()" required>
+                <option value="">Select Department</option>
+                {% for dept in departments %}
+                  <option value="{{ dept.code }}">{{ dept.name }}</option>
+                {% endfor %}
+              </select>
             </label>
             <label class="field">
               <span>Category</span>
-              <select name="category_id" required>
+              <select id="category-select" name="category_id" onchange="updateProblemTypes()" required disabled>
                 <option value="">Select category</option>
-                {% for category in categories %}
-                  <option value="{{ category.id }}">{{ category.category_name }} | {{ category.department }} | {{ category.assigned_ca_name }}</option>
-                {% endfor %}
               </select>
+            </label>
+            <label class="field">
+              <span>Problem Type</span>
+              <select id="problem-type-select" name="problem_type_id" onchange="checkProblemType()" required disabled>
+                <option value="">Select category first</option>
+              </select>
+            </label>
+          </div>
+
+          <!-- Other Problem input -->
+          <div id="other-problem-group" style="display:none; margin-top:1rem;">
+            <label class="field field-large">
+              <span>Specify Other Problem</span>
+              <input type="text" name="other_problem" id="other-problem-input" placeholder="Please describe your specific problem type">
             </label>
           </div>
 
@@ -106,6 +122,84 @@
   </div>
 
   <script>
+    // Build categories data
+    const ALL_CATEGORIES = {{ categories | tojson }};
+
+    function updateCategories() {
+      const deptSelect = document.getElementById('department-select');
+      const catSelect = document.getElementById('category-select');
+      const selectedDept = deptSelect.value;
+
+      catSelect.innerHTML = '<option value="">Select category</option>';
+      catSelect.disabled = true;
+
+      const ptSelect = document.getElementById('problem-type-select');
+      ptSelect.innerHTML = '<option value="">Select category first</option>';
+      ptSelect.disabled = true;
+      document.getElementById('other-problem-group').style.display = 'none';
+      document.getElementById('other-problem-input').required = false;
+
+      if (selectedDept) {
+        const filtered = ALL_CATEGORIES.filter(c => c.department === selectedDept);
+        filtered.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = c.category_name + ' | ' + (c.assigned_ca_name || '');
+          catSelect.appendChild(opt);
+        });
+        if (filtered.length > 0) {
+          catSelect.disabled = false;
+        }
+      }
+    }
+
+    function updateProblemTypes() {
+      const catSelect = document.getElementById('category-select');
+      const ptSelect = document.getElementById('problem-type-select');
+      const otherGroup = document.getElementById('other-problem-group');
+      const otherInput = document.getElementById('other-problem-input');
+      const categoryId = catSelect.value;
+
+      ptSelect.innerHTML = '<option value="">Select problem type</option>';
+      ptSelect.disabled = true;
+      otherGroup.style.display = 'none';
+      otherInput.required = false;
+      otherInput.value = '';
+
+      if (categoryId) {
+        fetch('/api/problem-types/' + categoryId)
+          .then(res => res.json())
+          .then(data => {
+            data.forEach(pt => {
+              const opt = document.createElement('option');
+              opt.value = pt.id;
+              opt.textContent = pt.problem_name;
+              ptSelect.appendChild(opt);
+            });
+            // Add 'Other' option
+            const otherOpt = document.createElement('option');
+            otherOpt.value = 'other';
+            otherOpt.textContent = 'Other (Specify below)';
+            ptSelect.appendChild(otherOpt);
+            ptSelect.disabled = false;
+          });
+      }
+    }
+
+    function checkProblemType() {
+      const ptSelect = document.getElementById('problem-type-select');
+      const otherGroup = document.getElementById('other-problem-group');
+      const otherInput = document.getElementById('other-problem-input');
+      if (ptSelect.value === 'other') {
+        otherGroup.style.display = 'block';
+        otherInput.required = true;
+      } else {
+        otherGroup.style.display = 'none';
+        otherInput.required = false;
+        otherInput.value = '';
+      }
+    }
+
     // Build location data from server-side locations list
     const ALL_LOCATIONS = {{ locations | tojson }};
 

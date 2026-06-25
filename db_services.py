@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 import os
@@ -118,22 +119,67 @@ class BaseMySQLService:
 
 
 class LiveDbService(BaseMySQLService):
-    def fetch_departments(self):
+    def fetch_departments(self, include_archived=True):
         if not self.enabled:
             return []
         sql = """
             SELECT DISTINCT
+                b.BRANCH_ID,
                 b.BRANCH_CODE AS department_code,
                 b.BRANCH_NAME AS department_name,
                 CAST(b.ORG_ID AS CHAR) AS org_id,
                 b.HOD_ID
+        """
+        # Check if is_archived column exists and include it
+        try:
+            with self.connection() as conn, conn.cursor() as cur:
+                cur.execute("SHOW COLUMNS FROM branch_detail LIKE 'is_archived'")
+                has_archived = cur.fetchone() is not None
+        except Exception:
+            has_archived = False
+
+        if has_archived:
+            sql += ", COALESCE(b.is_archived, 0) AS is_archived"
+
+        sql += """
             FROM branch_detail b
             WHERE COALESCE(b.BRANCH_CODE, '') <> ''
-            ORDER BY b.BRANCH_CODE
         """
+        if has_archived and not include_archived:
+            sql += " AND COALESCE(b.is_archived, 0) = 0"
+        sql += " ORDER BY b.BRANCH_CODE"
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql)
             return cursor.fetchall()
+
+    def update_location(self, location_id, block, floor, room_no, name):
+        """Update a location row."""
+        if not self.enabled:
+            return
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE location SET block = %s, floor = %s, room_no = %s, name = %s WHERE id = %s",
+                (block, floor, room_no, name, location_id),
+            )
+
+    def delete_location(self, location_id):
+        """Delete a location if no tickets reference it."""
+        if not self.enabled:
+            return
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS cnt FROM demo_tickets WHERE location_id = %s", (location_id,))
+            row = cursor.fetchone()
+            if row and row["cnt"] > 0:
+                raise ValueError("Cannot delete a location that is referenced by existing tickets.")
+            cursor.execute("DELETE FROM location WHERE id = %s", (location_id,))
+
+    def get_location(self, location_id):
+        """Get a single location by ID."""
+        if not self.enabled:
+            return None
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT id, block, floor, room_no, name FROM location WHERE id = %s", (location_id,))
+            return cursor.fetchone()
 
     def fetch_locations(self):
         """Return all location rows (block, floor, room_no, name)."""
@@ -246,7 +292,10 @@ class DemoDbService(BaseMySQLService):
         statements = [statement.strip() for statement in sql.split(";") if statement.strip()]
         with self.connection() as connection, connection.cursor() as cursor:
             for statement in statements:
-                cursor.execute(statement)
+                try:
+                    cursor.execute(statement)
+                except Exception as e:
+                    print(f"Warning executing statement in ensure_schema: {e}")
 
     def seed_defaults(self, users, categories):
         if not self.enabled:
@@ -539,18 +588,55 @@ class DemoDbService(BaseMySQLService):
                 (1 if is_active else 0, category_id),
             )
 
-    def create_ticket(self, title, description, category_id, created_by, org_id, location_id=None):
+    def create_ticket(self, title, description, category_id, created_by, org_id, location_id=None, problem_type_id=None):
         category = self.get_category(category_id)
         if not category:
             raise ValueError("Selected category does not exist.")
+
+        # Auto-generate title from category + problem type if title is empty
+        if not title:
+            problem_name = None
+            if problem_type_id:
+                pt = self.get_problem_type(problem_type_id)
+                if pt:
+                    problem_name = pt["problem_name"]
+            if problem_name:
+                title = f"{category['category_name']} \u2013 {problem_name}"
+            else:
+                title = category["category_name"]
+
+        # Retrieve block name if location_id is provided
+        block_name = None
+        if location_id:
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute("SELECT block FROM location WHERE id = %s", (location_id,))
+                row = cursor.fetchone()
+                if row:
+                    block_name = row.get("block")
+
+        # Resolve assigned CA dynamically
+        assigned_ca_id = self.resolve_assigned_ca(category_id, block_name) or category["assigned_ca_id"]
+
+        # Check if problem_type_id column exists
+        has_pt_col = self._has_column("demo_tickets", "problem_type_id")
+
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO demo_tickets (title, description, category_id, created_by, assigned_to, status, org_id, location_id)
-                VALUES (%s, %s, %s, %s, %s, 'PENDING', %s, %s)
-                """,
-                (title, description, category_id, created_by, category["assigned_ca_id"], org_id, location_id),
-            )
+            if has_pt_col:
+                cursor.execute(
+                    """
+                    INSERT INTO demo_tickets (title, description, category_id, problem_type_id, created_by, assigned_to, status, org_id, location_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', %s, %s)
+                    """,
+                    (title, description, category_id, problem_type_id, created_by, assigned_ca_id, org_id, location_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO demo_tickets (title, description, category_id, created_by, assigned_to, status, org_id, location_id)
+                    VALUES (%s, %s, %s, %s, %s, 'PENDING', %s, %s)
+                    """,
+                    (title, description, category_id, created_by, assigned_ca_id, org_id, location_id),
+                )
             ticket_id = cursor.lastrowid
             cursor.execute(
                 """
@@ -559,10 +645,29 @@ class DemoDbService(BaseMySQLService):
                 """,
                 (ticket_id, created_by, "Ticket created"),
             )
+            try:
+                from email_services import send_allocation_email
+                ca_user = self.get_user(assigned_ca_id)
+                if ca_user and ca_user.get("email"):
+                    send_allocation_email(ca_user["name"], ca_user["email"], ticket_id, category["category_name"])
+            except Exception:
+                pass
             return ticket_id
 
+    def _has_column(self, table, column):
+        """Check if a column exists in a table."""
+        try:
+            with self.connection() as conn, conn.cursor() as cur:
+                cur.execute(f"SHOW COLUMNS FROM {table} LIKE %s", (column,))
+                return cur.fetchone() is not None
+        except Exception:
+            return False
+
     def ticket_query_base(self):
-        return """
+        has_pt = self._has_column("demo_tickets", "problem_type_id")
+        pt_select = ", pt.problem_name AS problem_type_name" if has_pt else ""
+        pt_join = "LEFT JOIN demo_problem_types pt ON pt.id = t.problem_type_id" if has_pt else ""
+        return f"""
             SELECT
                 t.id,
                 t.title,
@@ -582,11 +687,13 @@ class DemoDbService(BaseMySQLService):
                 loc.floor AS location_floor,
                 loc.room_no AS location_room_no,
                 loc.name AS location_room_name
+                {pt_select}
             FROM demo_tickets t
             INNER JOIN demo_categories c ON c.id = t.category_id
             INNER JOIN demo_users creator ON creator.id = t.created_by
             INNER JOIN demo_users assignee ON assignee.id = t.assigned_to
             LEFT JOIN location loc ON loc.id = t.location_id
+            {pt_join}
             WHERE 1=1
         """
 
@@ -718,6 +825,13 @@ class DemoDbService(BaseMySQLService):
                 """,
                 (ticket_id, actor["id"], ticket["status"], status, remarks, time_taken, attachment_path),
             )
+            if status == "RESOLVED":
+                try:
+                    from email_services import send_closure_email
+                    if ticket.get("created_by_email"):
+                        send_closure_email(ticket["created_by_email"], ticket_id)
+                except Exception:
+                    pass
 
     # ── Analytics ────────────────────────────────────────
 
@@ -841,3 +955,299 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.fetchall()
+
+    def create_location(self, org_id, block, floor, room_no, name):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO location (ORG_ID, block, floor, room_no, name)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (org_id, block, floor, room_no, name),
+            )
+            return cursor.lastrowid
+
+    def create_department(self, branch_code, branch_name, org_id):
+        with self.connection() as connection, connection.cursor() as cursor:
+            # Check if department code already exists
+            cursor.execute(
+                "SELECT BRANCH_ID FROM branch_detail WHERE LOWER(BRANCH_CODE) = LOWER(%s) AND ORG_ID = %s LIMIT 1",
+                (branch_code, org_id),
+            )
+            if cursor.fetchone():
+                raise ValueError(f"Department code '{branch_code}' already exists.")
+            cursor.execute(
+                """
+                INSERT INTO branch_detail (BRANCH_CODE, BRANCH_NAME, ORG_ID)
+                VALUES (%s, %s, %s)
+                """,
+                (branch_code, branch_name, org_id),
+            )
+            return cursor.lastrowid
+
+    def list_ca_assignments(self, department=None, search=""):
+        sql = """
+            SELECT a.id, a.category_id, a.ca_id, a.block, a.created_at,
+                   c.category_name, c.department,
+                   u.name AS ca_name, u.email AS ca_email
+            FROM demo_ca_assignments a
+            INNER JOIN demo_categories c ON c.id = a.category_id
+            INNER JOIN demo_users u ON u.id = a.ca_id
+            WHERE 1=1
+        """
+        params = []
+        if department:
+            sql += " AND c.department = %s"
+            params.append(department)
+        if search:
+            like = f"%{search}%"
+            sql += " AND (c.category_name LIKE %s OR u.name LIKE %s OR a.block LIKE %s)"
+            params.extend([like, like, like])
+        sql += " ORDER BY c.category_name, a.block"
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+
+    def create_ca_assignment(self, category_id, ca_id, block):
+        with self.connection() as connection, connection.cursor() as cursor:
+            # Check if assignment already exists
+            cursor.execute(
+                """
+                SELECT id FROM demo_ca_assignments
+                WHERE category_id = %s AND ca_id = %s AND LOWER(block) = LOWER(%s)
+                LIMIT 1
+                """,
+                (category_id, ca_id, block),
+            )
+            if cursor.fetchone():
+                raise ValueError("This CA is already assigned to this category and block.")
+            cursor.execute(
+                """
+                INSERT INTO demo_ca_assignments (category_id, ca_id, block)
+                VALUES (%s, %s, %s)
+                """,
+                (category_id, ca_id, block),
+            )
+            return cursor.lastrowid
+
+    def delete_ca_assignment(self, assignment_id):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("DELETE FROM demo_ca_assignments WHERE id = %s", (assignment_id,))
+
+    def resolve_assigned_ca(self, category_id, block):
+        """
+        Resolve who to assign the ticket to.
+        Multi-CA routing engine (Feature 6):
+        1. Find all CAs assigned to this category+block via demo_ca_assignments.
+        2. If block match found, select least-loaded CA among matches.
+        3. If no block match, find ALL CAs for this category (any block) as secondary pool.
+        4. Fall back to category's default assigned_ca_id.
+        """
+        category = self.get_category(category_id)
+        if not category:
+            return None
+
+        with self.connection() as connection, connection.cursor() as cursor:
+            # Step 1: Exact block match
+            if block:
+                cursor.execute(
+                    "SELECT ca_id FROM demo_ca_assignments WHERE category_id = %s AND LOWER(block) = LOWER(%s)",
+                    (category_id, block),
+                )
+                rows = cursor.fetchall()
+                if rows:
+                    ca_ids = [r["ca_id"] for r in rows]
+                    return self._select_least_loaded_ca(cursor, ca_ids)
+
+            # Step 2: Any block for this category
+            cursor.execute(
+                "SELECT DISTINCT ca_id FROM demo_ca_assignments WHERE category_id = %s",
+                (category_id,),
+            )
+            rows = cursor.fetchall()
+            if rows:
+                ca_ids = [r["ca_id"] for r in rows]
+                return self._select_least_loaded_ca(cursor, ca_ids)
+
+            # Step 3: Fallback to category's default assigned CA
+            return category["assigned_ca_id"]
+
+    def _select_least_loaded_ca(self, cursor, ca_ids):
+        """Given a list of CA IDs, return the one with the fewest active tickets."""
+        if len(ca_ids) == 1:
+            return ca_ids[0]
+        placeholders = ", ".join(["%s"] * len(ca_ids))
+        sql_load = f"""
+            SELECT u.id, COUNT(t.id) AS active_count
+            FROM demo_users u
+            LEFT JOIN demo_tickets t ON t.assigned_to = u.id AND t.status IN ('PENDING', 'IN_PROGRESS', 'REOPENED')
+            WHERE u.id IN ({placeholders})
+            GROUP BY u.id
+            ORDER BY active_count ASC, u.id ASC
+        """
+        cursor.execute(sql_load, ca_ids)
+        load_rows = cursor.fetchall()
+        counts = {r["id"]: r["active_count"] for r in load_rows}
+        return min(ca_ids, key=lambda cid: counts.get(cid, 0))
+
+    # ── Problem Types (Feature 8) ───────────────────────────
+
+    def get_problem_type(self, problem_type_id):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, category_id, problem_name, is_active FROM demo_problem_types WHERE id = %s",
+                (problem_type_id,),
+            )
+            return cursor.fetchone()
+
+    def list_problem_types(self, category_id=None, active_only=False, search=""):
+        sql = """
+            SELECT pt.id, pt.category_id, pt.problem_name, pt.is_active, pt.created_at,
+                   c.category_name, c.department
+            FROM demo_problem_types pt
+            INNER JOIN demo_categories c ON c.id = pt.category_id
+            WHERE 1=1
+        """
+        params = []
+        if category_id:
+            sql += " AND pt.category_id = %s"
+            params.append(category_id)
+        if active_only:
+            sql += " AND pt.is_active = 1"
+        if search:
+            like = f"%{search}%"
+            sql += " AND (pt.problem_name LIKE %s OR c.category_name LIKE %s)"
+            params.extend([like, like])
+        sql += " ORDER BY c.category_name, pt.problem_name"
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+
+    def create_problem_type(self, category_id, problem_name):
+        with self.connection() as connection, connection.cursor() as cursor:
+            # Duplicate check
+            cursor.execute(
+                "SELECT id FROM demo_problem_types WHERE category_id = %s AND LOWER(problem_name) = LOWER(%s) LIMIT 1",
+                (category_id, problem_name),
+            )
+            if cursor.fetchone():
+                raise ValueError(f"Problem type '{problem_name}' already exists for this category.")
+            cursor.execute(
+                "INSERT INTO demo_problem_types (category_id, problem_name) VALUES (%s, %s)",
+                (category_id, problem_name),
+            )
+            return cursor.lastrowid
+
+    def update_problem_type(self, problem_type_id, problem_name):
+        with self.connection() as connection, connection.cursor() as cursor:
+            existing = self.get_problem_type(problem_type_id)
+            if not existing:
+                raise ValueError("Problem type not found.")
+            # Duplicate check within same category
+            cursor.execute(
+                "SELECT id FROM demo_problem_types WHERE category_id = %s AND LOWER(problem_name) = LOWER(%s) AND id != %s LIMIT 1",
+                (existing["category_id"], problem_name, problem_type_id),
+            )
+            if cursor.fetchone():
+                raise ValueError(f"Problem type '{problem_name}' already exists for this category.")
+            cursor.execute(
+                "UPDATE demo_problem_types SET problem_name = %s WHERE id = %s",
+                (problem_name, problem_type_id),
+            )
+
+    def delete_problem_type(self, problem_type_id):
+        with self.connection() as connection, connection.cursor() as cursor:
+            if self._has_column("demo_tickets", "problem_type_id"):
+                cursor.execute("SELECT COUNT(*) AS cnt FROM demo_tickets WHERE problem_type_id = %s", (problem_type_id,))
+                if cursor.fetchone()["cnt"] > 0:
+                    raise ValueError("Cannot delete a problem type that is referenced by tickets.")
+            cursor.execute("DELETE FROM demo_problem_types WHERE id = %s", (problem_type_id,))
+
+    def toggle_problem_type(self, problem_type_id, is_active):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE demo_problem_types SET is_active = %s WHERE id = %s",
+                (1 if is_active else 0, problem_type_id),
+            )
+
+    # ── Audit Events (Feature 11) ───────────────────────────
+
+    def log_audit_event(self, event_type, actor_id, org_id, target_type=None, target_id=None, details=None):
+        """Insert an audit event. `details` can be a dict (will be JSON-serialized)."""
+        details_str = json.dumps(details) if isinstance(details, dict) else (details or "")
+        try:
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO demo_audit_events (event_type, actor_id, target_type, target_id, org_id, details)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (event_type, actor_id, target_type, target_id, org_id, details_str),
+                )
+        except Exception:
+            pass  # Audit should never break main flow
+
+    def list_audit_events(self, org_id=None, event_type=None, search="", from_date=None, to_date=None, limit=100):
+        sql = """
+            SELECT a.id, a.event_type, a.actor_id, a.target_type, a.target_id,
+                   a.org_id, a.details, a.created_at,
+                   u.name AS actor_name, u.email AS actor_email
+            FROM demo_audit_events a
+            INNER JOIN demo_users u ON u.id = a.actor_id
+            WHERE 1=1
+        """
+        params = []
+        if org_id:
+            sql += " AND a.org_id = %s"
+            params.append(org_id)
+        if event_type:
+            sql += " AND a.event_type = %s"
+            params.append(event_type)
+        if search:
+            like = f"%{search}%"
+            sql += " AND (a.details LIKE %s OR u.name LIKE %s OR a.event_type LIKE %s)"
+            params.extend([like, like, like])
+        if from_date:
+            sql += " AND DATE(a.created_at) >= %s"
+            params.append(from_date)
+        if to_date:
+            sql += " AND DATE(a.created_at) <= %s"
+            params.append(to_date)
+        sql += " ORDER BY a.created_at DESC LIMIT %s"
+        params.append(limit)
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+
+    # ── Department Management (Feature 4) ───────────────────
+
+    def update_department(self, branch_id, branch_code, branch_name):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE branch_detail SET BRANCH_CODE = %s, BRANCH_NAME = %s WHERE BRANCH_ID = %s",
+                (branch_code, branch_name, branch_id),
+            )
+
+    def archive_department(self, branch_id, is_archived):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE branch_detail SET is_archived = %s WHERE BRANCH_ID = %s",
+                (1 if is_archived else 0, branch_id),
+            )
+
+    def get_department(self, branch_id):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT BRANCH_ID, BRANCH_CODE, BRANCH_NAME, CAST(ORG_ID AS CHAR) AS org_id FROM branch_detail WHERE BRANCH_ID = %s",
+                (branch_id,),
+            )
+            return cursor.fetchone()
+
+    def get_department_by_code(self, branch_code, org_id):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT BRANCH_ID, BRANCH_CODE, BRANCH_NAME, CAST(ORG_ID AS CHAR) AS org_id FROM branch_detail WHERE LOWER(BRANCH_CODE) = LOWER(%s) AND CAST(ORG_ID AS CHAR) = %s LIMIT 1",
+                (branch_code, org_id),
+            )
+            return cursor.fetchone()
+

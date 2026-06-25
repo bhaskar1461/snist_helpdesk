@@ -18,10 +18,10 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      <header class="admin-topbar">
-        <div><p class="kicker">My Tickets</p><h2>Only your complaints</h2><span>Users can view only tickets they created.</span></div>
-        <div class="profile-pill"><div class="avatar">U</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
-      </header>
+      {% set page_kicker = "My Tickets" %}
+      {% set page_heading = "Only your complaints" %}
+      {% set page_description = "Users can view only tickets they created." %}
+      {% include 'topbar.html' %}
 
       <section class="admin-card">
         <form class="search-bar filter-grid" method="get" action="{{ url_for('my_tickets') }}">

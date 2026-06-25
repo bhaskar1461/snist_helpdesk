@@ -20,17 +20,10 @@
     {% include 'sidebar.html' %}
     
     <main class="admin-main">
-      <header class="admin-topbar">
-        <div>
-          <p class="kicker">User Dashboard</p>
-          <h2>Welcome, {{ user_name }}</h2>
-          <span>Create tickets and track only your own complaints. Category selection will auto-assign the mapped Concerned Authority.</span>
-        </div>
-        <div class="profile-pill">
-          <div class="avatar">U</div>
-          <div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div>
-        </div>
-      </header>
+      {% set page_kicker = "User Dashboard" %}
+      {% set page_heading = "Welcome, " ~ user_name %}
+      {% set page_description = "Create tickets and track only your own complaints. Category selection will auto-assign the mapped Concerned Authority." %}
+      {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
