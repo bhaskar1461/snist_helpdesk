@@ -23,6 +23,16 @@
       {% set page_description = page_description %}
       {% include 'topbar.html' %}
 
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
       {% if session.get('role') in ('SUPER_ADMIN', 'ADMIN') and not session.get('acting_role') %}
       <section class="admin-card" style="margin-bottom: 22px; background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);">
         <div class="card-head"><div><p class="kicker">HOD Impersonation</p><h3>Act as HOD</h3></div></div>

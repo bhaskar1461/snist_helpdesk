@@ -380,9 +380,10 @@ class DemoDbService(BaseMySQLService):
             if not row:
                 raise ValueError("User not found.")
             if not check_password_hash(row["password"], old_password):
-                raise ValueError("Current password is incorrect.")
+                return False
             hashed = generate_password_hash(new_password)
             cursor.execute("UPDATE demo_users SET password = %s WHERE id = %s", (hashed, user_id))
+            return True
 
     def get_user(self, user_id):
         with self.connection() as connection, connection.cursor() as cursor:
@@ -473,26 +474,26 @@ class DemoDbService(BaseMySQLService):
             return cursor.lastrowid
 
     def update_user(self, user_id, payload):
+        if not self.enabled:
+            return
+        fields = []
+        params = []
+        for k in ["name", "email", "role", "department"]:
+            if k in payload:
+                fields.append(f"{k} = %s")
+                params.append(payload[k])
+        if "password" in payload and payload["password"]:
+            fields.append("password = %s")
+            params.append(generate_password_hash(payload["password"]))
+            
+        if not fields:
+            return
+            
+        sql = f"UPDATE demo_users SET {', '.join(fields)} WHERE id = %s"
+        params.append(user_id)
+        
         with self.connection() as connection, connection.cursor() as cursor:
-            if payload.get("password"):
-                hashed = generate_password_hash(payload["password"])
-                cursor.execute(
-                    """
-                    UPDATE demo_users
-                    SET name = %s, email = %s, password = %s, role = %s, department = %s
-                    WHERE id = %s
-                    """,
-                    (payload["name"], payload["email"], hashed, payload["role"], payload["department"], user_id),
-                )
-            else:
-                cursor.execute(
-                    """
-                    UPDATE demo_users
-                    SET name = %s, email = %s, role = %s, department = %s
-                    WHERE id = %s
-                    """,
-                    (payload["name"], payload["email"], payload["role"], payload["department"], user_id),
-                )
+            cursor.execute(sql, tuple(params))
 
     def delete_user(self, user_id):
         with self.connection() as connection, connection.cursor() as cursor:
@@ -679,7 +680,11 @@ class DemoDbService(BaseMySQLService):
                 if ca_user and ca_user.get("email"):
                     ca_phone = self.get_user_phone(ca_user["email"])
                     if ca_phone:
-                        send_allocation_sms(ca_user["name"], ca_phone, ticket_id)
+                        send_allocation_sms(
+                            ca_user["name"], ca_phone, ticket_id,
+                            category_name=category.get("category_name", "System"),
+                            department=category.get("department", "ICT Department"),
+                        )
             except Exception:
                 pass
             return ticket_id
@@ -705,6 +710,10 @@ class DemoDbService(BaseMySQLService):
                 t.status,
                 t.org_id,
                 t.location_id,
+                t.category_id,
+                t.problem_type_id,
+                t.created_by,
+                t.assigned_to,
                 t.created_at,
                 t.updated_at,
                 c.category_name,
@@ -816,18 +825,27 @@ class DemoDbService(BaseMySQLService):
         if not ticket:
             raise ValueError("Ticket not found.")
 
-        if ticket["org_id"] != actor["org_id"]:
+        if actor.get("org_id") and ticket.get("org_id") and ticket["org_id"] != actor["org_id"]:
             raise PermissionError("Access denied: Ticket belongs to a different organization.")
 
         # Permission check:
         # - Assigned CA can update their own assigned tickets
         # - SUPER_ADMIN can update any ticket
         # - Ticket creator can REOPEN a RESOLVED ticket
-        is_assigned_ca = actor["role"] == "CA" and ticket["assigned_to_email"].lower() == actor["email"].lower()
-        is_super_admin = actor["role"] == "SUPER_ADMIN"
+        is_assigned_ca = (
+            actor.get("role") == "CA"
+            and (
+                (ticket.get("assigned_to_email") and actor.get("email") and ticket["assigned_to_email"].lower() == actor["email"].lower())
+                or (ticket.get("assigned_to") == actor.get("id"))
+            )
+        )
+        is_super_admin = actor.get("role") == "SUPER_ADMIN"
         is_creator_reopening = (
-            ticket["created_by_email"].lower() == actor["email"].lower()
-            and ticket["status"] == "RESOLVED"
+            (
+                (ticket.get("created_by_email") and actor.get("email") and ticket["created_by_email"].lower() == actor["email"].lower())
+                or (ticket.get("created_by") == actor.get("id"))
+            )
+            and ticket.get("status") == "RESOLVED"
             and status == "REOPENED"
         )
         if not is_assigned_ca and not is_super_admin and not is_creator_reopening:
@@ -838,7 +856,7 @@ class DemoDbService(BaseMySQLService):
         allowed = self.ALLOWED_TRANSITIONS.get(current_status, set())
         if status not in allowed:
             raise ValueError(
-                f"Cannot transition from {current_status} to {status}. "
+                f"Invalid status transition: Cannot transition from {current_status} to {status}. "
                 f"Allowed: {', '.join(sorted(allowed)) or 'none (terminal state)'}."
             )
 
@@ -870,6 +888,7 @@ class DemoDbService(BaseMySQLService):
                             send_closure_sms(creator_phone, ticket_id)
                 except Exception:
                     pass
+        return True
 
     # ── Analytics ────────────────────────────────────────
 

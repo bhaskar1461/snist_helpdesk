@@ -254,7 +254,7 @@ def role_required(*roles):
             user = current_user()
             if not user:
                 flash("Please log in to continue.", "error")
-                return redirect(url_for("login"))
+                return redirect("/login")
             if user["role"] not in roles:
                 flash("You do not have access to that page.", "error")
                 return redirect(url_for(route_for_role(user["role"])))
@@ -278,39 +278,39 @@ def route_for_role(role):
 def sidebar_links(role):
     mapping = {
         "SUPER_ADMIN": [
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("super_admin_dashboard", "Dashboard", "layout-dashboard"),
             ("super_admin_all_tickets", "All Tickets", "ticket"),
             ("user_management", "User Management", "users"),
             ("management_category", "Category Management", "folder-open"),
             ("management_problem_types", "Problem Types", "wrench"),
             ("location_management", "Location Management", "map-pin"),
-            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "ADMIN": [
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("admin_dashboard", "Dashboard", "layout-dashboard"),
             ("admin_all_tickets", "All Tickets", "ticket"),
             ("user_management", "User Management", "users"),
             ("management_category", "Category Management", "folder-open"),
-            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "HOD": [
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("hod_dashboard", "Dashboard", "layout-dashboard"),
             ("hod_all_tickets", "Department Tickets", "ticket"),
             ("user_management", "User Management", "users"),
             ("management_category", "Category Management", "folder-open"),
             ("management_problem_types", "Problem Types", "wrench"),
             ("ca_assignments", "CA Assignments", "users"),
-            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "CA": [
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("authority_tickets", "CA Dashboard", "layout-dashboard"),
             ("ca_report", "Reports", "bar-chart-3"),
-            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
         "FACULTY": [
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("user_dashboard", "Dashboard", "layout-dashboard"),
             ("my_tickets", "My Tickets", "ticket"),
-            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
         ],
     }
     links = mapping.get(role, [])
@@ -432,6 +432,7 @@ def export_response(tickets, export_format, filename):
 
 
 @app.route("/", methods=["GET", "POST"])
+@app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         if not demo_db.enabled:
@@ -557,8 +558,11 @@ def create_ticket_for_role():
         location_id = safe_int(request.form.get("location_id", "0")) or None
         problem_type_id = safe_int(request.form.get("problem_type_id", "0")) or None
         other_problem = request.form.get("other_problem", "").strip()
-        if not description or not category_id:
-            flash("Description and category are required.", "error")
+        if not category_id:
+            flash("Category is required.", "error")
+            return redirect(url_for("create_ticket_for_role"))
+        if not description:
+            flash("Description is required.", "error")
             return redirect(url_for("create_ticket_for_role"))
         if title and len(title) > 180:
             flash("Title cannot exceed 180 characters.", "error")
@@ -849,14 +853,15 @@ def authority_update_status(ticket_id):
             return redirect(url_for("ticket_detail", ticket_id=ticket_id))
         safe_name = secure_filename(attachment.filename)
         attachment_name = f"{ticket_id}-{int(datetime.now().timestamp())}-{safe_name}"
-        attachment.save(UPLOAD_DIR / attachment_name)
+        attachment.save(str(UPLOAD_DIR / attachment_name))
         attachment_path = attachment_name
 
     try:
         demo_db.update_ticket_status(ticket_id, actor=user, status=status, remarks=remarks, time_taken=time_taken, attachment_path=attachment_path)
         flash("Ticket updated successfully.", "success")
     except PermissionError as exc:
-        flash(str(exc), "error")
+        flash("You do not have access to that page.", "error")
+        return redirect(url_for(route_for_role(user["role"])))
     except ValueError as exc:
         flash(str(exc), "error")
     return redirect(url_for("ticket_detail", ticket_id=ticket_id))
@@ -894,14 +899,10 @@ def user_management():
             if role == "CA":
                 selected_depts = [d.strip() for d in request.form.getlist("department") if d.strip()]
                 if user["department"] not in selected_depts:
-                    flash(f"Access denied: You can only create CAs that belong to your department ({user['department']}).", "error")
-                    return redirect(url_for("user_management"))
+                    selected_depts.append(user["department"])
                 department = ",".join(selected_depts)
             else:
-                department = request.form.get("department", "").strip()
-                if department != user["department"]:
-                    flash(f"Access denied: You can only create users in your department ({user['department']}).", "error")
-                    return redirect(url_for("user_management"))
+                department = user["department"]
         else:
             if user["role"] != "SUPER_ADMIN" and role == "SUPER_ADMIN":
                 flash("Access denied: Only SUPER_ADMIN can create SUPER_ADMIN users.", "error")
@@ -942,6 +943,11 @@ def user_management():
             flash(f"A user with email '{payload['email']}' already exists.", "error")
             return redirect(url_for("user_management"))
         demo_db.create_user(payload)
+        demo_db.log_audit_event(
+            "USER_CREATED", user["id"], user["org_id"],
+            target_type="user", target_id=None,
+            details={"email": payload["email"], "role": payload["role"], "department": payload["department"]},
+        )
         flash("Demo user created successfully.", "success")
         return redirect(url_for("user_management"))
 
@@ -1002,14 +1008,10 @@ def update_user(user_id):
         if role == "CA":
             selected_depts = [d.strip() for d in request.form.getlist("department") if d.strip()]
             if user["department"] not in selected_depts:
-                flash(f"Access denied: The updated department list must contain your department ({user['department']}).", "error")
-                return redirect(url_for("user_management"))
+                selected_depts.append(user["department"])
             department = ",".join(selected_depts)
         else:
-            department = request.form.get("department", "").strip()
-            if department != user["department"]:
-                flash(f"Access denied: You can only assign users to your department ({user['department']}).", "error")
-                return redirect(url_for("user_management"))
+            department = user["department"]
     else:
         role = request.form.get("role", "").strip().upper()
         if user["role"] != "SUPER_ADMIN":
@@ -1027,10 +1029,10 @@ def update_user(user_id):
 
     password = request.form.get("password", "").strip()
     payload = {
-        "name": request.form.get("name", "").strip(),
-        "email": request.form.get("email", "").strip().lower(),
-        "role": role,
-        "department": department,
+        "name": request.form.get("name", "").strip() or target_user["name"],
+        "email": request.form.get("email", "").strip().lower() or target_user["email"],
+        "role": role or target_user["role"],
+        "department": department or target_user["department"],
     }
     if password:
         payload["password"] = password
@@ -1777,7 +1779,9 @@ def change_password():
             flash("New password and confirmation do not match.", "error")
             return redirect(url_for("change_password"))
         try:
-            demo_db.change_password(user["id"], old_password, new_password)
+            if not demo_db.change_password(user["id"], old_password, new_password):
+                flash("Current password is incorrect.", "error")
+                return redirect(url_for("change_password"))
             flash("Password changed successfully.", "success")
             return redirect(url_for("change_password"))
         except ValueError as exc:
@@ -1862,12 +1866,12 @@ def exit_hod_mode():
         del session["available_departments"]
     # Audit: impersonation end
     demo_db.log_audit_event(
-        "IMPERSONATION_END", session["user_id"],
+        "IMPERSONATION_STOP", session["user_id"],
         session.get("org_id", ""),
         target_type="department", target_id=None,
         details={"department": acting_dept},
     )
-    flash("Exited HOD impersonation mode.", "success")
+    flash("Stopped impersonating HOD.", "success")
     return redirect(url_for(route_for_role(session["role"])))
 
 
