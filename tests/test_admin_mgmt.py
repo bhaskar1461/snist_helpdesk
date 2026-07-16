@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
 from tests.test_base import HelpdeskTestCase, GLOBAL_DB_STATE
 import json
+import db_services
 
 class TestAdminMgmt(HelpdeskTestCase):
     def test_user_management_access_and_scoping(self):
@@ -120,6 +122,52 @@ class TestAdminMgmt(HelpdeskTestCase):
         assignment = next((a for a in GLOBAL_DB_STATE.tables["demo_ca_assignments"] if a["ca_id"] == 7 and a["category_id"] == 1 and a["block"] == "Block A"), None)
         self.assertIsNotNone(assignment)
 
+    def test_multi_ca_assignments(self):
+        # Login as HOD
+        self.login_as("hod@gmail.com")
+
+        # Assign Faculty (user ID 7 is FACULTY) to multiple categories (1 and 2) and multiple blocks (Block B and Block C)
+        # Route: POST /hod/ca-assignments
+        response = self.client.post("/hod/ca-assignments", data={
+            "faculty_id": "7",
+            "categories": ["1", "2"],
+            "blocks": ["Block B", "Block C"]
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+
+        # Verify assignments were created for both categories and blocks (4 combinations)
+        assignments = GLOBAL_DB_STATE.tables["demo_ca_assignments"]
+        for cat in [1, 2]:
+            for blk in ["Block B", "Block C"]:
+                assignment = next((a for a in assignments if a["ca_id"] == 7 and a["category_id"] == cat and a["block"] == blk), None)
+                self.assertIsNotNone(assignment, f"Assignment for Category {cat} and Block {blk} not found")
+
+    def test_super_admin_ca_assignments(self):
+        # Login as SUPER_ADMIN
+        self.login_as("admin@gmail.com")
+
+        # Verify page loads
+        res_get = self.client.get("/hod/ca-assignments")
+        self.assertEqual(res_get.status_code, 200)
+
+        # Clear existing assignments in test state
+        GLOBAL_DB_STATE.tables["demo_ca_assignments"] = []
+
+        # Assign Faculty (user ID 7 is FACULTY) to multiple categories (1 and 2) and multiple blocks (Block B and Block C)
+        response = self.client.post("/hod/ca-assignments", data={
+            "faculty_id": "7",
+            "categories": ["1", "2"],
+            "blocks": ["Block B", "Block C"]
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+
+        # Verify assignments were created for all combinations
+        assignments = GLOBAL_DB_STATE.tables["demo_ca_assignments"]
+        for cat in [1, 2]:
+            for blk in ["Block B", "Block C"]:
+                assignment = next((a for a in assignments if a["ca_id"] == 7 and a["category_id"] == cat and a["block"] == blk), None)
+                self.assertIsNotNone(assignment, f"Assignment for Category {cat} and Block {blk} not found")
+
     def test_location_cascade_api(self):
         self.login_as("faculty@gmail.com")
 
@@ -142,3 +190,34 @@ class TestAdminMgmt(HelpdeskTestCase):
         
         # Rooms
         self.assertTrue(any(r["room_no"] == "101" for r in floors))
+
+    def test_ca_assignments_transaction_rollback(self):
+        # Login as HOD
+        self.login_as("hod@gmail.com")
+
+        # Mock create_ca_assignment to raise ValueError on second mapping insert
+        original_create = db_services.DemoDbService.create_ca_assignment
+        call_count = 0
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count > 1:
+                raise ValueError("Simulated DB failure")
+            return original_create(args[0], *args[1:], **kwargs)
+
+        # Clear existing assignments in test state
+        GLOBAL_DB_STATE.tables["demo_ca_assignments"] = []
+
+        with patch.object(db_services.DemoDbService, "create_ca_assignment", side_effect=side_effect):
+            # Attempt to assign CA to category 1 across two blocks (Block B and Block C)
+            response = self.client.post("/hod/ca-assignments", data={
+                "faculty_id": "7",
+                "categories": ["1"],
+                "blocks": ["Block B", "Block C"]
+            }, follow_redirects=True)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b"Assignment failed", response.data)
+
+        # Verify that because of transaction rollback, NO assignments were created in the database
+        assignments = GLOBAL_DB_STATE.tables["demo_ca_assignments"]
+        self.assertEqual(len(assignments), 0, "Expected all assignments to be rolled back on failure")

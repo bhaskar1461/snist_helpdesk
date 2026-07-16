@@ -149,3 +149,72 @@ class TestTickets(HelpdeskTestCase):
             "remarks": "Faculty accepts"
         }, follow_redirects=True)
         self.assertIn(b"You do not have access to that page", resD.data)
+
+    def test_ticket_upload_validation(self):
+        GLOBAL_DB_STATE.tables["demo_tickets"] = [{
+            "id": 30,
+            "title": "Broken light",
+            "description": "Classroom 101",
+            "category_id": 4,
+            "created_by": 7,
+            "assigned_to": 6,
+            "status": "IN_PROGRESS",
+            "org_id": "2000",
+            "location_id": 1
+        }]
+
+        # Login as assigned CA
+        self.login_as("bhaskar.ca@gmail.com")
+
+        # Case 1: Upload a valid PNG file signature
+        valid_png = (io.BytesIO(b'\x89PNG\r\n\x1a\nimage-data'), 'test.png')
+        res = self.client.post("/authority/update-status/30", data={
+            "status": "RESOLVED",
+            "remarks": "Resolved with attachment",
+            "attachment": valid_png
+        }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertIn(b"Ticket updated successfully", res.data)
+        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "RESOLVED")
+
+        # Reset status back to IN_PROGRESS
+        GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"] = "IN_PROGRESS"
+
+        # Case 2: Upload a malicious file with PNG extension but MZ signature (malicious executable)
+        malicious_exe = (io.BytesIO(b'MZ\x90\x00\x03\x00\x00\x00malicious-code'), 'test.png')
+        res2 = self.client.post("/authority/update-status/30", data={
+            "status": "RESOLVED",
+            "remarks": "Resolved with malicious attachment",
+            "attachment": malicious_exe
+        }, content_type='multipart/form-data', follow_redirects=True)
+        self.assertIn(b"File type not allowed", res2.data)
+        # Should not transition status
+        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "IN_PROGRESS")
+
+    def test_ticket_sla_escalation(self):
+        from datetime import datetime, timedelta
+        import db_services
+        # 1. Seed an open ticket created 2 days ago
+        old_time = datetime.now() - timedelta(days=2)
+        GLOBAL_DB_STATE.tables["demo_tickets"] = [{
+            "id": 40,
+            "title": "Old broken light",
+            "description": "Classroom 101",
+            "category_id": 4,
+            "created_by": 7,
+            "assigned_to": 6,
+            "status": "PENDING",
+            "org_id": "2000",
+            "location_id": 1,
+            "created_at": old_time
+        }]
+
+        db_service = db_services.DemoDbService(None)
+        
+        # Retrieve the ticket
+        ticket = db_service.get_ticket(40)
+        self.assertTrue(ticket.get("is_escalated"), "Expected open ticket older than 24h to be escalated")
+
+        # 2. Change status to RESOLVED and verify it is no longer escalated
+        GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"] = "RESOLVED"
+        ticket_resolved = db_service.get_ticket(40)
+        self.assertFalse(ticket_resolved.get("is_escalated"), "Expected resolved ticket to not be escalated")

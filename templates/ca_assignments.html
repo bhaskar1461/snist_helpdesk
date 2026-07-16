@@ -19,6 +19,201 @@
     .confirm-box p { color:#6b7280; font-size:.9rem; margin-bottom:1rem; }
     .confirm-box .btn-group { justify-content:center; }
     .assignment-count { font-size:.85rem; color:#6b7280; margin-top:4px; }
+    
+    /* Custom Multiselect styles */
+    .custom-multiselect {
+      position: relative;
+      width: 100%;
+    }
+    .select-box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid var(--input-border);
+      border-radius: 18px;
+      padding: 16px 18px;
+      background: #fff;
+      cursor: pointer;
+      user-select: none;
+      font: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .select-box:hover {
+      border-color: var(--input-border-focus);
+    }
+    .select-box.active {
+      border-color: var(--input-border-focus);
+      box-shadow: 0 0 0 4px rgba(58, 99, 219, 0.16);
+    }
+    .selected-options {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text);
+      max-width: 90%;
+      font-size: 0.95rem;
+      font-weight: 500;
+    }
+    .arrow {
+      display: flex;
+      align-items: center;
+      color: var(--muted);
+      transition: transform 0.25s ease;
+    }
+    .select-box.active .arrow {
+      transform: rotate(180deg);
+    }
+    .multiselect-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      right: 0;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 18px;
+      box-shadow: 0 15px 30px -5px rgba(35, 67, 129, 0.15), 0 10px 15px -5px rgba(35, 67, 129, 0.1);
+      z-index: 50;
+      padding: 14px;
+    }
+    .multiselect-dropdown.show {
+      display: block;
+    }
+    .dropdown-actions {
+      display: flex;
+      justify-content: space-between;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #f1f5f9;
+      margin-bottom: 10px;
+    }
+    .text-btn {
+      background: transparent;
+      border: 0;
+      color: var(--royal);
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: 8px;
+      transition: background 0.2s ease;
+    }
+    .text-btn:hover {
+      background: #f1f5f9;
+    }
+    .dropdown-list {
+      max-height: 240px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-right: 2px;
+    }
+    .dropdown-list::-webkit-scrollbar {
+      width: 6px;
+    }
+    .dropdown-list::-webkit-scrollbar-track {
+      background: #f8fafc;
+      border-radius: 4px;
+    }
+    .dropdown-list::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+    .dropdown-item:hover {
+      background: #f8fafc;
+    }
+    .dropdown-item input[type="checkbox"] {
+      display: none;
+    }
+    .dropdown-checkbox {
+      width: 20px;
+      height: 20px;
+      border: 2px solid #94a3b8;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      transition: all 0.2s ease;
+    }
+    .dropdown-item input[type="checkbox"]:checked + .dropdown-checkbox {
+      background: var(--royal);
+      border-color: var(--royal);
+    }
+    .dropdown-item input[type="checkbox"]:checked + .dropdown-checkbox::after {
+      content: "✓";
+      color: #fff;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .dropdown-item-text {
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+    .dropdown-item:has(input[type="checkbox"]:checked),
+    .dropdown-item.checked {
+      background: #eef2ff;
+    }
+    .dropdown-item:has(input[type="checkbox"]:checked) .dropdown-item-text,
+    .dropdown-item.checked .dropdown-item-text {
+      color: #1d4ed8;
+      font-weight: 600;
+    }
+
+    /* Mappings Tags styling */
+    .mappings-badges-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 4px 0;
+    }
+    .mapping-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #334155;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+      transition: all 0.2s ease;
+    }
+    .mapping-badge:hover {
+      background: #e2e8f0;
+      border-color: #cbd5e1;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+    .badge-delete-btn {
+      background: transparent;
+      border: 0;
+      color: #94a3b8;
+      font-size: 1.25rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s ease, transform 0.2s ease;
+    }
+    .badge-delete-btn:hover {
+      color: #ef4444;
+      transform: scale(1.2);
+    }
   </style>
 </head>
 <body>
@@ -48,10 +243,10 @@
       <section class="admin-grid">
         <section class="admin-card">
           <div class="card-head"><div><p class="kicker">Assign CA</p><h3>Create Assignment</h3></div></div>
-          <form method="post" action="{{ url_for('ca_assignments') }}" class="admin-form">
+          <form id="create-assignment-form" method="post" action="{{ url_for('ca_assignments') }}" class="admin-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-grid">
-              <label class="field">
+              <label class="field field-large">
                 <span>Select Faculty</span>
                 <select name="faculty_id" required>
                   <option value="">Choose Faculty</option>
@@ -60,24 +255,56 @@
                   {% endfor %}
                 </select>
               </label>
-              <label class="field">
-                <span>Select Category</span>
-                <select name="category_id" required>
-                  <option value="">Choose Category</option>
-                  {% for c in categories %}
-                    <option value="{{ c.id }}">{{ c.category_name }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label class="field">
-                <span>Select Problem</span>
-                <select name="block" required>
-                  <option value="">Choose Problem (Location Block)</option>
-                  {% for b in blocks %}
-                    <option value="{{ b }}">{{ b }}</option>
-                  {% endfor %}
-                </select>
-              </label>
+              <div class="field field-large">
+                <span>Select Categories</span>
+                <div class="custom-multiselect" id="categories-select">
+                  <div class="select-box" onclick="toggleDropdown('categories-dropdown')">
+                    <div class="selected-options" id="selected-categories-text">Choose Categories</div>
+                    <span class="arrow"><i data-lucide="chevron-down"></i></span>
+                  </div>
+                  <div class="multiselect-dropdown" id="categories-dropdown">
+                    <div class="dropdown-actions">
+                      <button type="button" class="text-btn" onclick="selectAll('categories')">Select All</button>
+                      <button type="button" class="text-btn" onclick="clearAll('categories')">Clear</button>
+                    </div>
+                    <div class="dropdown-list">
+                      {% for c in categories %}
+                        <label class="dropdown-item">
+                          <input type="checkbox" name="categories" value="{{ c.id }}" onchange="updateSelectedText('categories')">
+                          <span class="dropdown-checkbox"></span>
+                          <span class="dropdown-item-text">{{ c.category_name }}</span>
+                        </label>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+                <span style="color:#ef4444; font-size:.85rem; display:none; margin-top:4px;" id="categories-error">⚠️ Please select at least one Category.</span>
+              </div>
+              <div class="field field-large">
+                <span>Select Problems (Location Blocks)</span>
+                <div class="custom-multiselect" id="blocks-select">
+                  <div class="select-box" onclick="toggleDropdown('blocks-dropdown')">
+                    <div class="selected-options" id="selected-blocks-text">Choose Problem (Location Block)</div>
+                    <span class="arrow"><i data-lucide="chevron-down"></i></span>
+                  </div>
+                  <div class="multiselect-dropdown" id="blocks-dropdown">
+                    <div class="dropdown-actions">
+                      <button type="button" class="text-btn" onclick="selectAll('blocks')">Select All</button>
+                      <button type="button" class="text-btn" onclick="clearAll('blocks')">Clear</button>
+                    </div>
+                    <div class="dropdown-list">
+                      {% for b in blocks %}
+                        <label class="dropdown-item">
+                          <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateSelectedText('blocks')">
+                          <span class="dropdown-checkbox"></span>
+                          <span class="dropdown-item-text">{{ b }}</span>
+                        </label>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+                <span style="color:#ef4444; font-size:.85rem; display:none; margin-top:4px;" id="blocks-error">⚠️ Please select at least one Location Block.</span>
+              </div>
             </div>
             <div class="form-actions"><button type="submit" class="primary-btn">Create the assignment</button></div>
           </form>
@@ -85,24 +312,32 @@
 
         <section class="admin-card">
           <div class="card-head"><div><p class="kicker">Active Assignments</p><h3>CA Mappings</h3></div></div>
-          <p class="assignment-count">{{ assignments|length }} assignments mapped</p>
+          <p class="assignment-count">{{ total_count }} assignments mapped</p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>CA Name</th><th>Category</th><th>Problem (Block)</th><th>Actions</th></tr></thead>
+              <thead><tr><th style="width: 30%;">CA Name</th><th style="width: 70%;">Active Mappings (Category &amp; Location Block)</th></tr></thead>
               <tbody>
-                {% for item in assignments %}
+                {% for ca in assignments %}
                   <tr>
-                    <td class="ticket-id-cell"><strong>{{ item.ca_name }}</strong><br><small style="color:#6b7280;">{{ item.ca_email }}</small></td>
-                    <td>{{ item.category_name }}</td>
-                    <td>{{ item.block }}</td>
+                    <td class="ticket-id-cell">
+                      <strong>{{ ca.ca_name }}</strong><br>
+                      <small style="color:#6b7280; font-weight: normal;">{{ ca.ca_email }}</small>
+                    </td>
                     <td>
-                      <div class="btn-group">
-                        <button type="button" class="delete-btn" onclick="confirmAssignmentDelete({{ item.id }}, '{{ item.ca_name|e }}', '{{ item.category_name|e }}', '{{ item.block|e }}')">Delete</button>
+                      <div class="mappings-badges-wrap">
+                        {% for item in ca.mappings %}
+                          <span class="mapping-badge">
+                            <span>{{ item.category_name }} &middot; <strong style="color:var(--navy);">{{ item.block }}</strong></span>
+                            <button type="button" class="badge-delete-btn" onclick="confirmAssignmentDelete({{ item.id }}, '{{ ca.ca_name|e }}', '{{ item.category_name|e }}', '{{ item.block|e }}')" title="Remove mapping">
+                              &times;
+                            </button>
+                          </span>
+                        {% endfor %}
                       </div>
                     </td>
                   </tr>
                 {% else %}
-                  <tr><td colspan="4" class="empty-cell">No CA assignments yet.</td></tr>
+                  <tr><td colspan="2" class="empty-cell">No CA assignments yet.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -140,6 +375,120 @@
     }
     document.getElementById('delete-overlay').addEventListener('click', function(e) {
       if (e.target === this) closeAssignmentDelete();
+    });
+
+    // Custom dropdown toggle
+    function toggleDropdown(dropdownId) {
+      const dropdown = document.getElementById(dropdownId);
+      const selectBox = dropdown.previousElementSibling;
+      
+      // Close other dropdowns
+      document.querySelectorAll('.multiselect-dropdown').forEach(d => {
+        if (d.id !== dropdownId) {
+          d.classList.remove('show');
+          d.previousElementSibling.classList.remove('active');
+        }
+      });
+      
+      dropdown.classList.toggle('show');
+      selectBox.classList.toggle('active');
+    }
+
+    // Close when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.custom-multiselect')) {
+        document.querySelectorAll('.multiselect-dropdown').forEach(d => {
+          d.classList.remove('show');
+          d.previousElementSibling.classList.remove('active');
+        });
+      }
+    });
+
+    function selectAll(name) {
+      const checkboxes = document.querySelectorAll(`input[name="${name}"]`);
+      checkboxes.forEach(cb => {
+        cb.checked = true;
+        cb.dispatchEvent(new Event('change'));
+      });
+    }
+
+    // Clear and dispatch event
+    function clearAll(name) {
+      const checkboxes = document.querySelectorAll(`input[name="${name}"]`);
+      checkboxes.forEach(cb => {
+        cb.checked = false;
+        cb.dispatchEvent(new Event('change'));
+      });
+    }
+
+    function updateSelectedText(name) {
+      const checked = document.querySelectorAll(`input[name="${name}"]:checked`);
+      const textEl = document.getElementById(`selected-${name}-text`);
+      
+      // Update label class
+      document.querySelectorAll(`input[name="${name}"]`).forEach(cb => {
+        const item = cb.closest('.dropdown-item');
+        if (cb.checked) {
+          item.classList.add('checked');
+        } else {
+          item.classList.remove('checked');
+        }
+      });
+
+      if (checked.length === 0) {
+        textEl.textContent = name === 'categories' ? 'Choose Categories' : 'Choose Problem (Location Block)';
+        textEl.style.color = '#5c6b8a';
+      } else if (checked.length === 1) {
+        const label = checked[0].closest('.dropdown-item').querySelector('.dropdown-item-text').textContent;
+        textEl.textContent = label;
+        textEl.style.color = 'var(--text)';
+      } else {
+        textEl.textContent = `${checked.length} selected`;
+        textEl.style.color = 'var(--text)';
+      }
+    }
+
+    // Client-side submit validation
+    document.getElementById('create-assignment-form').addEventListener('submit', function(e) {
+      const checkedBlocks = this.querySelectorAll('input[name="blocks"]:checked');
+      const errorMsgBlocks = document.getElementById('blocks-error');
+      let hasError = false;
+
+      if (checkedBlocks.length === 0) {
+        hasError = true;
+        if (errorMsgBlocks) {
+          errorMsgBlocks.style.display = 'block';
+        }
+      } else {
+        if (errorMsgBlocks) {
+          errorMsgBlocks.style.display = 'none';
+        }
+      }
+
+      const checkedCategories = this.querySelectorAll('input[name="categories"]:checked');
+      const errorMsgCategories = document.getElementById('categories-error');
+      if (checkedCategories.length === 0) {
+        hasError = true;
+        if (errorMsgCategories) {
+          errorMsgCategories.style.display = 'block';
+        }
+      } else {
+        if (errorMsgCategories) {
+          errorMsgCategories.style.display = 'none';
+        }
+      }
+
+      if (hasError) {
+        e.preventDefault();
+      } else {
+        const btn = this.querySelector('button[type="submit"]');
+        if (btn) {
+          btn.disabled = true;
+          btn.style.opacity = '0.6';
+          btn.style.pointerEvents = 'none';
+          btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid #fff;border-radius:50%;border-top-color:transparent;animation:spin 0.6s linear infinite;margin-right:6px;vertical-align:middle;"></span>Saving...';
+        }
+      }
     });
   </script>
   <script src="https://unpkg.com/lucide@latest"></script>

@@ -476,6 +476,24 @@ class MockCursor:
 class MockConnection:
     def __init__(self, state):
         self.state = state
+        self._in_transaction = False
+        self._state_backup = None
+
+    def autocommit(self, val):
+        if not val:
+            self._in_transaction = True
+            self._state_backup = copy.deepcopy(self.state.tables)
+        else:
+            self._in_transaction = False
+
+    def commit(self):
+        self._in_transaction = False
+        self._state_backup = None
+
+    def rollback(self):
+        if self._state_backup is not None:
+            self.state.tables = self._state_backup
+        self._in_transaction = False
 
     def cursor(self, *args, **kwargs):
         return MockCursor(self.state)

@@ -52,6 +52,8 @@ def env_db_config() -> DbConfig | None:
 
 
 from queue import Queue, Empty
+import threading
+import contextlib
 
 class PooledConnection:
     def __init__(self, conn, pool):
@@ -83,10 +85,32 @@ class PooledConnection:
         self.close()
 
 
+class TransactionConnection:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+
+    def close(self):
+        # Do not return the raw connection to the pool during transaction
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
 class BaseMySQLService:
     def __init__(self, config: DbConfig | None):
         self.config = config
         self._pool = Queue(maxsize=10)
+        self._local = threading.local()
 
     @property
     def enabled(self) -> bool:
@@ -110,12 +134,65 @@ class BaseMySQLService:
     def connection(self):
         if not self.enabled:
             raise RuntimeError("MySQL is not configured.")
+        
+        # If there is an active transaction connection on this thread, return it
+        if getattr(self._local, "active_conn", None) is not None:
+            return self._local.active_conn
+
         try:
             conn = self._pool.get_nowait()
             conn.ping(reconnect=True)
         except (Empty, Exception):
             conn = self._create_new_connection()
         return PooledConnection(conn, self._pool)
+
+    @contextlib.contextmanager
+    def transaction(self):
+        if not self.enabled:
+            raise RuntimeError("MySQL is not configured.")
+        
+        # Prevent nested transactions on same thread
+        if getattr(self._local, "active_conn", None) is not None:
+            yield self._local.active_conn
+            return
+
+        # Fetch connection (under test, this returns MockConnection directly)
+        pooled_conn = self.connection()
+        
+        # Detect if we are in testing (MockConnection does not wrap a raw _conn)
+        is_mock = not hasattr(pooled_conn, "_conn")
+        
+        if is_mock:
+            self._local.active_conn = pooled_conn
+            try:
+                yield pooled_conn
+            finally:
+                self._local.active_conn = None
+                pooled_conn.close()
+        else:
+            # Production PyMySQL connection
+            conn = pooled_conn._conn
+            
+            # Start transaction block by disabling autocommit
+            old_autocommit = conn.get_autocommit()
+            conn.autocommit(False)
+            
+            tx_conn = TransactionConnection(conn)
+            self._local.active_conn = tx_conn
+            
+            try:
+                yield tx_conn
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                raise e
+            finally:
+                self._local.active_conn = None
+                try:
+                    conn.autocommit(old_autocommit)
+                except Exception:
+                    pass
+                pooled_conn.close()
 
 
 class LiveDbService(BaseMySQLService):
@@ -678,6 +755,27 @@ class DemoDbService(BaseMySQLService):
         except Exception:
             return False
 
+    def add_escalation_status(self, ticket):
+        if not ticket or not ticket.get("created_at"):
+            return ticket
+        
+        from datetime import datetime, timedelta
+        created_at = ticket["created_at"]
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+                
+        if isinstance(created_at, datetime):
+            is_overdue = (datetime.now() - created_at) > timedelta(hours=24)
+            is_open = ticket.get("status") in ("PENDING", "IN_PROGRESS", "REOPENED")
+            ticket["is_escalated"] = is_overdue and is_open
+        else:
+            ticket["is_escalated"] = False
+            
+        return ticket
+
     def ticket_query_base(self):
         return """
             SELECT
@@ -763,7 +861,8 @@ class DemoDbService(BaseMySQLService):
                 params.append(offset)
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql, params)
-            return cursor.fetchall()
+            tickets = cursor.fetchall()
+            return [self.add_escalation_status(t) for t in tickets]
 
     def list_ticket_activity(self, ticket_id):
         with self.connection() as connection, connection.cursor() as cursor:
@@ -784,7 +883,8 @@ class DemoDbService(BaseMySQLService):
         sql = self.ticket_query_base() + " AND t.id = %s LIMIT 1"
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql, (ticket_id,))
-            return cursor.fetchone()
+            ticket = cursor.fetchone()
+            return self.add_escalation_status(ticket)
 
     ALLOWED_TRANSITIONS = {
         "PENDING": {"IN_PROGRESS"},
@@ -1016,7 +1116,7 @@ class DemoDbService(BaseMySQLService):
             )
             return cursor.lastrowid
 
-    def list_ca_assignments(self, department=None, search=""):
+    def list_ca_assignments(self, department=None, search="", org_id=None):
         sql = """
             SELECT a.id, a.category_id, a.ca_id, a.block, a.created_at,
                    c.category_name, c.department,
@@ -1030,6 +1130,9 @@ class DemoDbService(BaseMySQLService):
         if department:
             sql += " AND c.department = %s"
             params.append(department)
+        if org_id:
+            sql += " AND c.department IN (SELECT BRANCH_CODE FROM branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
+            params.append(org_id)
         if search:
             like = f"%{search}%"
             sql += " AND (c.category_name LIKE %s OR u.name LIKE %s OR a.block LIKE %s)"

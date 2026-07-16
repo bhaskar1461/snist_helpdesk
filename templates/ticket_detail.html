@@ -128,7 +128,7 @@
               </div>
               {% if event.remarks %}<div class="tl-remarks">{{ event.remarks }}</div>{% endif %}
               {% if event.time_taken %}<div class="tl-meta">⏱ {{ event.time_taken }}</div>{% endif %}
-              {% if event.attachment_path %}<div class="tl-meta">📎 <a href="{{ url_for('view_attachment', filename=event.attachment_path) }}">{{ event.attachment_path }}</a></div>{% endif %}
+              {% if event.attachment_path %}<div class="tl-meta">📎 <a href="{{ url_for('download_attachment', filename=event.attachment_path) }}">{{ event.attachment_path }}</a></div>{% endif %}
             </div>
             {% endfor %}
           </div>

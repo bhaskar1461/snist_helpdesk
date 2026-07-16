@@ -200,6 +200,35 @@ def allowed_file(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def verify_file_signature(file_stream) -> bool:
+    try:
+        header = file_stream.read(4)
+        file_stream.seek(0)
+        
+        # PNG
+        if header.startswith(b'\x89PNG'):
+            return True
+        # JPEG
+        if header.startswith(b'\xff\xd8'):
+            return True
+        # PDF
+        if header.startswith(b'%PDF'):
+            return True
+        # GIF
+        if header.startswith(b'GIF8'):
+            return True
+        # ZIP / DOCX / XLSX
+        if header.startswith(b'PK\x03\x04'):
+            return True
+        # OLE CF (legacy doc, xls)
+        if header.startswith(b'\xd0\xcf\x11\xe0'):
+            return True
+        
+        return False
+    except Exception:
+        return False
+
+
 def safe_int(value, default=0):
     try:
         return int(value)
@@ -290,6 +319,7 @@ def sidebar_links(role):
             ("user_management", "User Management", "users"),
             ("management_category", "Category Management", "folder-open"),
             ("location_management", "Location Management", "map-pin"),
+            ("ca_assignments", "CA Assignments", "users"),
         ],
         "ADMIN": [
             ("create_ticket_for_role", "Create Ticket", "plus-circle"),
@@ -832,7 +862,7 @@ def authority_update_status(ticket_id):
 
     attachment_path = ""
     if attachment and attachment.filename:
-        if not allowed_file(attachment.filename):
+        if not allowed_file(attachment.filename) or not verify_file_signature(attachment):
             flash(f"File type not allowed. Accepted: {', '.join(sorted(ALLOWED_EXTENSIONS))}.", "error")
             return redirect(url_for("ticket_detail", ticket_id=ticket_id))
         attachment.seek(0, 2)
@@ -1866,33 +1896,90 @@ def location_management():
 
 
 @app.route("/hod/ca-assignments", methods=["GET", "POST"])
-@role_required("HOD")
+@role_required("HOD", "SUPER_ADMIN")
 def ca_assignments():
     user = current_user()
+    
+    # Super Admin manages assignments organization-wide (no department filter)
+    is_super = user["role"] == "SUPER_ADMIN"
+    dept_filter = None if is_super else user["department"]
+
     if request.method == "POST":
         faculty_id_str = request.form.get("faculty_id", "").strip()
-        category_id = safe_int(request.form.get("category_id", "0"))
-        block = request.form.get("block", "").strip()
+        
+        # Support both multi-select category checkboxes and single select category_id (for tests/APIs)
+        category_ids = [safe_int(cid) for cid in request.form.getlist("categories") if safe_int(cid) > 0]
+        if not category_ids:
+            single_cat = safe_int(request.form.get("category_id", "0"))
+            if single_cat > 0:
+                category_ids = [single_cat]
+        
+        # Support both multi-select checkbox list and single select block (for tests/APIs)
+        blocks = request.form.getlist("blocks")
+        if not blocks:
+            single_block = request.form.get("block", "").strip()
+            if single_block:
+                blocks = [single_block]
 
-        if not faculty_id_str or not category_id or not block:
-            flash("Faculty, Category, and Problem (Block) are required.", "error")
+        if not faculty_id_str or not category_ids or not blocks:
+            flash("Faculty, Category/s, and Problem (Block/s) are required.", "error")
             return redirect(url_for("ca_assignments"))
 
         try:
-            ca_id = resolve_and_promote_ca(faculty_id_str, user["department"], user["id"], user["org_id"])
-            demo_db.create_ca_assignment(category_id, ca_id, block)
-            demo_db.log_audit_event(
-                "CA_BLOCK_ASSIGNED", user["id"], user["org_id"],
-                target_type="ca_assignment", target_id=ca_id,
-                details={"category_id": category_id, "block": block},
-            )
-            flash("CA assigned successfully.", "success")
+            # Group category IDs by department to promote the CA for each department they get mapped to
+            dept_to_categories = {}
+            for cat_id in category_ids:
+                cat = demo_db.get_category(cat_id)
+                if cat:
+                    dept = cat["department"]
+                    if dept not in dept_to_categories:
+                        dept_to_categories[dept] = []
+                    dept_to_categories[dept].append(cat_id)
+
+            if not dept_to_categories:
+                flash("Selected categories are invalid.", "error")
+                return redirect(url_for("ca_assignments"))
+
+            success_count = 0
+            already_assigned_count = 0
+            
+            with demo_db.transaction():
+                for dept, cat_ids in dept_to_categories.items():
+                    ca_id = resolve_and_promote_ca(faculty_id_str, dept, user["id"], user["org_id"])
+                    for cat_id in cat_ids:
+                        for b in blocks:
+                            b_stripped = b.strip()
+                            if not b_stripped:
+                                continue
+                            try:
+                                demo_db.create_ca_assignment(cat_id, ca_id, b_stripped)
+                                demo_db.log_audit_event(
+                                    "CA_BLOCK_ASSIGNED", user["id"], user["org_id"],
+                                    target_type="ca_assignment", target_id=ca_id,
+                                    details={"category_id": cat_id, "block": b_stripped},
+                                )
+                                success_count += 1
+                            except ValueError as ve:
+                                if "already assigned" in str(ve).lower():
+                                    already_assigned_count += 1
+                                else:
+                                    raise ve
+
+            if success_count > 0:
+                if already_assigned_count > 0:
+                    flash(f"Assigned CA to {success_count} mapping(s) successfully ({already_assigned_count} mapping(s) were already assigned to this CA).", "success")
+                else:
+                    flash(f"CA assigned to {success_count} mapping(s) successfully.", "success")
+            elif already_assigned_count > 0:
+                flash("This CA is already assigned to all the selected category-block mappings.", "warning")
+            else:
+                flash("No valid mappings were selected.", "error")
         except Exception as e:
             flash(f"Assignment failed: {e}", "error")
         return redirect(url_for("ca_assignments"))
 
-    faculties = demo_db.list_users(role="FACULTY", department=user["department"], org_id=user["org_id"])
-    cas = demo_db.list_users(role="CA", department=user["department"], org_id=user["org_id"])
+    faculties = demo_db.list_users(role="FACULTY", department=dept_filter, org_id=user["org_id"])
+    cas = demo_db.list_users(role="CA", department=dept_filter, org_id=user["org_id"])
     
     promoteable_users = []
     seen_emails = set()
@@ -1908,7 +1995,7 @@ def ca_assignments():
         })
 
     if live_db.enabled:
-        ref_users = live_db.fetch_reference_users(department=user["department"], org_id=user["org_id"], limit=1000)
+        ref_users = live_db.fetch_reference_users(department=dept_filter, org_id=user["org_id"], limit=1000)
         for r in ref_users:
             email_lower = (r.get("EMAIL_ID") or "").lower().strip()
             if email_lower and email_lower not in seen_emails:
@@ -1921,25 +2008,42 @@ def ca_assignments():
                     "department": r.get("department_code") or r.get("department_name") or "",
                 })
 
-    categories = demo_db.list_categories(department=user["department"], org_id=user["org_id"], active_only=True)
+    categories = demo_db.list_categories(department=dept_filter, org_id=user["org_id"], active_only=True)
     
     locations = live_db.fetch_locations()
     blocks = sorted(list(set(loc["block"] for loc in locations if loc.get("block"))))
 
-    assignments = demo_db.list_ca_assignments(department=user["department"])
+    assignments = demo_db.list_ca_assignments(department=dept_filter, org_id=user["org_id"])
+    total_assignments_count = len(assignments)
+
+    from collections import defaultdict
+    grouped = defaultdict(list)
+    for a in assignments:
+        grouped[a["ca_id"]].append(a)
+
+    grouped_assignments = []
+    for ca_id, items in grouped.items():
+        grouped_assignments.append({
+            "ca_id": ca_id,
+            "ca_name": items[0]["ca_name"],
+            "ca_email": items[0]["ca_email"],
+            "mappings": items
+        })
+    grouped_assignments.sort(key=lambda x: x["ca_name"])
 
     return render_template(
         "ca_assignments.html",
         users=promoteable_users,
         categories=categories,
         blocks=blocks,
-        assignments=assignments,
+        assignments=grouped_assignments,
+        total_count=total_assignments_count,
         **page_context("CA Assignments")
     )
 
 
 @app.route("/hod/ca-assignments/<int:assignment_id>/delete", methods=["POST"])
-@role_required("HOD")
+@role_required("HOD", "SUPER_ADMIN")
 def delete_ca_assignment(assignment_id):
     try:
         demo_db.delete_ca_assignment(assignment_id)
