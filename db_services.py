@@ -253,7 +253,7 @@ class LiveDbService(BaseMySQLService):
 
     def resolve_org_id(self, email="", department=""):
         if not self.enabled:
-            return "2000"
+            return None
         with self.connection() as connection, connection.cursor() as cursor:
             if email:
                 cursor.execute(
@@ -281,7 +281,7 @@ class LiveDbService(BaseMySQLService):
                 row = cursor.fetchone()
                 if row and row.get("org_id"):
                     return row["org_id"]
-        return "2000"
+        return None
 
 
 class DemoDbService(BaseMySQLService):
@@ -516,7 +516,7 @@ class DemoDbService(BaseMySQLService):
             SELECT c.id, c.category_name, c.department, c.assigned_ca_id, c.is_active, c.created_at,
                    u.name AS assigned_ca_name, u.email AS assigned_ca_email
             FROM demo_categories c
-            INNER JOIN demo_users u ON u.id = c.assigned_ca_id
+            LEFT JOIN demo_users u ON u.id = c.assigned_ca_id
             WHERE 1=1
         """
         params = []
@@ -592,7 +592,7 @@ class DemoDbService(BaseMySQLService):
                 """
                 SELECT c.id, c.category_name, c.department, c.assigned_ca_id, c.is_active, u.name AS assigned_ca_name
                 FROM demo_categories c
-                INNER JOIN demo_users u ON u.id = c.assigned_ca_id
+                LEFT JOIN demo_users u ON u.id = c.assigned_ca_id
                 WHERE c.id = %s
                 """,
                 (category_id,),
@@ -610,22 +610,14 @@ class DemoDbService(BaseMySQLService):
                 (1 if is_active else 0, category_id),
             )
 
-    def create_ticket(self, title, description, category_id, created_by, org_id, location_id=None, problem_type_id=None):
+    def create_ticket(self, title, description, category_id, created_by, org_id, location_id=None):
         category = self.get_category(category_id)
         if not category:
             raise ValueError("Selected category does not exist.")
 
-        # Auto-generate title from category + problem type if title is empty
+        # Auto-generate title from category if title is empty
         if not title:
-            problem_name = None
-            if problem_type_id:
-                pt = self.get_problem_type(problem_type_id)
-                if pt:
-                    problem_name = pt["problem_name"]
-            if problem_name:
-                title = f"{category['category_name']} \u2013 {problem_name}"
-            else:
-                title = category["category_name"]
+            title = category["category_name"]
 
         # Retrieve block name if location_id is provided
         block_name = None
@@ -639,26 +631,14 @@ class DemoDbService(BaseMySQLService):
         # Resolve assigned CA dynamically
         assigned_ca_id = self.resolve_assigned_ca(category_id, block_name) or category["assigned_ca_id"]
 
-        # Check if problem_type_id column exists
-        has_pt_col = self._has_column("demo_tickets", "problem_type_id")
-
         with self.connection() as connection, connection.cursor() as cursor:
-            if has_pt_col:
-                cursor.execute(
-                    """
-                    INSERT INTO demo_tickets (title, description, category_id, problem_type_id, created_by, assigned_to, status, org_id, location_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', %s, %s)
-                    """,
-                    (title, description, category_id, problem_type_id, created_by, assigned_ca_id, org_id, location_id),
-                )
-            else:
-                cursor.execute(
-                    """
-                    INSERT INTO demo_tickets (title, description, category_id, created_by, assigned_to, status, org_id, location_id)
-                    VALUES (%s, %s, %s, %s, %s, 'PENDING', %s, %s)
-                    """,
-                    (title, description, category_id, created_by, assigned_ca_id, org_id, location_id),
-                )
+            cursor.execute(
+                """
+                INSERT INTO demo_tickets (title, description, category_id, created_by, assigned_to, status, org_id, location_id)
+                VALUES (%s, %s, %s, %s, %s, 'PENDING', %s, %s)
+                """,
+                (title, description, category_id, created_by, assigned_ca_id, org_id, location_id),
+            )
             ticket_id = cursor.lastrowid
             cursor.execute(
                 """
@@ -699,10 +679,7 @@ class DemoDbService(BaseMySQLService):
             return False
 
     def ticket_query_base(self):
-        has_pt = self._has_column("demo_tickets", "problem_type_id")
-        pt_select = ", pt.problem_name AS problem_type_name" if has_pt else ""
-        pt_join = "LEFT JOIN demo_problem_types pt ON pt.id = t.problem_type_id" if has_pt else ""
-        return f"""
+        return """
             SELECT
                 t.id,
                 t.title,
@@ -711,7 +688,6 @@ class DemoDbService(BaseMySQLService):
                 t.org_id,
                 t.location_id,
                 t.category_id,
-                t.problem_type_id,
                 t.created_by,
                 t.assigned_to,
                 t.created_at,
@@ -726,13 +702,11 @@ class DemoDbService(BaseMySQLService):
                 loc.floor AS location_floor,
                 loc.room_no AS location_room_no,
                 loc.name AS location_room_name
-                {pt_select}
             FROM demo_tickets t
             INNER JOIN demo_categories c ON c.id = t.category_id
             INNER JOIN demo_users creator ON creator.id = t.created_by
             INNER JOIN demo_users assignee ON assignee.id = t.assigned_to
             LEFT JOIN location loc ON loc.id = t.location_id
-            {pt_join}
             WHERE 1=1
         """
 
@@ -1147,85 +1121,7 @@ class DemoDbService(BaseMySQLService):
         counts = {r["id"]: r["active_count"] for r in load_rows}
         return min(ca_ids, key=lambda cid: counts.get(cid, 0))
 
-    # ── Problem Types (Feature 8) ───────────────────────────
-
-    def get_problem_type(self, problem_type_id):
-        with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT id, category_id, problem_name, is_active FROM demo_problem_types WHERE id = %s",
-                (problem_type_id,),
-            )
-            return cursor.fetchone()
-
-    def list_problem_types(self, category_id=None, active_only=False, search=""):
-        sql = """
-            SELECT pt.id, pt.category_id, pt.problem_name, pt.is_active, pt.created_at,
-                   c.category_name, c.department
-            FROM demo_problem_types pt
-            INNER JOIN demo_categories c ON c.id = pt.category_id
-            WHERE 1=1
-        """
-        params = []
-        if category_id:
-            sql += " AND pt.category_id = %s"
-            params.append(category_id)
-        if active_only:
-            sql += " AND pt.is_active = 1"
-        if search:
-            like = f"%{search}%"
-            sql += " AND (pt.problem_name LIKE %s OR c.category_name LIKE %s)"
-            params.extend([like, like])
-        sql += " ORDER BY c.category_name, pt.problem_name"
-        with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(sql, params)
-            return cursor.fetchall()
-
-    def create_problem_type(self, category_id, problem_name):
-        with self.connection() as connection, connection.cursor() as cursor:
-            # Duplicate check
-            cursor.execute(
-                "SELECT id FROM demo_problem_types WHERE category_id = %s AND LOWER(problem_name) = LOWER(%s) LIMIT 1",
-                (category_id, problem_name),
-            )
-            if cursor.fetchone():
-                raise ValueError(f"Problem type '{problem_name}' already exists for this category.")
-            cursor.execute(
-                "INSERT INTO demo_problem_types (category_id, problem_name) VALUES (%s, %s)",
-                (category_id, problem_name),
-            )
-            return cursor.lastrowid
-
-    def update_problem_type(self, problem_type_id, problem_name):
-        with self.connection() as connection, connection.cursor() as cursor:
-            existing = self.get_problem_type(problem_type_id)
-            if not existing:
-                raise ValueError("Problem type not found.")
-            # Duplicate check within same category
-            cursor.execute(
-                "SELECT id FROM demo_problem_types WHERE category_id = %s AND LOWER(problem_name) = LOWER(%s) AND id != %s LIMIT 1",
-                (existing["category_id"], problem_name, problem_type_id),
-            )
-            if cursor.fetchone():
-                raise ValueError(f"Problem type '{problem_name}' already exists for this category.")
-            cursor.execute(
-                "UPDATE demo_problem_types SET problem_name = %s WHERE id = %s",
-                (problem_name, problem_type_id),
-            )
-
-    def delete_problem_type(self, problem_type_id):
-        with self.connection() as connection, connection.cursor() as cursor:
-            if self._has_column("demo_tickets", "problem_type_id"):
-                cursor.execute("SELECT COUNT(*) AS cnt FROM demo_tickets WHERE problem_type_id = %s", (problem_type_id,))
-                if cursor.fetchone()["cnt"] > 0:
-                    raise ValueError("Cannot delete a problem type that is referenced by tickets.")
-            cursor.execute("DELETE FROM demo_problem_types WHERE id = %s", (problem_type_id,))
-
-    def toggle_problem_type(self, problem_type_id, is_active):
-        with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                "UPDATE demo_problem_types SET is_active = %s WHERE id = %s",
-                (1 if is_active else 0, problem_type_id),
-            )
+    # ── Audit Events (Feature 11) ───────────────────────────
 
     # ── Audit Events (Feature 11) ───────────────────────────
 

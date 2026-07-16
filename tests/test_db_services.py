@@ -187,8 +187,7 @@ class TestDemoDbService(HelpdeskTestCase):
             category_id=2,
             created_by=7,
             org_id="2000",
-            location_id=2,
-            problem_type_id=1
+            location_id=2
         )
         self.assertIsNotNone(ticket_id)
 
@@ -252,11 +251,6 @@ class TestDemoDbService(HelpdeskTestCase):
         self.service.delete_ca_assignment(assign_id)
         assignments_after = GLOBAL_DB_STATE.tables["demo_ca_assignments"]
         self.assertFalse(any(a.get("block") == "Block B" for a in assignments_after))
-
-        # Problem types CRUD
-        self.service.create_problem_type(1, "New Problem")
-        prob_types = self.service.list_problem_types(1)
-        self.assertTrue(any(p["problem_name"] == "New Problem" for p in prob_types))
 
         # Create Location
         loc_id = self.service.create_location("2000", "Block C", "3rd Floor", "301", "Lab C")

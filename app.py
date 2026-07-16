@@ -206,9 +206,15 @@ def safe_int(value, default=0):
     except (TypeError, ValueError):
         return default
 
-
 def resolve_user_org(email, department):
     email_lower = (email or "").lower().strip()
+    
+    # 1) Try live_db lookup by email first
+    if live_db.enabled and email_lower:
+        resolved = live_db.resolve_org_id(email=email_lower)
+        if resolved:
+            return resolved
+
     domain = ""
     if "@" in email_lower:
         domain = email_lower.split("@", 1)[1]
@@ -222,12 +228,12 @@ def resolve_user_org(email, department):
     if email_lower == "snu.admin@gmail.com":
         return "3000"
     
-    if department:
-        # Check department mapping in live_db
-        if live_db.enabled:
-            resolved = live_db.resolve_org_id(department=department)
-            if resolved:
-                return resolved
+    # 2) Fallback to department mapping if email lookup yielded nothing
+    if department and live_db.enabled:
+        resolved = live_db.resolve_org_id(department=department)
+        if resolved:
+            return resolved
+            
     return "2000"
 
 
@@ -243,7 +249,7 @@ def current_user():
         "email": email,
         "role": role,
         "department": dept,
-        "org_id": session.get("org_id") or resolve_user_org(email, dept),
+        "org_id": resolve_user_org(email, dept),
     }
 
 
@@ -283,7 +289,6 @@ def sidebar_links(role):
             ("super_admin_all_tickets", "All Tickets", "ticket"),
             ("user_management", "User Management", "users"),
             ("management_category", "Category Management", "folder-open"),
-            ("management_problem_types", "Problem Types", "wrench"),
             ("location_management", "Location Management", "map-pin"),
         ],
         "ADMIN": [
@@ -299,7 +304,6 @@ def sidebar_links(role):
             ("hod_all_tickets", "Department Tickets", "ticket"),
             ("user_management", "User Management", "users"),
             ("management_category", "Category Management", "folder-open"),
-            ("management_problem_types", "Problem Types", "wrench"),
             ("ca_assignments", "CA Assignments", "users"),
         ],
         "CA": [
@@ -556,8 +560,6 @@ def create_ticket_for_role():
         title = request.form.get("title", "").strip()  # may be empty now (auto-generated)
         description = request.form.get("description", "").strip()
         location_id = safe_int(request.form.get("location_id", "0")) or None
-        problem_type_id = safe_int(request.form.get("problem_type_id", "0")) or None
-        other_problem = request.form.get("other_problem", "").strip()
         if not category_id:
             flash("Category is required.", "error")
             return redirect(url_for("create_ticket_for_role"))
@@ -570,20 +572,8 @@ def create_ticket_for_role():
         if len(description) > 5000:
             flash("Description cannot exceed 5000 characters.", "error")
             return redirect(url_for("create_ticket_for_role"))
-        # Handle "Other" problem type — create on the fly
-        if other_problem and not problem_type_id:
-            try:
-                problem_type_id = demo_db.create_problem_type(category_id, other_problem)
-            except (ValueError, Exception):
-                pass  # If it already exists, try to find it
-            if not problem_type_id:
-                pts = demo_db.list_problem_types(category_id=category_id)
-                for pt in pts:
-                    if pt["problem_name"].lower() == other_problem.lower():
-                        problem_type_id = pt["id"]
-                        break
         org_id = user["org_id"]
-        demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id, problem_type_id=problem_type_id)
+        demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id)
         flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
@@ -1166,95 +1156,39 @@ def management_category():
             "category_name": request.form.get("category_name", "").strip(),
             "department": user["department"] if user["role"] == "HOD" else request.form.get("department", "").strip(),
         }
-        assigned_ca_id_str = request.form.get("assigned_ca_id", "").strip()
-        if not payload["category_name"] or not payload["department"] or not assigned_ca_id_str:
-            flash("Category name, department, and CA are required.", "error")
+        if not payload["category_name"] or not payload["department"]:
+            flash("Category name and department are required.", "error")
             return redirect(url_for("management_category"))
-        # Duplicate check
+        # Duplicate check / reactivate check
         if demo_db.category_exists(payload["category_name"], payload["department"]):
-            flash(f"A category '{payload['category_name']}' already exists in {payload['department']}.", "error")
-            return redirect(url_for("management_category"))
-        # HOD can only assign CA within their department
-        if user["role"] == "HOD":
-            if assigned_ca_id_str.startswith("ref:"):
-                ref_email = assigned_ca_id_str.split(":", 1)[1]
-                teacher = live_db.lookup_teacher_by_email(ref_email)
-                if not teacher or user["department"] != teacher.get("department"):
-                    flash("You can only assign a CA from your own department.", "error")
-                    return redirect(url_for("management_category"))
+            cats = demo_db.list_categories(department=payload["department"])
+            matching = [c for c in cats if c["category_name"].lower() == payload["category_name"].lower()]
+            if matching and matching[0]["is_active"] == 0:
+                demo_db.toggle_category_status(matching[0]["id"], 1)
+                flash(f"Re-activated category '{matching[0]['category_name']}' for {payload['department']}.", "success")
             else:
-                ca_user = demo_db.get_user(safe_int(assigned_ca_id_str))
-                if not ca_user or user["department"] not in [d.strip() for d in ca_user["department"].split(",")]:
-                    flash("You can only assign a CA from your own department.", "error")
-                    return redirect(url_for("management_category"))
-        
-        try:
-            payload["assigned_ca_id"] = resolve_and_promote_ca(assigned_ca_id_str, payload["department"], user["id"], user["org_id"])
-        except ValueError as exc:
-            flash(str(exc), "error")
+                flash(f"A category '{payload['category_name']}' already exists in {payload['department']}.", "error")
             return redirect(url_for("management_category"))
-            
+        
+        payload["assigned_ca_id"] = user["id"]  # set HOD/Admin as default placeholder CA to satisfy DB FK constraint
         demo_db.create_category(payload)
-        flash("Category mapped to Concerned Authority.", "success")
+        flash("Category created successfully.", "success")
         return redirect(url_for("management_category"))
 
     # GET: support search/filter
     department = user["department"] if user["role"] == "HOD" else request.args.get("department", "").strip() or None
     search = request.args.get("q", "").strip()
-    ca_filter = safe_int(request.args.get("ca", "0")) or None
-    categories = demo_db.list_categories(department=department, search=search, ca_id=ca_filter, org_id=user["org_id"])
-    
-    # Active CAs for search filtering dropdown
-    active_cas = demo_db.list_users(role="CA", department=department, org_id=user["org_id"])
-    active_cas_list = []
-    for u in active_cas:
-        active_cas_list.append({
-            "id": u["id"],
-            "name": u["name"],
-            "email": u["email"],
-            "role": u["role"],
-            "department": u["department"],
-        })
-        
-    # All candidate users (CA + FACULTY) for category assignment dropdown - do not filter by department on fetch
-    ca_candidates = demo_db.list_users(role=["CA", "FACULTY"], org_id=user["org_id"])
-    ca_candidates_list = []
-    seen_emails = set()
-    for u in ca_candidates:
-        email_lower = u["email"].lower().strip()
-        seen_emails.add(email_lower)
-        ca_candidates_list.append({
-            "id": u["id"],
-            "name": u["name"],
-            "email": u["email"],
-            "role": u["role"],
-            "department": u["department"],
-        })
-        
-    # Also fetch all reference directory users of the organization from live_db
-    if live_db.enabled:
-        ref_users = live_db.fetch_reference_users(org_id=user["org_id"], limit=1000)
-        for r in ref_users:
-            email_lower = (r.get("EMAIL_ID") or "").lower().strip()
-            if email_lower and email_lower not in seen_emails:
-                seen_emails.add(email_lower)
-                ca_candidates_list.append({
-                    "id": f"ref:{r['EMAIL_ID']}",
-                    "name": r.get("TEACHER_NAME") or "Unknown",
-                    "email": r["EMAIL_ID"],
-                    "role": "FACULTY",
-                    "department": r.get("department_code") or r.get("department_name") or "",
-                })
+    show_inactive = request.args.get("show_inactive") == "true"
+    categories = demo_db.list_categories(department=department, search=search, org_id=user["org_id"], active_only=not show_inactive)
 
     return render_template(
         "category_management.html",
         categories=categories,
-        active_cas=active_cas_list,
-        ca_candidates=ca_candidates_list,
         departments=live_departments(user["org_id"]),
         selected_department=department or "",
-        filters={"q": search, "department": department or "", "ca": ca_filter or ""},
-        **page_context("Category Mapping"),
+        show_inactive=show_inactive,
+        filters={"q": search, "department": department or ""},
+        **page_context("Category Management"),
     )
 
 
@@ -1262,46 +1196,33 @@ def management_category():
 @role_required("HOD", "SUPER_ADMIN")
 def update_category(category_id):
     user = current_user()
+    existing_cat = demo_db.get_category(category_id)
+    if not existing_cat:
+        flash("Category not found.", "error")
+        return redirect(url_for("management_category"))
+
     # HOD can only update categories in their department
     if user["role"] == "HOD":
-        existing_cat = demo_db.get_category(category_id)
-        if not existing_cat or existing_cat["department"] != user["department"]:
+        if existing_cat["department"] != user["department"]:
             flash("You can only modify categories in your own department.", "error")
             return redirect(url_for("management_category"))
+
     payload = {
         "category_name": request.form.get("category_name", "").strip(),
         "department": user["department"] if user["role"] == "HOD" else request.form.get("department", "").strip(),
+        "assigned_ca_id": existing_cat["assigned_ca_id"],
     }
-    assigned_ca_id_str = request.form.get("assigned_ca_id", "").strip()
-    if not payload["category_name"] or not payload["department"] or not assigned_ca_id_str:
-        flash("Category name, department, and CA are required.", "error")
+    if not payload["category_name"] or not payload["department"]:
+        flash("Category name and department are required.", "error")
         return redirect(url_for("management_category"))
+
     # Duplicate check (exclude self)
     if demo_db.category_exists(payload["category_name"], payload["department"], exclude_id=category_id):
         flash(f"A category '{payload['category_name']}' already exists in {payload['department']}.", "error")
         return redirect(url_for("management_category"))
-    # HOD can only assign CA within their department
-    if user["role"] == "HOD":
-        if assigned_ca_id_str.startswith("ref:"):
-            ref_email = assigned_ca_id_str.split(":", 1)[1]
-            teacher = live_db.lookup_teacher_by_email(ref_email)
-            if not teacher or user["department"] != teacher.get("department"):
-                flash("You can only assign a CA from your own department.", "error")
-                return redirect(url_for("management_category"))
-        else:
-            ca_user = demo_db.get_user(safe_int(assigned_ca_id_str))
-            if not ca_user or user["department"] not in [d.strip() for d in ca_user["department"].split(",")]:
-                flash("You can only assign a CA from your own department.", "error")
-                return redirect(url_for("management_category"))
-            
-    try:
-        payload["assigned_ca_id"] = resolve_and_promote_ca(assigned_ca_id_str, payload["department"], user["id"], user["org_id"])
-    except ValueError as exc:
-        flash(str(exc), "error")
-        return redirect(url_for("management_category"))
         
     demo_db.update_category(category_id, payload)
-    flash("Category mapping updated.", "success")
+    flash("Category updated successfully.", "success")
     return redirect(url_for("management_category"))
 
 
@@ -1317,7 +1238,7 @@ def delete_category(category_id):
             return redirect(url_for("management_category"))
     try:
         demo_db.delete_category(category_id)
-        flash("Category mapping deleted.", "success")
+        flash("Category deleted successfully.", "success")
     except ValueError as exc:
         flash(str(exc), "error")
     return redirect(url_for("management_category"))
@@ -1806,6 +1727,15 @@ def download_attachment(filename):
     return send_from_directory(UPLOAD_DIR, safe_name)
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "favicon.ico",
+        mimetype="image/png"
+    )
+
+
 @app.errorhandler(500)
 def internal_error(error):
     return render_template("error.html", error_code=500, error_title="Server Error", error_message="Something went wrong. Please try again later."), 500
@@ -1940,54 +1870,58 @@ def location_management():
 def ca_assignments():
     user = current_user()
     if request.method == "POST":
-        faculty_id = safe_int(request.form.get("faculty_id", "0"))
+        faculty_id_str = request.form.get("faculty_id", "").strip()
         category_id = safe_int(request.form.get("category_id", "0"))
         block = request.form.get("block", "").strip()
 
-        if not faculty_id or not category_id or not block:
-            flash("Faculty, Category, and Block are required.", "error")
+        if not faculty_id_str or not category_id or not block:
+            flash("Faculty, Category, and Problem (Block) are required.", "error")
             return redirect(url_for("ca_assignments"))
-
-        faculty_user = demo_db.get_user(faculty_id)
-        if not faculty_user:
-            flash("Selected faculty not found.", "error")
-            return redirect(url_for("ca_assignments"))
-
-        if faculty_user["role"] != "CA":
-            try:
-                demo_db.update_user(faculty_id, {
-                    "name": faculty_user["name"],
-                    "email": faculty_user["email"],
-                    "role": "CA",
-                    "department": user["department"]
-                })
-                demo_db.log_audit_event(
-                    "CA_PROMOTED", user["id"], user["org_id"],
-                    target_type="user", target_id=faculty_id,
-                    details={"promoted_name": faculty_user["name"], "department": user["department"]},
-                )
-                flash(f"Promoted {faculty_user['name']} to Concerned Authority.", "success")
-            except Exception as e:
-                flash(f"Failed to promote faculty: {e}", "error")
-                return redirect(url_for("ca_assignments"))
 
         try:
-            demo_db.create_ca_assignment(category_id, faculty_id, block)
+            ca_id = resolve_and_promote_ca(faculty_id_str, user["department"], user["id"], user["org_id"])
+            demo_db.create_ca_assignment(category_id, ca_id, block)
             demo_db.log_audit_event(
                 "CA_BLOCK_ASSIGNED", user["id"], user["org_id"],
-                target_type="ca_assignment", target_id=faculty_id,
-                details={"ca_name": faculty_user["name"], "category_id": category_id, "block": block},
+                target_type="ca_assignment", target_id=ca_id,
+                details={"category_id": category_id, "block": block},
             )
-            flash("CA assigned to category and block successfully.", "success")
+            flash("CA assigned successfully.", "success")
         except Exception as e:
             flash(f"Assignment failed: {e}", "error")
         return redirect(url_for("ca_assignments"))
 
     faculties = demo_db.list_users(role="FACULTY", department=user["department"], org_id=user["org_id"])
     cas = demo_db.list_users(role="CA", department=user["department"], org_id=user["org_id"])
-    promoteable_users = faculties + cas
+    
+    promoteable_users = []
+    seen_emails = set()
+    for u in (faculties + cas):
+        email_lower = u["email"].lower().strip()
+        seen_emails.add(email_lower)
+        promoteable_users.append({
+            "id": u["id"],
+            "name": u["name"],
+            "email": u["email"],
+            "role": u["role"],
+            "department": u["department"],
+        })
 
-    categories = demo_db.list_categories(department=user["department"], org_id=user["org_id"])
+    if live_db.enabled:
+        ref_users = live_db.fetch_reference_users(department=user["department"], org_id=user["org_id"], limit=1000)
+        for r in ref_users:
+            email_lower = (r.get("EMAIL_ID") or "").lower().strip()
+            if email_lower and email_lower not in seen_emails:
+                seen_emails.add(email_lower)
+                promoteable_users.append({
+                    "id": f"ref:{r['EMAIL_ID']}",
+                    "name": r.get("TEACHER_NAME") or "Unknown",
+                    "email": r["EMAIL_ID"],
+                    "role": "FACULTY",
+                    "department": r.get("department_code") or r.get("department_name") or "",
+                })
+
+    categories = demo_db.list_categories(department=user["department"], org_id=user["org_id"], active_only=True)
     
     locations = live_db.fetch_locations()
     blocks = sorted(list(set(loc["block"] for loc in locations if loc.get("block"))))
@@ -2060,104 +1994,6 @@ def delete_location(location_id):
 # Department edit/archive routes removed
 
 
-# Problem Type Management (Feature 8)
-@app.route("/management/problem-types", methods=["GET", "POST"])
-@role_required("HOD", "SUPER_ADMIN")
-def management_problem_types():
-    user = current_user()
-    if request.method == "POST":
-        category_id = safe_int(request.form.get("category_id", "0"))
-        problem_name = request.form.get("problem_name", "").strip()
-        if not category_id or not problem_name:
-            flash("Category and Problem Name are required.", "error")
-            return redirect(url_for("management_problem_types"))
-        try:
-            pt_id = demo_db.create_problem_type(category_id, problem_name)
-            demo_db.log_audit_event("PROBLEM_TYPE_CREATED", user["id"], user["org_id"],
-                                   target_type="problem_type", target_id=pt_id,
-                                   details={"problem_name": problem_name, "category_id": category_id})
-            flash(f"Problem type '{problem_name}' created.", "success")
-        except ValueError as e:
-            flash(str(e), "error")
-        except Exception as e:
-            flash(f"Failed: {e}", "error")
-        return redirect(url_for("management_problem_types"))
-
-    search = request.args.get("q", "").strip()
-    filter_cat = safe_int(request.args.get("category_id", "0")) or None
-    if user["role"] == "HOD":
-        categories = demo_db.list_categories(department=user["department"], org_id=user["org_id"])
-    else:
-        categories = demo_db.list_categories(org_id=user["org_id"])
-    problem_types = demo_db.list_problem_types(category_id=filter_cat, search=search)
-    # Filter by department for HODs
-    if user["role"] == "HOD":
-        dept_cat_ids = {c["id"] for c in categories}
-        problem_types = [pt for pt in problem_types if pt["category_id"] in dept_cat_ids]
-    return render_template("problem_type_management.html",
-                           categories=categories, problem_types=problem_types,
-                           search=search, filter_cat=filter_cat,
-                           **page_context("Problem Types"))
-
-
-@app.route("/management/problem-types/<int:pt_id>/update", methods=["POST"])
-@role_required("HOD", "SUPER_ADMIN")
-def update_problem_type(pt_id):
-    user = current_user()
-    problem_name = request.form.get("problem_name", "").strip()
-    if not problem_name:
-        flash("Problem name is required.", "error")
-        return redirect(url_for("management_problem_types"))
-    try:
-        demo_db.update_problem_type(pt_id, problem_name)
-        demo_db.log_audit_event("PROBLEM_TYPE_UPDATED", user["id"], user["org_id"],
-                               target_type="problem_type", target_id=pt_id,
-                               details={"problem_name": problem_name})
-        flash("Problem type updated.", "success")
-    except ValueError as e:
-        flash(str(e), "error")
-    except Exception as e:
-        flash(f"Failed: {e}", "error")
-    return redirect(url_for("management_problem_types"))
-
-
-@app.route("/management/problem-types/<int:pt_id>/delete", methods=["POST"])
-@role_required("HOD", "SUPER_ADMIN")
-def delete_problem_type(pt_id):
-    user = current_user()
-    try:
-        demo_db.delete_problem_type(pt_id)
-        demo_db.log_audit_event("PROBLEM_TYPE_DELETED", user["id"], user["org_id"],
-                               target_type="problem_type", target_id=pt_id)
-        flash("Problem type deleted.", "success")
-    except ValueError as e:
-        flash(str(e), "error")
-    except Exception as e:
-        flash(f"Failed: {e}", "error")
-    return redirect(url_for("management_problem_types"))
-
-
-@app.route("/management/problem-types/<int:pt_id>/toggle", methods=["POST"])
-@role_required("HOD", "SUPER_ADMIN")
-def toggle_problem_type(pt_id):
-    user = current_user()
-    try:
-        existing = demo_db.get_problem_type(pt_id)
-        if not existing:
-            flash("Problem type not found.", "error")
-            return redirect(url_for("management_problem_types"))
-        new_state = not existing["is_active"]
-        demo_db.toggle_problem_type(pt_id, new_state)
-        action = "activated" if new_state else "deactivated"
-        flash(f"Problem type {action}.", "success")
-    except Exception as e:
-        flash(f"Failed: {e}", "error")
-    return redirect(url_for("management_problem_types"))
-
-
-# Audit Log route removed (logging happens in DB but not visible in frontend)
-
-
 # API: Categories by department (Feature 7)
 @app.route("/api/categories-by-department")
 def api_categories_by_department():
@@ -2166,15 +2002,7 @@ def api_categories_by_department():
         return jsonify([])
     user = current_user()
     cats = demo_db.list_categories(department=department, org_id=user["org_id"], active_only=True)
-    return jsonify([{"id": c["id"], "category_name": c["category_name"], "department": c["department"],
-                     "assigned_ca_name": c.get("assigned_ca_name", "")} for c in cats])
-
-
-# API: Problem types by category (Feature 8)
-@app.route("/api/problem-types/<int:category_id>")
-def api_problem_types(category_id):
-    pts = demo_db.list_problem_types(category_id=category_id, active_only=True)
-    return jsonify([{"id": pt["id"], "problem_name": pt["problem_name"]} for pt in pts])
+    return jsonify([{"id": c["id"], "category_name": c["category_name"], "department": c["department"]} for c in cats])
 
 
 if __name__ == "__main__":

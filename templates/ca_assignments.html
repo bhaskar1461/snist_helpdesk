@@ -31,8 +31,8 @@
     {% include 'sidebar.html' %}
     <main class="admin-main">
       {% set page_kicker = "assignments" %}
-      {% set page_heading = "CA Block Assignments" %}
-      {% set page_description = "Promote department faculty members to Concerned Authorities (CAs) and map them to handle specific categories and blocks." %}
+      {% set page_heading = "Concerned Authority Assignments" %}
+      {% set page_description = "Map department faculty members to handle specific categories and problems." %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -47,21 +47,21 @@
 
       <section class="admin-grid">
         <section class="admin-card">
-          <div class="card-head"><div><p class="kicker">Assign CA</p><h3>Map Category & Block</h3></div></div>
+          <div class="card-head"><div><p class="kicker">Assign CA</p><h3>Create Assignment</h3></div></div>
           <form method="post" action="{{ url_for('ca_assignments') }}" class="admin-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-grid">
               <label class="field">
-                <span>Select Faculty / CA</span>
+                <span>Select Faculty</span>
                 <select name="faculty_id" required>
-                  <option value="">Choose User</option>
+                  <option value="">Choose Faculty</option>
                   {% for u in users %}
                     <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
                   {% endfor %}
                 </select>
               </label>
               <label class="field">
-                <span>Select Problem / Category</span>
+                <span>Select Category</span>
                 <select name="category_id" required>
                   <option value="">Choose Category</option>
                   {% for c in categories %}
@@ -70,16 +70,16 @@
                 </select>
               </label>
               <label class="field">
-                <span>Select Block</span>
+                <span>Select Problem</span>
                 <select name="block" required>
-                  <option value="">Choose Block</option>
+                  <option value="">Choose Problem (Location Block)</option>
                   {% for b in blocks %}
                     <option value="{{ b }}">{{ b }}</option>
                   {% endfor %}
                 </select>
               </label>
             </div>
-            <div class="form-actions"><button type="submit" class="primary-btn">Promote & Assign CA</button></div>
+            <div class="form-actions"><button type="submit" class="primary-btn">Create the assignment</button></div>
           </form>
         </section>
 
@@ -88,7 +88,7 @@
           <p class="assignment-count">{{ assignments|length }} assignments mapped</p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>CA Name</th><th>Category</th><th>Block</th><th>Actions</th></tr></thead>
+              <thead><tr><th>CA Name</th><th>Category</th><th>Problem (Block)</th><th>Actions</th></tr></thead>
               <tbody>
                 {% for item in assignments %}
                   <tr>

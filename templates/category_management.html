@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Category Mapping</title>
+  <title>Category Management</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
@@ -37,7 +37,7 @@
 </head>
 <body>
   <div class="admin-shell">
-        <script>
+    <script>
       if (localStorage.getItem('sidebar-collapsed') === 'true') {
         document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
       }
@@ -45,8 +45,8 @@
     {% include 'sidebar.html' %}
     <main class="admin-main">
       {% set page_kicker = "demo_categories" %}
-      {% set page_heading = "Category to CA Mapping" %}
-      {% set page_description = "HOD manages Concerned Authorities by assigning categories to CAs in the department." %}
+      {% set page_heading = "Category Management" %}
+      {% set page_description = "Administrators manage active categories for each department." %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -61,14 +61,14 @@
 
       <section class="admin-grid">
         <section class="admin-card">
-          <div class="card-head"><div><p class="kicker">New Mapping</p><h3>Assign category to CA</h3></div></div>
+          <div class="card-head"><div><p class="kicker">New Category</p><h3>Create a Category</h3></div></div>
           <form method="post" action="{{ url_for('management_category') }}" class="admin-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-grid">
               {% if current_role == 'SUPER_ADMIN' %}
                 <label class="field">
                   <span>Department</span>
-                  <select name="department" id="category-dept-select" required>
+                  <select name="department" required>
                     {% for department in departments %}
                       <option value="{{ department.code }}" {% if selected_department == department.code %}selected{% endif %}>{{ department.code }}</option>
                     {% endfor %}
@@ -77,32 +77,16 @@
               {% endif %}
               <label class="field">
                 <span>Category Name</span>
-                <select id="category-name-select" required onchange="onCategoryNameSelectChange()">
-                  <!-- Dynamically populated -->
-                </select>
-              </label>
-              <label class="field" id="custom-category-field" style="display:none;">
-                <span>Custom Category Name</span>
-                <input type="text" id="custom-category-input">
-              </label>
-              <input type="hidden" name="category_name" id="category-name-hidden" required>
-              <label class="field">
-                <span>Concerned Authority</span>
-                <select name="assigned_ca_id" id="category-ca-select" required>
-                  <option value="">Select CA</option>
-                  {% for ca in ca_candidates %}
-                    <option value="{{ ca.id }}">{{ ca.name }} | {{ ca.department }}</option>
-                  {% endfor %}
-                </select>
+                <input type="text" name="category_name" placeholder="e.g. Campus WiFi, Plumbing, Air Conditioning" required>
               </label>
             </div>
-            <div class="form-actions"><button type="submit" class="primary-btn">Save Mapping</button></div>
+            <div class="form-actions"><button type="submit" class="primary-btn">Save Category</button></div>
           </form>
         </section>
 
         <section class="admin-card">
-          <form class="search-bar filter-grid" method="get" action="{{ url_for('management_category') }}" style="margin-bottom:1rem;">
-            <input type="text" name="q" value="{{ filters.q }}" placeholder="Search category or CA name">
+          <form class="search-bar filter-grid" method="get" action="{{ url_for('management_category') }}" style="margin-bottom:1rem; align-items: center;">
+            <input type="text" name="q" value="{{ filters.q }}" placeholder="Search category name">
             {% if current_role == 'SUPER_ADMIN' %}
               <select name="department">
                 <option value="">All Departments</option>
@@ -111,25 +95,21 @@
                 {% endfor %}
               </select>
             {% endif %}
-            <select name="ca">
-              <option value="">All CAs</option>
-              {% for ca in active_cas %}
-                <option value="{{ ca.id }}" {% if filters.ca|string == ca.id|string %}selected{% endif %}>{{ ca.name }}</option>
-              {% endfor %}
-            </select>
-            <button type="submit" class="primary-btn">Filter</button>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #4b5563; margin-left: 10px;">
+              <input type="checkbox" name="show_inactive" value="true" {% if show_inactive %}checked{% endif %} onchange="this.form.submit()">
+              <span>Show Inactive</span>
+            </label>
+            <button type="submit" class="primary-btn" style="margin-left: auto;">Filter</button>
           </form>
-          <p class="item-count">{{ categories|length }} mapping{{ 's' if categories|length != 1 else '' }} found</p>
+          <p class="item-count">{{ categories|length }} categor{{ 'ies' if categories|length != 1 else 'y' }} found</p>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Category</th><th>Department</th><th>Assigned CA</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Category</th><th>Department</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody>
                 {% for item in categories %}
                   <tr id="cat-view-{{ item.id }}" {% if item.is_active == 0 %}class="inactive-row"{% endif %}>
                     <td class="ticket-id-cell">{{ item.category_name }}</td>
                     <td>{{ item.department }}</td>
-                    <td>{{ item.assigned_ca_name }}</td>
-                    <td>{{ item.assigned_ca_email }}</td>
                     <td>
                       {% if item.is_active == 0 %}
                         <span class="status-pill hold">Inactive</span>
@@ -152,13 +132,13 @@
                       </div>
                     </td>
                   </tr>
-                  <tr id="cat-edit-{{ item.id }}" class="edit-row" style="display:none;" data-dept="{{ item.department }}" data-ca-id="{{ item.assigned_ca_id }}">
+                  <tr id="cat-edit-{{ item.id }}" class="edit-row" style="display:none;">
                     <form method="post" action="{{ url_for('update_category', category_id=item.id) }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <td><input type="text" name="category_name" value="{{ item.category_name }}" required></td>
                       <td>
                         {% if current_role == 'SUPER_ADMIN' %}
-                          <select name="department" required onchange="onEditDeptChange({{ item.id }}, this)">
+                          <select name="department" required>
                             {% for department in departments %}
                               <option value="{{ department.code }}" {% if item.department == department.code %}selected{% endif %}>{{ department.code }}</option>
                             {% endfor %}
@@ -167,12 +147,12 @@
                           {{ item.department }}
                         {% endif %}
                       </td>
-                      <td colspan="3">
-                        <select name="assigned_ca_id" required>
-                          {% for ca in ca_candidates %}
-                            <option value="{{ ca.id }}" {% if item.assigned_ca_id == ca.id %}selected{% endif %}>{{ ca.name }} | {{ ca.department }}</option>
-                          {% endfor %}
-                        </select>
+                      <td>
+                        {% if item.is_active == 0 %}
+                          <span class="status-pill hold">Inactive</span>
+                        {% else %}
+                          <span class="status-pill resolved">Active</span>
+                        {% endif %}
                       </td>
                       <td>
                         <div class="btn-group">
@@ -183,7 +163,7 @@
                     </form>
                   </tr>
                 {% else %}
-                  <tr><td colspan="6" class="empty-cell">No category mappings yet.</td></tr>
+                  <tr><td colspan="4" class="empty-cell">No categories found.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -209,186 +189,17 @@
   </div>
 
   <script>
-    const allUsers = {{ ca_candidates | tojson }};
-
-    function filterCADropdown(deptSelect, caSelect, selectedCaId = '') {
-      let deptVal = '';
-      if (deptSelect) {
-        deptVal = deptSelect.value;
-      } else {
-        deptVal = "{{ current_user.department if current_user else '' }}";
-      }
-
-      // Clear existing options
-      caSelect.innerHTML = '';
-      
-      const placeholderOpt = document.createElement('option');
-      placeholderOpt.value = '';
-      placeholderOpt.textContent = 'Select CA';
-      caSelect.appendChild(placeholderOpt);
-
-      if (!deptVal) return;
-
-      const deptValLower = deptVal.toLowerCase();
-      const deptUsers = [];
-
-      allUsers.forEach(u => {
-        if (!u.department) return;
-        const depts = u.department.split(',').map(d => d.trim().toLowerCase());
-        if (depts.includes(deptValLower)) {
-          deptUsers.push(u);
-        }
-      });
-
-      // Sort group alphabetically
-      const sortByUserName = (a, b) => (a.name || '').localeCompare(b.name || '');
-      deptUsers.sort(sortByUserName);
-
-      // Create optgroup for department users
-      if (deptUsers.length > 0) {
-        const group = document.createElement('optgroup');
-        group.label = `${deptVal} Department Users`;
-        deptUsers.forEach(u => {
-          const opt = document.createElement('option');
-          opt.value = u.id;
-          opt.textContent = `${u.name} | ${u.department} (${u.role})`;
-          if (String(u.id) === String(selectedCaId)) {
-            opt.selected = true;
-          }
-          group.appendChild(opt);
-        });
-        caSelect.appendChild(group);
-      }
-    }
-
     function toggleCatEdit(catId) {
       const viewRow = document.getElementById('cat-view-' + catId);
       const editRow = document.getElementById('cat-edit-' + catId);
       if (editRow.style.display === 'none') {
         viewRow.style.display = 'none';
         editRow.style.display = '';
-        
-        const deptSelect = editRow.querySelector('select[name="department"]');
-        const caSelect = editRow.querySelector('select[name="assigned_ca_id"]');
-        const initialDept = editRow.getAttribute('data-dept');
-        const initialCaId = editRow.getAttribute('data-ca-id');
-        
-        filterCADropdown(deptSelect, caSelect, initialCaId);
       } else {
         viewRow.style.display = '';
         editRow.style.display = 'none';
       }
     }
-
-    function onEditDeptChange(catId, deptSelect) {
-      const editRow = document.getElementById('cat-edit-' + catId);
-      const caSelect = editRow.querySelector('select[name="assigned_ca_id"]');
-      filterCADropdown(deptSelect, caSelect);
-    }
-
-    const TYPICAL_CATEGORIES = {
-      "CSE": ["Lab Computer Malfunction", "Projector & Smart Board", "Lab Software Setup", "Networking / LAN Switch", "Classroom Furniture", "Lab Electrical Outlets"],
-      "ECE": ["Lab Equipment / CRO / Multimeter", "Projector Issue", "AC / Fan Malfunction", "Classroom Board", "Lab Components Supply", "Embedded Kits Issue"],
-      "EEE": ["High Voltage Lab Equipment", "Electrical Panel board", "AC / Fan Malfunction", "Lab Workstation", "Wiring issue"],
-      "IT": ["Lab Workstation / Desktop", "Server connectivity", "Projector Issue", "Software Installation", "LAN Outlet issue"],
-      "ME": ["Workshop Machinery Repair", "Lab Tools missing/broken", "AC / Fan Malfunction", "Drawing Board issue", "Safety Equipment"],
-      "ECM": ["Lab Computer Repair", "Embedded Software Setup", "Projector Issue", "AC / Fan Malfunction"],
-      "S and H": ["Physics/Chemistry Lab equipment", "Classroom Benches & Chairs", "Fan / Lighting issue", "Chalkboard replacement"],
-      "MBA": ["Seminar Hall Projector", "Classroom Furniture", "AC / Fan Malfunction", "Smart Display Board"],
-      "EPE": ["Power Lab Equipment", "Panel Board Issue", "AC / Fan Malfunction", "Lab Component Damage"],
-      "ICT": ["Campus WiFi & Internet", "Internet Speed / Outage", "Official Email Access", "Student Portal Issue", "Biometric Attendance Device", "Printers & Copiers"],
-      "SAP": ["ERP Portal Downtime", "User Credentials Reset", "SAP Module Access Error", "Fee Payment Gateway Issue"],
-      "CDC": ["Placement Seminar Hall setup", "Internet for recruitments", "Audio / Video system repair", "Interview Cabins Furniture"],
-      "Dean Trainings depar": ["Training room projector", "Training Lab Computers", "Feedback system portal", "AC / Fan Malfunction"],
-      "Facilities": ["Water Supply & Plumbing", "Restroom Hygiene", "Drinking Water Dispenser", "Housekeeping & Cleaning", "Gardening & Lawn care", "Canteen Hygiene"],
-      "Maintenance": ["Electrical Outage", "Elevator / Lift Breakdowns", "Door Lock & Carpentry", "Building Painting / Plaster", "Window Glass Repair", "Air Conditioning Unit Service"],
-      "Administration": ["ID Card Printing", "Stationery Supply", "Official Document Signing", "Notice Board updates", "Campus Security / Gate pass", "Event Logistic Support"]
-    };
-
-    const GENERAL_CATEGORIES = ["Infrastructure Repair", "Equipment Malfunction", "IT Support", "Cleaning & Housekeeping", "Administrative Request"];
-
-    function updateCategoryNameDropdown() {
-      const deptSelect = document.getElementById('category-dept-select');
-      const catSelect = document.getElementById('category-name-select');
-      
-      if (!catSelect) return;
-
-      let deptVal = '';
-      if (deptSelect) {
-        deptVal = deptSelect.value;
-      } else {
-        deptVal = "{{ current_user.department if current_user else '' }}";
-      }
-
-      // Clear dropdown options
-      catSelect.innerHTML = '';
-
-      const defaultOpt = document.createElement('option');
-      defaultOpt.value = '';
-      defaultOpt.textContent = 'Select Category Name';
-      catSelect.appendChild(defaultOpt);
-
-      const categories = TYPICAL_CATEGORIES[deptVal] || GENERAL_CATEGORIES;
-      categories.forEach(cat => {
-        const opt = document.createElement('option');
-        opt.value = cat;
-        opt.textContent = cat;
-        catSelect.appendChild(opt);
-      });
-
-      const otherOpt = document.createElement('option');
-      otherOpt.value = 'other';
-      otherOpt.textContent = 'Other (Type Custom Category)';
-      catSelect.appendChild(otherOpt);
-
-      onCategoryNameSelectChange();
-    }
-
-    function onCategoryNameSelectChange() {
-      const catSelect = document.getElementById('category-name-select');
-      const customField = document.getElementById('custom-category-field');
-      const customInput = document.getElementById('custom-category-input');
-      const hiddenInput = document.getElementById('category-name-hidden');
-
-      if (!catSelect || !customField || !customInput || !hiddenInput) return;
-
-      if (catSelect.value === 'other') {
-        customField.style.display = 'block';
-        customInput.required = true;
-        hiddenInput.value = customInput.value;
-      } else {
-        customField.style.display = 'none';
-        customInput.required = false;
-        hiddenInput.value = catSelect.value;
-      }
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-      const mainDeptSelect = document.getElementById('category-dept-select');
-      const mainCaSelect = document.getElementById('category-ca-select');
-      const customInput = document.getElementById('custom-category-input');
-      const hiddenInput = document.getElementById('category-name-hidden');
-
-      if (customInput && hiddenInput) {
-        customInput.addEventListener('input', () => {
-          hiddenInput.value = customInput.value;
-        });
-      }
-      
-      if (mainCaSelect) {
-        if (mainDeptSelect) {
-          mainDeptSelect.addEventListener('change', () => {
-            filterCADropdown(mainDeptSelect, mainCaSelect);
-            updateCategoryNameDropdown();
-          });
-          filterCADropdown(mainDeptSelect, mainCaSelect);
-          updateCategoryNameDropdown();
-        } else {
-          filterCADropdown(null, mainCaSelect);
-          updateCategoryNameDropdown();
-        }
-      }
-    });
 
     function confirmCatDelete(catId, catName) {
       document.getElementById('delete-cat-name').textContent = catName;

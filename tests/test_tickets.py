@@ -29,8 +29,7 @@ class TestTickets(HelpdeskTestCase):
             "title": "WiFi is down",
             "description": "It has been down since morning",
             "category_id": "1",
-            "location_id": "1",
-            "problem_type_id": "1"
+            "location_id": "1"
         }, follow_redirects=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Ticket created and auto-assigned", response.data)
@@ -40,29 +39,6 @@ class TestTickets(HelpdeskTestCase):
         self.assertEqual(len(created_tickets), 1)
         self.assertEqual(created_tickets[0]["status"], "PENDING")
         self.assertEqual(created_tickets[0]["assigned_to"], 4) # Fallback to default CA
-
-    def test_create_ticket_custom_problem_type(self):
-        self.login_as("faculty@gmail.com")
-        
-        # Create ticket with problem_type_id = "other" and other_problem = "Strange Beeping"
-        response = self.client.post("/tickets/create", data={
-            "title": "Projector noise",
-            "description": "It makes a high pitched beeping sound",
-            "category_id": "2",
-            "location_id": "2",
-            "problem_type_id": "other",
-            "other_problem": "Strange Beeping"
-        }, follow_redirects=True)
-        self.assertEqual(response.status_code, 200)
-
-        # Verify custom problem type was added to demo_problem_types table
-        new_prob = next((p for p in GLOBAL_DB_STATE.tables["demo_problem_types"] if p["problem_name"] == "Strange Beeping"), None)
-        self.assertIsNotNone(new_prob)
-        self.assertEqual(new_prob["category_id"], 2)
-
-        # Ticket created references the new problem type ID
-        latest_ticket = GLOBAL_DB_STATE.tables["demo_tickets"][-1]
-        self.assertEqual(latest_ticket["problem_type_id"], new_prob["id"])
 
     def test_ticket_status_transitions_happy_path(self):
         # Seed a ticket in PENDING state

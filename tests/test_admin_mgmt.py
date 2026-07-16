@@ -69,32 +69,21 @@ class TestAdminMgmt(HelpdeskTestCase):
         deleted_user = next((u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["id"] == 7), None)
         self.assertIsNone(deleted_user)
 
-    def test_category_crud_and_promotion(self):
-        # Admin logs in
-        self.login_as("admin@gmail.com")
+    def test_category_crud(self):
+        # Login as CSE HOD
+        self.login_as("hod@gmail.com")
 
-        # Create category page renders
-        res_cat_get = self.client.get("/management/category-management")
-        self.assertEqual(res_cat_get.status_code, 200)
-        self.assertIn(b"Category Management", res_cat_get.data)
-
-        # Create a category and assign to Faculty (user ID 7 is FACULTY)
-        # This mapping should auto-promote the user to CA.
+        # Create a category
         # Route: POST /management/category-management
         res_cat_create = self.client.post("/management/category-management", data={
             "category_name": "Laptops",
-            "department": "CSE",
-            "assigned_ca_id": "7" # Demo Faculty
+            "department": "CSE"
         }, follow_redirects=True)
         self.assertEqual(res_cat_create.status_code, 200)
 
         # Check category was created
         new_cat = next((c for c in GLOBAL_DB_STATE.tables["demo_categories"] if c["category_name"] == "Laptops"), None)
         self.assertIsNotNone(new_cat)
-
-        # Check that user 7 (Demo Faculty) was promoted to role CA
-        promoted_user = next((u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["id"] == 7), None)
-        self.assertEqual(promoted_user["role"], "CA")
 
         # Toggle category status
         # Route: POST /management/category-management/<id>/toggle
@@ -109,6 +98,27 @@ class TestAdminMgmt(HelpdeskTestCase):
         res_delete = self.client.post(f"/management/category-management/{new_cat['id']}/delete", follow_redirects=True)
         self.assertEqual(res_delete.status_code, 200)
         self.assertNotIn(new_cat["id"], [c["id"] for c in GLOBAL_DB_STATE.tables["demo_categories"]])
+
+    def test_ca_assignments_and_promotion(self):
+        # Login as HOD
+        self.login_as("hod@gmail.com")
+
+        # Assign Faculty (user ID 7 is FACULTY) to category 1 and Block A
+        # Route: POST /hod/ca-assignments
+        response = self.client.post("/hod/ca-assignments", data={
+            "faculty_id": "7",
+            "category_id": "1",
+            "block": "Block A"
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+
+        # Check that user 7 (Demo Faculty) was promoted to role CA
+        promoted_user = next((u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["id"] == 7), None)
+        self.assertEqual(promoted_user["role"], "CA")
+
+        # Verify assignment was created
+        assignment = next((a for a in GLOBAL_DB_STATE.tables["demo_ca_assignments"] if a["ca_id"] == 7 and a["category_id"] == 1 and a["block"] == "Block A"), None)
+        self.assertIsNotNone(assignment)
 
     def test_location_cascade_api(self):
         self.login_as("faculty@gmail.com")

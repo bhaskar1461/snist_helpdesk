@@ -138,8 +138,7 @@ class TestPermutationsAndFuzzing(HelpdeskTestCase):
                     "title": title,
                     "description": desc,
                     "category_id": cat_id,
-                    "location_id": loc_id,
-                    "problem_type_id": "1"
+                    "location_id": loc_id
                 }, follow_redirects=True)
                 self.assertEqual(response.status_code, 200)
                 self.assertIn(b"Ticket", response.data)
