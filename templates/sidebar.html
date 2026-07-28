@@ -41,7 +41,7 @@
   
   <nav class="admin-nav">
     {% for route_name, label, icon in sidebar_links %}
-      <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == request.endpoint %} active{% endif %}{% if route_name == 'logout' %} logout{% endif %}">
+      <a href="{{ url_for(route_name) }}" class="admin-link{% if route_name == request.endpoint %} active{% endif %}{% if route_name == 'auth.logout' %} logout{% endif %}">
         {{ render_icon(icon) }}
         <span class="link-text">{{ label }}</span>
       </a>

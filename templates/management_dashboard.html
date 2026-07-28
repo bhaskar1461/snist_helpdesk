@@ -11,7 +11,7 @@
 </head>
 <body>
   <div class="admin-shell">
-        <script>
+    <script>
       if (localStorage.getItem('sidebar-collapsed') === 'true') {
         document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
       }
@@ -37,7 +37,7 @@
       <section class="admin-card" style="margin-bottom: 22px; background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);">
         <div class="card-head"><div><p class="kicker">HOD Impersonation</p><h3>Act as HOD</h3></div></div>
         <p class="panel-note">Select a department branch to act as HOD and manage categories and CA mapping.</p>
-        <form method="post" action="{{ url_for('impersonate_hod') }}" class="inline-form" style="margin-top: 14px; gap: 16px;">
+        <form method="post" action="{{ url_for('dashboards.impersonate_hod') }}" class="inline-form" style="margin-top: 14px; gap: 16px;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <select name="department" required style="min-width: 220px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--input-border);">
             <option value="">Select Department to Impersonate</option>

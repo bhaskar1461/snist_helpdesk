@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Category & CA Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --radius: 8px;
+    }
+
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #f8fafc; color: var(--slate-800); }
+
+    .header-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 1.25rem;
+    }
+    .header-title-wrap h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--slate-900);
+      margin: 0;
+    }
+    .header-title-wrap p {
+      font-size: 0.88rem;
+      color: var(--slate-600);
+      margin: 2px 0 0;
+    }
+
+    .header-stats {
+      display: flex;
+      gap: 12px;
+      background: #ffffff;
+      padding: 8px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--slate-200);
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .metric-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 8px;
+      border-right: 1px solid var(--slate-200);
+    }
+    .metric-item:last-child { border-right: none; }
+    .metric-item .val { font-size: 1.1rem; font-weight: 700; color: var(--slate-900); }
+    .metric-item .lbl { font-size: 0.78rem; font-weight: 500; color: var(--slate-600); }
+
+    .action-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .btn-primary-action {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 9px 16px;
+      border-radius: var(--radius);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+    }
+    .btn-primary-action:hover { background: var(--primary-hover); transform: translateY(-1px); }
+    .btn-secondary-action {
+      background: #ffffff;
+      color: var(--slate-700);
+      border: 1px solid var(--slate-300);
+      padding: 9px 16px;
+      border-radius: var(--radius);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn-secondary-action:hover { background: var(--slate-100); border-color: var(--slate-300); }
+
+    /* Collapsible Panel */
+    .collapsible-panel {
+      display: none;
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+      animation: slideDown 0.2s ease-out forwards;
+    }
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .collapsible-panel.open { display: block; }
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 1rem;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--slate-100);
+    }
+    .panel-header h3 { font-family: 'Outfit', sans-serif; font-size: 1.1rem; font-weight: 600; margin: 0; color: var(--slate-900); }
+    .close-panel-btn { background: none; border: none; font-size: 1.25rem; color: var(--slate-600); cursor: pointer; }
+
+    /* Table Container & Filter Header */
+    .table-card {
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 12px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+      overflow: hidden;
+    }
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--slate-200);
+    }
+    .filter-inputs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      flex: 1;
+    }
+    .input-style {
+      padding: 7px 12px;
+      border: 1px solid var(--slate-300);
+      border-radius: var(--radius);
+      font-size: 0.88rem;
+      color: var(--slate-800);
+      outline: none;
+      background: #ffffff;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .input-style:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12); }
+    .search-input { min-width: 240px; }
+
+    /* Bulk Bar */
+    .bulk-toolbar {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 18px;
+      background: var(--primary-light);
+      border-bottom: 1px solid #c7d2fe;
+    }
+    .bulk-toolbar.active { display: flex; }
+    .bulk-count { font-size: 0.85rem; font-weight: 600; color: #3730a3; }
+
+    /* Custom Table */
+    .custom-table { width: 100%; border-collapse: collapse; text-align: left; }
+    .custom-table th {
+      background: var(--slate-50);
+      padding: 10px 16px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--slate-600);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--slate-200);
+    }
+    .custom-table td {
+      padding: 12px 16px;
+      font-size: 0.88rem;
+      color: var(--slate-800);
+      border-bottom: 1px solid var(--slate-100);
+      vertical-align: middle;
+    }
+    .custom-table tbody tr:hover { background: #faf5ff; }
+    .custom-table tbody tr.inactive-row { background: var(--slate-50); opacity: 0.7; }
+    .custom-table tbody tr.inactive-row td.actions-cell { opacity: 1; }
+
+    /* Badges */
+    .status-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .status-dot.active { background: #ecfdf5; color: #047857; }
+    .status-dot.active::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #10b981; }
+    .status-dot.inactive { background: #f1f5f9; color: #64748b; }
+    .status-dot.inactive::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #94a3b8; }
+
+    .dept-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #e0f2fe;
+      color: #0369a1;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .ca-badge-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ca-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #ffffff;
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .unassigned-text { color: #dc2626; font-weight: 500; font-size: 0.82rem; background: #fef2f2; padding: 2px 8px; border-radius: 6px; }
+
+    .block-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 6px;
+      background: #f1f5f9;
+      border: 1px solid var(--slate-200);
+      border-radius: 4px;
+      font-size: 0.75rem;
+      color: var(--slate-700);
+      margin: 2px;
+    }
+    .block-tag button { background: none; border: none; cursor: pointer; color: #ef4444; font-weight: bold; padding: 0 2px; }
+
+    /* Quick Action Dropdown in Row */
+    .quick-select-ca {
+      padding: 4px 8px;
+      border: 1px solid var(--slate-200);
+      border-radius: 6px;
+      font-size: 0.82rem;
+      background: #ffffff;
+      color: var(--slate-700);
+      cursor: pointer;
+    }
+
+    .tbl-action-btn {
+      background: transparent;
+      border: none;
+      color: var(--slate-600);
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+    .tbl-action-btn:hover { background: var(--slate-100); color: var(--slate-900); }
+    .tbl-action-btn.danger:hover { background: #fef2f2; color: #dc2626; }
+
+    /* Modals */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+    .modal-overlay.active { display: flex; }
+    .modal-card { background: #ffffff; border-radius: 12px; padding: 1.5rem 1.75rem; max-width: 460px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
+    .modal-card h3 { font-family: 'Outfit', sans-serif; margin: 0 0 1rem; font-size: 1.15rem; color: var(--slate-900); }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
+    <main class="admin-main">
+      {% set page_kicker = "Management" %}
+      {% set page_heading = "Category & CA Management" %}
+      {% set page_description = "Configure department categories, assign Concerned Authorities, and set problem routing." %}
+      {% include 'topbar.html' %}
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <!-- Top Header & Metrics Strip -->
+      <div class="header-bar">
+        <div class="header-stats">
+          <div class="metric-item">
+            <span class="val">{{ stats.total }}</span>
+            <span class="lbl">Total Categories</span>
+          </div>
+          <div class="metric-item">
+            <span class="val" style="color:#10b981;">{{ stats.active }}</span>
+            <span class="lbl">Active</span>
+          </div>
+          <div class="metric-item">
+            <span class="val" style="color:#3b82f6;">{{ stats.assigned_cas }}</span>
+            <span class="lbl">Assigned CAs</span>
+          </div>
+          <div class="metric-item">
+            <span class="val" style="color:#ef4444;">{{ stats.unassigned }}</span>
+            <span class="lbl">Unassigned</span>
+          </div>
+        </div>
+
+        {% if not read_only %}
+        <div class="action-toolbar">
+          <button type="button" class="btn-primary-action" onclick="togglePanel('create-panel')">
+            <i data-lucide="plus"></i> Add Category
+          </button>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if not read_only %}
+      <!-- Collapsible Panel: Create Category with Location Block Mapping -->
+      <div class="collapsible-panel" id="create-panel">
+        <div class="panel-header">
+          <h3>Create New Category</h3>
+          <button type="button" class="close-panel-btn" onclick="togglePanel('create-panel')">&times;</button>
+        </div>
+        <form method="post" action="{{ url_for('management.category_assignments') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="create_category">
+          <div class="form-grid">
+            {% if current_role in ['SUPER_ADMIN', 'ADMIN'] %}
+            <label class="field">
+              <span>Department</span>
+              <select name="department" class="input-style" required>
+                {% for d in departments %}
+                  <option value="{{ d.code }}">{{ d.code }} - {{ d.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            {% endif %}
+            <label class="field">
+              <span>Category Name</span>
+              <input type="text" name="category_name" class="input-style" placeholder="e.g. WiFi Connectivity, Plumbing, Projectors" required>
+            </label>
+            <label class="field">
+              <span>Assigned Concerned Authority (Optional)</span>
+              <select name="assigned_ca_id" class="input-style">
+                <option value="">Leave Unassigned</option>
+                {% for u in users %}
+                  <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="field">
+              <span>Location Block Mapping (Optional)</span>
+              <select name="block" class="input-style">
+                <option value="">All Location Blocks (Default)</option>
+                {% for b in blocks %}
+                  <option value="{{ b }}">{{ b }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+          <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+            <button type="submit" class="btn-primary-action">Save Category</button>
+          </div>
+        </form>
+      </div>
+      {% endif %}
+
+      <!-- Main Data Table Container -->
+      <div class="table-card">
+        <form id="bulk-form" method="post" action="{{ url_for('management.category_assignments') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="action" value="bulk_action">
+
+          <!-- Filter Bar -->
+          <div class="filter-bar">
+            <div class="filter-inputs">
+              <input type="text" name="q" value="{{ filters.q }}" placeholder="Search category or CA..." class="input-style search-input" onkeyup="if(event.key==='Enter') submitFilters()">
+              {% if current_role in ['SUPER_ADMIN', 'ADMIN'] %}
+                <select name="department" class="input-style" onchange="submitFilters()">
+                  <option value="">All Departments</option>
+                  {% for d in departments %}
+                    <option value="{{ d.code }}" {% if filters.department == d.code %}selected{% endif %}>{{ d.code }}</option>
+                  {% endfor %}
+                </select>
+              {% endif %}
+              <select name="status" class="input-style" onchange="submitFilters()">
+                <option value="">All Statuses</option>
+                <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
+                <option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>Inactive</option>
+              </select>
+            </div>
+            <div>
+              <button type="button" class="btn-secondary-action" onclick="resetFilters()" style="padding: 6px 12px; font-size:0.82rem;">Reset</button>
+            </div>
+          </div>
+
+          {% if not read_only %}
+          <!-- Bulk Toolbar -->
+          <div class="bulk-toolbar" id="bulk-toolbar">
+            <span class="bulk-count"><strong id="selected-count">0</strong> selected</span>
+            <select name="bulk_op" class="input-style" style="padding:4px 8px; font-size:0.82rem;">
+              <option value="bulk_assign">Assign Selected CA</option>
+              <option value="bulk_enable">Enable Selected</option>
+              <option value="bulk_disable">Disable Selected</option>
+              <option value="bulk_unassign">Remove CA Assignment</option>
+            </select>
+            <select name="bulk_ca_id" class="input-style" style="padding:4px 8px; font-size:0.82rem;">
+              <option value="">Choose CA...</option>
+              {% for u in users %}
+                <option value="{{ u.id }}">{{ u.name }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit" class="btn-primary-action" style="padding:5px 12px; font-size:0.82rem;">Apply Bulk Action</button>
+          </div>
+          {% endif %}
+
+          <table class="custom-table">
+            <thead>
+              <tr>
+                {% if not read_only %}<th style="width: 32px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>{% endif %}
+                <th>Category Name</th>
+                <th>Dept</th>
+                <th>Assigned CA</th>
+                <th>Location Block Mappings</th>
+                <th>Active Tickets</th>
+                <th>Status</th>
+                {% if not read_only %}<th style="text-align: right;">Actions</th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in categories %}
+                <tr id="row-{{ item.id }}" {% if item.is_active == 0 %}class="inactive-row"{% endif %}>
+                  {% if not read_only %}
+                  <td><input type="checkbox" name="selected_categories" value="{{ item.id }}" class="cat-checkbox" onclick="updateBulkToolbar()"></td>
+                  {% endif %}
+                  <td><strong>{{ item.category_name }}</strong></td>
+                  <td><span class="dept-badge">{{ item.department }}</span></td>
+                  <td>
+                    {% if not read_only %}
+                      <select class="quick-select-ca" onchange="quickAssignCA({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}', this.value)">
+                        <option value="none" {% if not item.assigned_ca_id %}selected{% endif %}>Unassigned</option>
+                        {% for u in users %}
+                          <option value="{{ u.id }}" {% if item.assigned_ca_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+                        {% endfor %}
+                      </select>
+                    {% else %}
+                      {% if item.assigned_ca_name %}
+                        <div class="ca-badge-row">
+                          <span class="ca-avatar">{{ item.assigned_ca_name[:1].upper() }}</span>
+                          <span>{{ item.assigned_ca_name }}</span>
+                        </div>
+                      {% else %}
+                        <span class="unassigned-text">Unassigned</span>
+                      {% endif %}
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if item.block_mappings %}
+                      {% for m in item.block_mappings %}
+                        <span class="block-tag">
+                          {{ m.block }}: {{ m.ca_name }}
+                          {% if not read_only %}<button type="button" onclick="deleteMapping({{ m.id }})">&times;</button>{% endif %}
+                        </span>
+                      {% endfor %}
+                    {% else %}
+                      <span style="color:#94a3b8; font-size:0.8rem;">All Blocks</span>
+                    {% endif %}
+                  </td>
+                  <td><strong>{{ item.ticket_count }}</strong></td>
+                  <td>
+                    {% if item.is_active == 0 %}
+                      <span class="status-dot inactive">Inactive</span>
+                    {% else %}
+                      <span class="status-dot active">Active</span>
+                    {% endif %}
+                  </td>
+                  {% if not read_only %}
+                  <td class="actions-cell" style="text-align: right;">
+                    <button type="button" class="tbl-action-btn" onclick="openEditModal({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}', '{{ item.assigned_ca_id or '' }}')">Edit</button>
+                    {% if item.is_active == 0 %}
+                      <button type="button" class="tbl-action-btn" style="color:#10b981;" onclick="toggleCatStatus({{ item.id }}, 1)">Enable</button>
+                    {% else %}
+                      <button type="button" class="tbl-action-btn" style="color:#f59e0b;" onclick="toggleCatStatus({{ item.id }}, 0)">Disable</button>
+                    {% endif %}
+                    <button type="button" class="tbl-action-btn danger" onclick="confirmDelete({{ item.id }}, '{{ item.category_name|e }}')">Delete</button>
+                  </td>
+                  {% endif %}
+                </tr>
+              {% else %}
+                <tr><td colspan="{% if not read_only %}8{% else %}6{% endif %}" style="text-align: center; color: #94a3b8; padding: 2rem;">No categories found matching filters.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <!-- Edit Category Modal -->
+  <div id="edit-overlay" class="modal-overlay">
+    <div class="modal-card">
+      <h3>Edit Category</h3>
+      <form method="post" action="{{ url_for('management.category_assignments') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="update_category">
+        <input type="hidden" id="edit-cat-id" name="category_id">
+
+        <label class="field" style="margin-bottom: 12px; display: block;">
+          <span>Category Name</span>
+          <input type="text" id="edit-cat-name" name="category_name" class="input-style" style="width:100%;" required>
+        </label>
+
+        {% if current_role in ['SUPER_ADMIN', 'ADMIN'] %}
+        <label class="field" style="margin-bottom: 12px; display: block;">
+          <span>Department</span>
+          <select id="edit-cat-dept" name="department" class="input-style" style="width:100%;" required>
+            {% for d in departments %}
+              <option value="{{ d.code }}">{{ d.code }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {% else %}
+        <input type="hidden" id="edit-cat-dept" name="department">
+        {% endif %}
+
+        <label class="field" style="margin-bottom: 12px; display: block;">
+          <span>Assigned Concerned Authority</span>
+          <select id="edit-cat-ca" name="assigned_ca_id" class="input-style" style="width:100%;">
+            <option value="none">Unassigned</option>
+            {% for u in users %}
+              <option value="{{ u.id }}">{{ u.name }} ({{ u.role }})</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label class="field" style="margin-bottom: 16px; display: block;">
+          <span>Problem Location Block Mapping</span>
+          <select id="edit-cat-block" name="block" class="input-style" style="width:100%;">
+            <option value="all">All Blocks (Default Category CA)</option>
+            {% for b in blocks %}
+              <option value="{{ b }}">{{ b }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem;">
+          <button type="button" class="btn-secondary-action" onclick="closeEditModal()">Cancel</button>
+          <button type="submit" class="btn-primary-action">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Delete Modal -->
+  <div id="delete-overlay" class="modal-overlay">
+    <div class="modal-card">
+      <h3>Delete Category</h3>
+      <p style="color: var(--slate-600); font-size: 0.9rem;">Are you sure you want to delete <strong id="delete-cat-name"></strong>? Categories with existing tickets cannot be deleted.</p>
+      <form id="delete-form" method="post" action="{{ url_for('management.category_assignments') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="delete_category">
+        <input type="hidden" id="delete-cat-id" name="category_id">
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem;">
+          <button type="button" class="btn-secondary-action" onclick="closeDeleteModal()">Cancel</button>
+          <button type="submit" class="btn-primary-action" style="background:#ef4444;">Delete Category</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Single Action Helper Form -->
+  <form id="single-action-form" method="post" action="{{ url_for('management.category_assignments') }}" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" id="sa-action" name="action">
+    <input type="hidden" id="sa-cat-id" name="category_id">
+    <input type="hidden" id="sa-cat-name" name="category_name">
+    <input type="hidden" id="sa-dept" name="department">
+    <input type="hidden" id="sa-ca-id" name="assigned_ca_id">
+  </form>
+
+  <script>
+    function togglePanel(panelId) {
+      const panel = document.getElementById(panelId);
+      if (panel) {
+        panel.classList.toggle('open');
+      }
+    }
+
+    function submitFilters() {
+      const q = document.querySelector('input[name="q"]').value;
+      const deptEl = document.querySelector('select[name="department"]');
+      const dept = deptEl ? deptEl.value : '';
+      const status = document.querySelector('select[name="status"]').value;
+
+      let url = '{{ url_for("management.category_assignments") }}?q=' + encodeURIComponent(q) + '&status=' + encodeURIComponent(status);
+      if (dept) url += '&department=' + encodeURIComponent(dept);
+      window.location.href = url;
+    }
+
+    function resetFilters() {
+      window.location.href = '{{ url_for("management.category_assignments") }}';
+    }
+
+    function toggleSelectAll(master) {
+      document.querySelectorAll('.cat-checkbox').forEach(cb => cb.checked = master.checked);
+      updateBulkToolbar();
+    }
+
+    function updateBulkToolbar() {
+      const checked = document.querySelectorAll('.cat-checkbox:checked');
+      const toolbar = document.getElementById('bulk-toolbar');
+      const countEl = document.getElementById('selected-count');
+      if (toolbar && countEl) {
+        if (checked.length > 0) {
+          toolbar.classList.add('active');
+          countEl.textContent = checked.length;
+        } else {
+          toolbar.classList.remove('active');
+        }
+      }
+    }
+
+    function quickAssignCA(catId, catName, dept, caId) {
+      document.getElementById('sa-action').value = 'update_category';
+      document.getElementById('sa-cat-id').value = catId;
+      document.getElementById('sa-cat-name').value = catName;
+      document.getElementById('sa-dept').value = dept;
+      document.getElementById('sa-ca-id').value = caId;
+      document.getElementById('single-action-form').submit();
+    }
+
+    function openEditModal(id, name, dept, caId) {
+      document.getElementById('edit-cat-id').value = id;
+      document.getElementById('edit-cat-name').value = name;
+      const deptEl = document.getElementById('edit-cat-dept');
+      if (deptEl) deptEl.value = dept;
+      document.getElementById('edit-cat-ca').value = caId || 'none';
+      document.getElementById('edit-overlay').classList.add('active');
+    }
+
+    function closeEditModal() {
+      document.getElementById('edit-overlay').classList.remove('active');
+    }
+
+    function confirmDelete(id, name) {
+      document.getElementById('delete-cat-name').textContent = name;
+      document.getElementById('delete-cat-id').value = id;
+      document.getElementById('delete-overlay').classList.add('active');
+    }
+
+    function closeDeleteModal() {
+      document.getElementById('delete-overlay').classList.remove('active');
+    }
+
+    function toggleCatStatus(catId, targetStatus) {
+      const form = document.getElementById('single-action-form');
+      form.action = '/management/category-management/' + catId + '/toggle';
+      form.submit();
+    }
+
+    function deleteMapping(mappingId) {
+      const form = document.getElementById('single-action-form');
+      form.action = '/hod/ca-assignments/' + mappingId + '/delete';
+      form.submit();
+    }
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+</body>
+</html>

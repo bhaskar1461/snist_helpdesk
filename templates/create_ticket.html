@@ -40,7 +40,7 @@
       {% endwith %}
 
       <section class="admin-card">
-        <form class="admin-form" method="post" action="{{ url_for('create_ticket_for_role') }}">
+        <form class="admin-form" method="post" action="{{ url_for('tickets.create_ticket_for_role') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="form-grid">
             <label class="field">
@@ -91,15 +91,15 @@
           <div class="form-actions">
             <button type="submit" class="primary-btn">Submit Ticket</button>
             {% if current_role == 'FACULTY' %}
-              <a href="{{ url_for('my_tickets') }}" class="secondary-btn">My Tickets</a>
+              <a href="{{ url_for('dashboards.my_tickets') }}" class="secondary-btn">My Tickets</a>
             {% elif current_role == 'CA' %}
-              <a href="{{ url_for('authority_tickets') }}" class="secondary-btn">Back to Dashboard</a>
+              <a href="{{ url_for('tickets.authority_tickets') }}" class="secondary-btn">Back to Dashboard</a>
             {% elif current_role == 'HOD' %}
-              <a href="{{ url_for('hod_dashboard') }}" class="secondary-btn">Back to Dashboard</a>
+              <a href="{{ url_for('dashboards.hod_dashboard') }}" class="secondary-btn">Back to Dashboard</a>
             {% elif current_role == 'ADMIN' %}
-              <a href="{{ url_for('admin_dashboard') }}" class="secondary-btn">Back to Dashboard</a>
+              <a href="{{ url_for('dashboards.admin_dashboard') }}" class="secondary-btn">Back to Dashboard</a>
             {% else %}
-              <a href="{{ url_for('super_admin_dashboard') }}" class="secondary-btn">Back to Dashboard</a>
+              <a href="{{ url_for('dashboards.super_admin_dashboard') }}" class="secondary-btn">Back to Dashboard</a>
             {% endif %}
           </div>
         </form>

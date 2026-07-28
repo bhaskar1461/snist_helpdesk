@@ -24,7 +24,7 @@
       {% include 'topbar.html' %}
 
       <section class="admin-card">
-        <form class="search-bar filter-grid" method="get" action="{{ url_for('my_tickets') }}">
+        <form class="search-bar filter-grid" method="get" action="{{ url_for('dashboards.my_tickets') }}">
           <input type="text" name="q" value="{{ filters.q }}" placeholder="Search your tickets">
           <select name="status">
             <option value="">Status</option>
@@ -35,7 +35,7 @@
           <input type="date" name="from_date" value="{{ filters.from_date }}">
           <input type="date" name="to_date" value="{{ filters.to_date }}">
           <button class="primary-btn" type="submit">Filter</button>
-          <a href="{{ url_for('export_tickets', scope='faculty_own', export_format='csv', q=filters.q, status=filters.status, from_date=filters.from_date, to_date=filters.to_date) }}" class="secondary-btn">Export CSV</a>
+          <a href="{{ url_for('tickets.export_tickets', scope='faculty_own', export_format='csv', q=filters.q, status=filters.status, from_date=filters.from_date, to_date=filters.to_date) }}" class="secondary-btn">Export CSV</a>
         </form>
 
         <div class="table-wrap">
@@ -59,7 +59,7 @@
               {% for ticket in tickets %}
                 <tr class="ticket-row">
                   <td>{{ loop.index }}</td>
-                  <td class="ticket-id-cell"><a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
+                  <td class="ticket-id-cell"><a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
                   <td><strong>{{ ticket.category_name }}</strong> – {{ ticket.title }}</td>
                   <td>{{ ticket.location_block or '—' }}</td>
                   <td>{{ ticket.location_room_no or '—' }}</td>
@@ -70,7 +70,7 @@
                   <td style="white-space:nowrap;">{{ ticket.updated_at if ticket.status == 'RESOLVED' else '—' }}</td>
                   <td>
                     {% if ticket.status == 'RESOLVED' %}
-                      <a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}" class="status-pill reopened" style="text-decoration:none;">Re-open</a>
+                      <a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}" class="status-pill reopened" style="text-decoration:none;">Re-open</a>
                     {% else %}
                       <span class="muted-cell">—</span>
                     {% endif %}

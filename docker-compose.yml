@@ -1,12 +1,42 @@
-version: '3.8'
-
 services:
   web:
     build: .
     ports:
       - "5000:5000"
+      - "5001:5000"
     env_file:
       - .env
     volumes:
       - ./uploads:/app/uploads
     restart: always
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: snist_metabase
+    ports:
+      - "3002:3000"
+    environment:
+      MB_EMBEDDING_SECRET_KEY: "b6c0144720edd6f7369910c70c66e0519ac0386c2b9d173434c57332a048e685"
+      MB_DB_FILE: /metabase-data/metabase.db
+    volumes:
+      - metabase_data:/metabase-data
+    restart: always
+
+  metabase-init:
+    build: .
+    depends_on:
+      - metabase
+    env_file:
+      - .env
+    environment:
+      METABASE_INTERNAL_URL: "http://metabase:3000"
+      MB_EMBEDDING_SECRET_KEY: "b6c0144720edd6f7369910c70c66e0519ac0386c2b9d173434c57332a048e685"
+      MB_ADMIN_EMAIL: "admin@gmail.com"
+      MB_ADMIN_PASSWORD: "Admin@321#"
+    volumes:
+      - ./scripts:/scripts
+    entrypoint: ["sh", "/scripts/metabase_init.sh"]
+    restart: "no"
+
+volumes:
+  metabase_data:

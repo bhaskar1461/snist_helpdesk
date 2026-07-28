@@ -29,14 +29,22 @@
     .tl-meta { font-size:.78rem; color:#9ca3af; margin-top:2px; }
     .location-tag { display:inline-flex; align-items:center; gap:6px; background:#eff6ff; color:#1d4ed8; padding:4px 10px; border-radius:6px; font-size:.82rem; font-weight:500; }
     .status-action-form { display:flex; gap:.5rem; flex-wrap:wrap; align-items:flex-start; margin-top:1rem; }
-    .status-action-form select, .status-action-form input, .status-action-form textarea { padding:6px 10px; border:1px solid #d1d5db; border-radius:6px; font-size:.85rem; }
-    .status-action-form textarea { min-width:200px; }
+    .status-action-form select, .status-action-form input, .status-action-form textarea { padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:.88rem; font-family:inherit; }
+    .status-action-form textarea { min-width:200px; flex:1; }
+    .note-form { display:flex; gap:.5rem; flex-wrap:wrap; align-items:flex-start; margin-top:1rem; }
+    .note-form textarea { flex:1; min-width:200px; padding:8px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:.88rem; font-family:inherit; }
+    .note-item { padding:.6rem .8rem; border-radius:8px; margin-bottom:.5rem; }
+    .note-item.internal { background:#fef3c7; border:1px solid #fcd34d; }
+    .note-item.public { background:#f0f9ff; border:1px solid #93c5fd; }
+    .note-header { display:flex; justify-content:space-between; align-items:center; font-size:.78rem; color:#6b7280; margin-bottom:4px; }
+    .note-body { font-size:.88rem; color:#1e293b; }
+    .escalated-badge { display:inline-flex; align-items:center; gap:4px; background:#fef2f2; color:#dc2626; padding:3px 10px; border-radius:6px; font-size:.78rem; font-weight:600; }
     @media (max-width:768px) { .detail-grid{grid-template-columns:1fr;} }
   </style>
 </head>
 <body>
   <div class="admin-shell">
-        <script>
+    <script>
       if (localStorage.getItem('sidebar-collapsed') === 'true') {
         document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
       }
@@ -62,7 +70,12 @@
         <!-- Ticket Info Card -->
         <section class="admin-card">
           <div class="card-head"><div><p class="kicker">Details</p><h3>Ticket Information</h3></div>
-            <span class="status-pill {{ ticket.status|lower|replace('_','-') }}">{{ ticket.status }}</span>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <span class="status-pill {{ ticket.status|lower|replace('_','-') }}">{{ ticket.status }}</span>
+              {% if ticket.is_escalated %}
+                <span class="escalated-badge">⚠ Escalated</span>
+              {% endif %}
+            </div>
           </div>
 
           <div class="detail-grid">
@@ -84,15 +97,15 @@
 
           {% if can_update and next_statuses %}
           <div class="card-head" style="margin-top:1.5rem;"><div><p class="kicker">Action</p><h3>Update Status</h3></div></div>
-          <form method="post" action="{{ url_for('authority_update_status', ticket_id=ticket.id) }}" class="status-action-form" enctype="multipart/form-data">
+          <form method="post" action="{{ url_for('tickets.authority_update_status', ticket_id=ticket.id) }}" class="status-action-form" enctype="multipart/form-data">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <select name="status" required>
               {% for s in next_statuses %}
                 <option value="{{ s }}">{{ s }}</option>
               {% endfor %}
             </select>
-            <textarea name="remarks" rows="2" placeholder="Remarks / resolution notes"></textarea>
-            <input type="text" name="time_taken" placeholder="Time taken">
+            <textarea name="remarks" rows="3" placeholder="Remarks / resolution notes"></textarea>
+            <input type="text" name="time_taken" placeholder="Time taken (e.g. 2 hours)">
             <input type="file" name="attachment">
             <button type="submit" class="primary-btn">Update</button>
           </form>
@@ -100,7 +113,7 @@
 
           {% if can_reopen %}
           <div class="card-head" style="margin-top:1.5rem;"><div><p class="kicker">Not Satisfied?</p><h3>Reopen Ticket</h3></div></div>
-          <form method="post" action="{{ url_for('reopen_ticket', ticket_id=ticket.id) }}" class="status-action-form">
+          <form method="post" action="{{ url_for('tickets.reopen_ticket', ticket_id=ticket.id) }}" class="status-action-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <textarea name="remarks" rows="2" placeholder="Reason for reopening (required)" required></textarea>
             <button type="submit" class="primary-btn" style="background:linear-gradient(135deg,#c53939,#e04848);">Reopen Ticket</button>
@@ -108,7 +121,7 @@
           {% endif %}
         </section>
 
-        <!-- Activity Timeline -->
+        <!-- Activity Timeline & Notes -->
         <section class="admin-card">
           <div class="card-head"><div><p class="kicker">History</p><h3>Activity Timeline</h3></div></div>
           {% if activity %}
@@ -128,12 +141,36 @@
               </div>
               {% if event.remarks %}<div class="tl-remarks">{{ event.remarks }}</div>{% endif %}
               {% if event.time_taken %}<div class="tl-meta">⏱ {{ event.time_taken }}</div>{% endif %}
-              {% if event.attachment_path %}<div class="tl-meta">📎 <a href="{{ url_for('download_attachment', filename=event.attachment_path) }}">{{ event.attachment_path }}</a></div>{% endif %}
+              {% if event.attachment_path %}<div class="tl-meta">📎 <a href="/uploads/{{ event.attachment_path }}">{{ event.attachment_path }}</a></div>{% endif %}
             </div>
             {% endfor %}
           </div>
           {% else %}
             <p style="color:#9ca3af;font-size:.9rem;">No activity recorded yet.</p>
+          {% endif %}
+
+          <!-- Internal Notes -->
+          {% if current_role in ('CA', 'HOD', 'ADMIN', 'SUPER_ADMIN') %}
+          <div class="card-head" style="margin-top:1.5rem;"><div><p class="kicker">Notes</p><h3>Internal Notes</h3></div></div>
+          {% if notes %}
+            {% for note in notes %}
+            <div class="note-item {{ 'internal' if note.is_internal else 'public' }}">
+              <div class="note-header">
+                <span><strong>{{ note.author_name }}</strong> &bull; {{ note.created_at.strftime('%d %b %Y, %I:%M %p') }}</span>
+                <span>{{ 'Internal' if note.is_internal else 'Public' }}</span>
+              </div>
+              <div class="note-body">{{ note.note }}</div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <p style="color:#9ca3af;font-size:.85rem;">No notes yet.</p>
+          {% endif %}
+          <form method="post" action="{{ url_for('tickets.add_ticket_note', ticket_id=ticket.id) }}" class="note-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="is_internal" value="1">
+            <textarea name="note" rows="2" placeholder="Add an internal note..."></textarea>
+            <button type="submit" class="primary-btn small-btn">Add Note</button>
+          </form>
           {% endif %}
         </section>
       </section>

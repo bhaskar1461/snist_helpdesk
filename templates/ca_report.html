@@ -50,7 +50,7 @@
 
       <!-- Filters -->
       <section class="admin-card">
-        <form class="search-bar filter-grid" method="get" action="{{ url_for('ca_report') }}">
+        <form class="search-bar filter-grid" method="get" action="{{ url_for('tickets.ca_report') }}">
           <input type="text" name="q" value="{{ filters.q }}" placeholder="Search resolved tickets">
           <input type="date" name="from_date" value="{{ filters.from_date }}">
           <input type="date" name="to_date" value="{{ filters.to_date }}">
@@ -78,7 +78,7 @@
             <tbody>
               {% for ticket in resolved_tickets %}
                 <tr class="ticket-row">
-                  <td class="ticket-id-cell"><a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
+                  <td class="ticket-id-cell"><a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
                   <td>{{ ticket.title }}</td>
                   <td>{{ ticket.category_name }}</td>
                   <td>{{ ticket.department }}</td>

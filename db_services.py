@@ -361,6 +361,44 @@ class LiveDbService(BaseMySQLService):
         return None
 
 
+    def search_reference_users(self, q="", search_type="name", department=None, org_id=None, limit=20):
+        """Search teacher_info by name, email, or employee_id for autocomplete."""
+        if not self.enabled or not q:
+            return []
+        sql = """
+            SELECT
+                t.TEACHER_NAME, t.EMAIL_ID, t.SAP_ID, t.TEACHER_ID,
+                CAST(t.ORG_ID AS CHAR) AS org_id,
+                b.BRANCH_CODE AS department_code,
+                b.BRANCH_NAME AS department_name
+            FROM teacher_info t
+            LEFT JOIN branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
+            WHERE COALESCE(t.ACTIVE, 1) = 1
+        """
+        params = []
+        like = f"%{q}%"
+        if search_type == "email":
+            sql += " AND t.EMAIL_ID LIKE %s"
+            params.append(like)
+        elif search_type == "employee_id":
+            sql += " AND (CAST(t.SAP_ID AS CHAR) LIKE %s OR t.TEACHER_CODE LIKE %s)"
+            params.extend([like, like])
+        else:
+            sql += " AND (t.TEACHER_NAME LIKE %s OR t.EMAIL_ID LIKE %s OR CAST(t.SAP_ID AS CHAR) LIKE %s)"
+            params.extend([like, like, like])
+        if department:
+            sql += " AND (b.BRANCH_CODE = %s OR b.BRANCH_NAME = %s)"
+            params.extend([department, department])
+        if org_id:
+            sql += " AND CAST(t.ORG_ID AS CHAR) = %s"
+            params.append(org_id)
+        sql += " ORDER BY t.TEACHER_NAME LIMIT %s"
+        params.append(limit)
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+
+
 class DemoDbService(BaseMySQLService):
     def get_user_phone(self, email):
         """Query teacher_info for user's MOBILE_PHONE. Returns phone number or fallback."""
@@ -687,6 +725,64 @@ class DemoDbService(BaseMySQLService):
                 (1 if is_active else 0, category_id),
             )
 
+    def count_tickets_by_category(self, category_id):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) AS total FROM demo_tickets WHERE category_id = %s AND status != 'RESOLVED'",
+                (category_id,),
+            )
+            res = cursor.fetchone()
+            return res["total"] if res else 0
+
+    def get_category_block_mappings(self, category_id):
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT a.id, a.ca_id, a.block, u.name AS ca_name, u.email AS ca_email
+                FROM demo_ca_assignments a
+                JOIN demo_users u ON u.id = a.ca_id
+                WHERE a.category_id = %s
+                ORDER BY u.name, a.block
+                """,
+                (category_id,),
+            )
+            return cursor.fetchall()
+
+    def bulk_assign_ca(self, category_ids, ca_id):
+        if not category_ids or not ca_id:
+            return 0
+        format_strings = ','.join(['%s'] * len(category_ids))
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE demo_categories SET assigned_ca_id = %s WHERE id IN ({format_strings})",
+                [ca_id] + list(category_ids),
+            )
+            return cursor.rowcount
+
+    def bulk_toggle_categories(self, category_ids, is_active):
+        if not category_ids:
+            return 0
+        format_strings = ','.join(['%s'] * len(category_ids))
+        val = 1 if is_active else 0
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE demo_categories SET is_active = %s WHERE id IN ({format_strings})",
+                [val] + list(category_ids),
+            )
+            return cursor.rowcount
+
+    def bulk_remove_ca(self, category_ids):
+        if not category_ids:
+            return 0
+        format_strings = ','.join(['%s'] * len(category_ids))
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE demo_categories SET assigned_ca_id = NULL WHERE id IN ({format_strings})",
+                list(category_ids),
+            )
+            return cursor.rowcount
+
+
     def create_ticket(self, title, description, category_id, created_by, org_id, location_id=None):
         category = self.get_category(category_id)
         if not category:
@@ -823,7 +919,7 @@ class DemoDbService(BaseMySQLService):
         elif scope == "assigned":
             sql += " AND t.assigned_to = %s"
             params.append(viewer["id"])
-        elif viewer["role"] == "HOD":
+        elif scope in ["department", "dept"] or viewer["role"] == "HOD":
             sql += " AND c.department = %s"
             params.append(viewer["department"])
 
@@ -1307,3 +1403,188 @@ class DemoDbService(BaseMySQLService):
             )
             return cursor.fetchone()
 
+    # ── New Methods for Refactored Blueprints ────────────────────────
+
+    def search_users(self, q="", role="", department="", org_id=None, limit=20):
+        """Search demo_users by name, email, or department for autocomplete."""
+        if not q:
+            return []
+        sql = "SELECT id, name, email, role, department FROM demo_users WHERE 1=1"
+        params = []
+        like = f"%{q}%"
+        sql += " AND (name LIKE %s OR email LIKE %s)"
+        params.extend([like, like])
+        if role:
+            sql += " AND role = %s"
+            params.append(role)
+        if department:
+            sql += " AND (department = %s OR FIND_IN_SET(%s, department) > 0)"
+            params.extend([department, department])
+        sql += " ORDER BY name LIMIT %s"
+        params.append(limit)
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+
+    def count_tickets_by_category(self, category_id):
+        """Count total tickets for a given category."""
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS cnt FROM demo_tickets WHERE category_id = %s", (category_id,))
+            row = cursor.fetchone()
+            return row["cnt"] if row else 0
+
+    def count_active_tickets_for_ca(self, ca_id):
+        """Count active (non-resolved/closed) tickets assigned to a CA."""
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) AS cnt FROM demo_tickets WHERE assigned_to = %s AND status IN ('PENDING', 'IN_PROGRESS', 'REOPENED')",
+                (ca_id,),
+            )
+            row = cursor.fetchone()
+            return row["cnt"] if row else 0
+
+    def list_ticket_notes(self, ticket_id):
+        """List internal/public notes for a ticket."""
+        try:
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT n.id, n.ticket_id, n.author_id, n.note, n.is_internal, n.created_at,
+                           u.name AS author_name, u.email AS author_email
+                    FROM demo_ticket_notes n
+                    INNER JOIN demo_users u ON u.id = n.author_id
+                    WHERE n.ticket_id = %s
+                    ORDER BY n.created_at DESC
+                    """,
+                    (ticket_id,),
+                )
+                return cursor.fetchall()
+        except Exception:
+            return []
+
+    def add_ticket_note(self, ticket_id, author_id, note, is_internal=True):
+        """Add an internal or public note to a ticket."""
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO demo_ticket_notes (ticket_id, author_id, note, is_internal)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (ticket_id, author_id, note, 1 if is_internal else 0),
+            )
+            return cursor.lastrowid
+
+    def ticket_trends(self, org_id=None, department=None, period="monthly"):
+        """Return ticket creation counts grouped by time period."""
+        if period == "daily":
+            date_fmt = "%Y-%m-%d"
+            group_expr = "DATE(t.created_at)"
+        elif period == "weekly":
+            date_fmt = "%Y-W%v"
+            group_expr = "DATE_FORMAT(t.created_at, '%Y-W%v')"
+        else:
+            date_fmt = "%Y-%m"
+            group_expr = "DATE_FORMAT(t.created_at, '%Y-%m')"
+
+        sql = f"""
+            SELECT {group_expr} AS period,
+                   COUNT(*) AS total_created,
+                   SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS total_resolved
+            FROM demo_tickets t
+            INNER JOIN demo_categories c ON c.id = t.category_id
+            WHERE 1=1
+        """
+        params = []
+        if org_id:
+            sql += " AND t.org_id = %s"
+            params.append(org_id)
+        if department:
+            sql += " AND c.department = %s"
+            params.append(department)
+        sql += f" GROUP BY {group_expr} ORDER BY {group_expr} DESC LIMIT 24"
+        try:
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+                return [{"period": str(r["period"]), "created": r["total_created"], "resolved": r["total_resolved"]} for r in rows]
+        except Exception:
+            return []
+
+    def ca_performance_stats(self, org_id=None, department=None):
+        """Return performance stats per CA: assigned, resolved, avg resolution time."""
+        sql = """
+            SELECT u.id, u.name, u.email, u.department,
+                   COUNT(t.id) AS total_assigned,
+                   SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS total_resolved,
+                   SUM(CASE WHEN t.status IN ('PENDING', 'IN_PROGRESS', 'REOPENED') THEN 1 ELSE 0 END) AS active_tickets,
+                   AVG(CASE WHEN t.status = 'RESOLVED' THEN TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at) END) AS avg_resolution_hours
+            FROM demo_users u
+            LEFT JOIN demo_tickets t ON t.assigned_to = u.id
+            LEFT JOIN demo_categories c ON c.id = t.category_id
+            WHERE u.role = 'CA'
+        """
+        params = []
+        if org_id:
+            sql += " AND t.org_id = %s"
+            params.append(org_id)
+        if department:
+            sql += " AND c.department = %s"
+            params.append(department)
+        sql += " GROUP BY u.id, u.name, u.email, u.department ORDER BY total_assigned DESC"
+        try:
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+                result = []
+                for r in rows:
+                    result.append({
+                        "id": r["id"],
+                        "name": r["name"],
+                        "email": r["email"],
+                        "department": r["department"],
+                        "total_assigned": r["total_assigned"] or 0,
+                        "total_resolved": r["total_resolved"] or 0,
+                        "active_tickets": r["active_tickets"] or 0,
+                        "avg_resolution_hours": round(float(r["avg_resolution_hours"] or 0), 1),
+                    })
+                return result
+        except Exception:
+            return []
+
+    def resolution_time_stats(self, org_id=None, department=None):
+        """Return average resolution time by category."""
+        sql = """
+            SELECT c.category_name, c.department,
+                   COUNT(t.id) AS resolved_count,
+                   AVG(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)) AS avg_hours,
+                   MIN(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)) AS min_hours,
+                   MAX(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)) AS max_hours
+            FROM demo_tickets t
+            INNER JOIN demo_categories c ON c.id = t.category_id
+            WHERE t.status = 'RESOLVED'
+        """
+        params = []
+        if org_id:
+            sql += " AND t.org_id = %s"
+            params.append(org_id)
+        if department:
+            sql += " AND c.department = %s"
+            params.append(department)
+        sql += " GROUP BY c.id, c.category_name, c.department ORDER BY avg_hours DESC"
+        try:
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+                result = []
+                for r in rows:
+                    result.append({
+                        "category": r["category_name"],
+                        "department": r["department"],
+                        "resolved_count": r["resolved_count"] or 0,
+                        "avg_hours": round(float(r["avg_hours"] or 0), 1),
+                        "min_hours": round(float(r["min_hours"] or 0), 1),
+                        "max_hours": round(float(r["max_hours"] or 0), 1),
+                    })
+                return result
+        except Exception:
+            return []

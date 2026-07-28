@@ -33,12 +33,13 @@ If Docker and Docker Compose are already present on the server, you can deploy m
    ```bash
    docker compose up -d --build
    ```
+   This starts the main Web app (`http://localhost:5001`), Metabase (`http://localhost:3002`), and the automated `metabase-init` setup worker.
 
 ---
 
 ## 3. Reverse Proxy & SSL Configuration (Nginx & Certbot)
 
-To secure the application with Let's Encrypt SSL, configure Nginx as a reverse proxy:
+To secure the application with Let's Encrypt SSL, configure Nginx as a reverse proxy for both the Helpdesk Web application and embedded Metabase analytics:
 
 1. **Install Nginx & Certbot**:
    ```bash
@@ -52,11 +53,18 @@ To secure the application with Let's Encrypt SSL, configure Nginx as a reverse p
        server_name helpdesk.sreenidhi.edu.in;
 
        location / {
-           proxy_pass http://127.0.0.1:8000;
+           proxy_pass http://127.0.0.1:5001;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
            proxy_set_header X-Forwarded-Proto $scheme;
+       }
+
+       # Metabase reverse proxy (optional if accessing embedded iframe directly)
+       location /metabase/ {
+           proxy_pass http://127.0.0.1:3002/;
+           proxy_set_header Host $host;
+           proxy_set_header X-Real-IP $remote_addr;
        }
    }
    ```
@@ -69,7 +77,24 @@ To secure the application with Let's Encrypt SSL, configure Nginx as a reverse p
 
 ---
 
-## 4. Backups and Recovery
+## 4. Legacy Database Migration
+
+To migrate historical data from legacy dumps (e.g. `sreenidhi.sys_administrators` and `sreenidhi.sys_complaint`):
+
+1. **Place Dump File**: Ensure `sql/sreenidhi_dump.sql` exists in the codebase root.
+2. **Run Migration Pipeline**:
+   ```bash
+   docker exec snist_helpdesk-web-1 python scripts/migrate_legacy_data.py
+   ```
+   This automatically:
+   - Imports `sys_administrators` -> `demo_users` (mapping teacher roles and accounts).
+   - Extracts unique block/room coordinates -> `demo_locations`.
+   - Maps complaint device categories -> `demo_categories`.
+   - Imports all historical tickets into `demo_tickets`.
+
+---
+
+## 5. Backups and Recovery
 
 ### Database Backup (MySQL Dump)
 To generate an immediate database snapshot backup:

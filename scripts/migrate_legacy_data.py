@@ -1,0 +1,192 @@
+"""
+Migration script for legacy Sreenidhi database (sys_administrators & sys_complaint)
+into main SNIST helpdesk tables: demo_users, demo_locations, demo_categories, demo_tickets.
+"""
+
+import os
+import sys
+import pymysql
+import pymysql.constants.CLIENT
+from werkzeug.security import generate_password_hash
+
+# DB Config
+MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
+MYSQL_PORT = int(os.getenv("MYSQL_PORT", 3306))
+MYSQL_USER = os.getenv("MYSQL_USER", "root")
+MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "root")
+MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "seg_demo")
+
+def get_db():
+    return pymysql.connect(
+        host=MYSQL_HOST,
+        port=MYSQL_PORT,
+        user=MYSQL_USER,
+        password=MYSQL_PASSWORD,
+        database=MYSQL_DATABASE,
+        autocommit=True,
+        client_flag=pymysql.constants.CLIENT.MULTI_STATEMENTS,
+        cursorclass=pymysql.cursors.DictCursor
+    )
+
+def run_migration():
+    print("=" * 60)
+    print("Migrating Legacy Sreenidhi Data to Helpdesk Schema")
+    print("=" * 60)
+
+    db = get_db()
+    cursor = db.cursor()
+
+    # 1. Execute SQL dump file to build demo_sys_ tables inside seg_demo
+    sql_dump_path = os.path.join(os.path.dirname(__file__), "..", "sql", "sreenidhi_dump.sql")
+    if os.path.exists(sql_dump_path):
+        print("[..] Reading and executing sql/sreenidhi_dump.sql...")
+        with open(sql_dump_path, "r", encoding="utf-8", errors="ignore") as f:
+            sql_script = f.read()
+
+        try:
+            cursor.execute(sql_script)
+            while cursor.nextset():
+                pass
+            print("[OK] Loaded legacy database schema & tables into seg_demo.")
+        except Exception as e:
+            print(f"[!] Warning on executing SQL dump: {e}")
+
+    # Select main database
+    cursor.execute(f"USE `{MYSQL_DATABASE}`;")
+
+    # Ensure demo_locations table exists
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS demo_locations (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            block VARCHAR(100) NOT NULL,
+            room VARCHAR(100) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_block_room (block, room)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    """)
+
+    # 2. Migrate demo_sys_administrators -> demo_users
+    print("[..] Migrating demo_sys_administrators -> demo_users...")
+    cursor.execute("SELECT * FROM demo_sys_administrators;")
+    admins = cursor.fetchall()
+    
+    default_pw_hash = generate_password_hash("Password@123")
+    teacher_to_user_id = {}
+    users_migrated = 0
+
+    for a in admins:
+        tid = a["TEACHER_ID"].strip()
+        name = a["NAME"].strip()
+        dept = a["DEPARTMENT"].strip() if a["DEPARTMENT"] else "GENERAL"
+        email = a["EMAIL_ID"].strip().lower() if a["EMAIL_ID"] else f"{tid.lower()}@sreenidhi.edu.in"
+        role_str = (a["ADMIN_ROLE"] or "").strip().lower()
+
+        # Role mapping
+        if "super" in role_str:
+            role = "SUPER_ADMIN"
+        elif role_str in ["ict", "fecilities", "hcm", "mm", "pm"]:
+            role = "ADMIN"
+        else:
+            role = "FACULTY"
+
+        # Check if user already exists
+        cursor.execute("SELECT id FROM demo_users WHERE email = %s;", (email,))
+        row = cursor.fetchone()
+        if row:
+            uid = row["id"]
+        else:
+            cursor.execute("""
+                INSERT INTO demo_users (name, email, password, role, department)
+                VALUES (%s, %s, %s, %s, %s);
+            """, (name, email, default_pw_hash, role, dept))
+            uid = cursor.lastrowid
+            users_migrated += 1
+        
+        teacher_to_user_id[tid] = uid
+
+    print(f"[OK] Migrated/mapped {len(teacher_to_user_id)} legacy users ({users_migrated} new users added).")
+
+    # Get a default CA user ID for category mapping
+    cursor.execute("SELECT id FROM demo_users WHERE role IN ('SUPER_ADMIN', 'ADMIN', 'CA') LIMIT 1;")
+    default_ca = cursor.fetchone()
+    default_ca_id = default_ca["id"] if default_ca else 1
+
+    # 3. Migrate locations & categories & complaints
+    print("[..] Migrating demo_sys_complaint -> demo_tickets...")
+    cursor.execute("SELECT * FROM demo_sys_complaint WHERE TICKET_ID > 1;")
+    complaints = cursor.fetchall()
+
+    tickets_migrated = 0
+    locations_cache = {}
+    categories_cache = {}
+
+    for c in complaints:
+        ticket_id = c["TICKET_ID"]
+        block = (c["BLOCK"] or "General Block").strip()
+        room = (c["ROOMNO"] or "General Room").strip()
+        device_type = (c["DEVICE_TYPE"] or "General Hardware").strip()
+        raised_by_tid = (c["RAISED_BY"] or "").strip()
+        raised_dt = c["RAISED_DATATIME"]
+        dept = (c["DEPARTMENT"] or "ICT").strip()
+        
+        # Handle description blob
+        raw_desc = c["RAISED_DESCRIPTION"]
+        if isinstance(raw_desc, bytes):
+            try:
+                description = raw_desc.decode("utf-8", errors="ignore").strip()
+            except Exception:
+                description = str(raw_desc)
+        else:
+            description = str(raw_desc or "")
+        
+        if not description:
+            description = f"Legacy Complaint #{ticket_id} for {device_type}"
+
+        title = f"{device_type} Issue at {block} - {room}" if device_type else f"Issue at {block} - {room}"
+
+        # 3a. Resolve location_id
+        loc_key = (block, room)
+        if loc_key not in locations_cache:
+            cursor.execute("SELECT id FROM demo_locations WHERE block = %s AND room = %s;", (block, room))
+            lrow = cursor.fetchone()
+            if lrow:
+                locations_cache[loc_key] = lrow["id"]
+            else:
+                cursor.execute("INSERT INTO demo_locations (block, room) VALUES (%s, %s);", (block, room))
+                locations_cache[loc_key] = cursor.lastrowid
+        loc_id = locations_cache[loc_key]
+
+        # 3b. Resolve category_id
+        cat_key = (device_type, dept)
+        if cat_key not in categories_cache:
+            cursor.execute("SELECT id FROM demo_categories WHERE category_name = %s AND department = %s;", (device_type, dept))
+            crow = cursor.fetchone()
+            if crow:
+                categories_cache[cat_key] = crow["id"]
+            else:
+                cursor.execute("""
+                    INSERT INTO demo_categories (category_name, department, assigned_ca_id, is_active)
+                    VALUES (%s, %s, %s, 1);
+                """, (device_type, dept, default_ca_id))
+                categories_cache[cat_key] = cursor.lastrowid
+        cat_id = categories_cache[cat_key]
+
+        # 3c. Resolve created_by user_id
+        creator_id = teacher_to_user_id.get(raised_by_tid, default_ca_id)
+
+        # Check if ticket already imported
+        cursor.execute("SELECT id FROM demo_tickets WHERE id = %s;", (ticket_id,))
+        if not cursor.fetchone():
+            cursor.execute("""
+                INSERT INTO demo_tickets 
+                (id, title, description, category_id, created_by, assigned_to, status, org_id, location_id, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', '2000', %s, %s);
+            """, (ticket_id, title[:180], description, cat_id, creator_id, default_ca_id, loc_id, raised_dt))
+            tickets_migrated += 1
+
+    print(f"[OK] Migration completed! Successfully imported {tickets_migrated} legacy tickets.")
+    print("=" * 60)
+
+if __name__ == "__main__":
+    run_migration()

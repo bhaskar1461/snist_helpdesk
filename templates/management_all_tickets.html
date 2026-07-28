@@ -46,8 +46,8 @@
           <input type="date" name="from_date" value="{{ filters.from_date }}">
           <input type="date" name="to_date" value="{{ filters.to_date }}">
           <button class="primary-btn" type="submit">Apply</button>
-          <a href="{{ url_for('export_tickets', scope=export_scope, export_format='csv', q=filters.q, status=filters.status, department=filters.department, org_id=filters.org_id, from_date=filters.from_date, to_date=filters.to_date) }}" class="secondary-btn">Export CSV</a>
-          <a href="{{ url_for('export_tickets', scope=export_scope, export_format='xls', q=filters.q, status=filters.status, department=filters.department, org_id=filters.org_id, from_date=filters.from_date, to_date=filters.to_date) }}" class="secondary-btn">Export Excel</a>
+          <a href="{{ url_for('tickets.export_tickets', scope=export_scope, export_format='csv', q=filters.q, status=filters.status, department=filters.department, org_id=filters.org_id, from_date=filters.from_date, to_date=filters.to_date) }}" class="secondary-btn">Export CSV</a>
+          <a href="{{ url_for('tickets.export_tickets', scope=export_scope, export_format='xls', q=filters.q, status=filters.status, department=filters.department, org_id=filters.org_id, from_date=filters.from_date, to_date=filters.to_date) }}" class="secondary-btn">Export Excel</a>
         </form>
 
         <div class="table-wrap">
@@ -72,7 +72,7 @@
               {% for ticket in tickets %}
                 <tr class="ticket-row">
                   <td>{{ loop.index }}</td>
-                  <td class="ticket-id-cell"><a href="{{ url_for('ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
+                  <td class="ticket-id-cell"><a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
                   <td><strong>{{ ticket.category_name }}</strong> – {{ ticket.title }}</td>
                   <td>{{ ticket.location_block or '—' }}</td>
                   <td>{{ ticket.location_room_no or '—' }}</td>

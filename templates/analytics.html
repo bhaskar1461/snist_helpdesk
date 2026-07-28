@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analytics Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    .chart-container { position:relative; width:100%; max-height:350px; }
+    .analytics-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:22px; }
+    .analytics-full { grid-column:1/-1; }
+    .perf-table { width:100%; border-collapse:collapse; }
+    .perf-table th, .perf-table td { padding:10px 12px; text-align:left; border-bottom:1px solid #e5e7eb; font-size:.88rem; }
+    .perf-table th { font-weight:600; color:#6b7280; font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; }
+    .perf-table tr:hover { background:#f9fafb; }
+    .loading-msg { color:#9ca3af; font-size:.9rem; text-align:center; padding:2rem; }
+    @media (max-width:768px) { .analytics-grid { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
+    <main class="admin-main">
+      {% set page_kicker = "Analytics" %}
+      {% set page_heading = "Helpdesk Analytics" %}
+      {% set page_description = "Ticket trends, CA performance, and resolution metrics." %}
+      {% include 'topbar.html' %}
+
+      {% if metabase_enabled %}
+      <!-- Metabase Embedded Dashboard — auto-hides if embedding fails -->
+      <section class="admin-card analytics-full" style="margin-bottom:22px;" id="metabase-section">
+        <div class="card-head"><div><p class="kicker">Metabase</p><h3>Embedded Analytics</h3></div>
+          <div class="action-row">
+            <button onclick="loadMetabaseDashboard('overview')" class="primary-btn small-btn">Overview</button>
+            <button onclick="loadMetabaseDashboard('trends')" class="secondary-btn small-btn">Trends</button>
+            <button onclick="loadMetabaseDashboard('ca_performance')" class="secondary-btn small-btn">CA Performance</button>
+            <a href="{{ metabase_url }}" target="_blank" class="secondary-btn small-btn" style="text-decoration:none;">Open Metabase ↗</a>
+          </div>
+        </div>
+        <div id="metabase-container" style="min-height:400px;">
+          <p class="loading-msg">Loading Metabase dashboard...</p>
+        </div>
+      </section>
+      {% endif %}
+
+      <!-- Summary Stats -->
+      <section id="summary-strip" class="summary-strip" style="margin-bottom:22px;">
+        <div class="summary-box"><span>Total</span><strong id="stat-total">—</strong></div>
+        <div class="summary-box"><span>Pending</span><strong id="stat-pending">—</strong></div>
+        <div class="summary-box"><span>In Progress</span><strong id="stat-in-progress">—</strong></div>
+        <div class="summary-box"><span>On Hold</span><strong id="stat-on-hold">—</strong></div>
+        <div class="summary-box"><span>Resolved</span><strong id="stat-resolved">—</strong></div>
+        <div class="summary-box"><span>Reopened</span><strong id="stat-reopened">—</strong></div>
+      </section>
+
+      <!-- Filter Bar -->
+      <section class="admin-card" style="margin-bottom:22px;">
+        <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center;">
+          <select id="analytics-dept-filter" style="padding:10px 14px; border:1px solid var(--input-border); border-radius:12px; font-family:inherit;">
+            <option value="">All Departments</option>
+            {% for d in departments %}
+              <option value="{{ d.code }}">{{ d.code }}</option>
+            {% endfor %}
+          </select>
+          <select id="analytics-period-filter" style="padding:10px 14px; border:1px solid var(--input-border); border-radius:12px; font-family:inherit;">
+            <option value="monthly">Monthly</option>
+            <option value="weekly">Weekly</option>
+            <option value="daily">Daily</option>
+          </select>
+          <button onclick="refreshAnalytics()" class="primary-btn" style="padding:10px 20px;">Refresh</button>
+        </div>
+      </section>
+
+      <div class="analytics-grid">
+        <!-- Department Bar Chart -->
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">Distribution</p><h3>Tickets by Department</h3></div></div>
+          <div class="chart-container"><canvas id="deptChart"></canvas></div>
+        </section>
+
+        <!-- Category Pie Chart -->
+        <section class="admin-card">
+          <div class="card-head"><div><p class="kicker">Categories</p><h3>Tickets by Category</h3></div></div>
+          <div class="chart-container"><canvas id="catChart"></canvas></div>
+        </section>
+
+        <!-- Trends Line Chart -->
+        <section class="admin-card analytics-full">
+          <div class="card-head"><div><p class="kicker">Trends</p><h3>Ticket Creation & Resolution Over Time</h3></div></div>
+          <div class="chart-container"><canvas id="trendChart"></canvas></div>
+        </section>
+
+        <!-- CA Performance Table -->
+        <section class="admin-card analytics-full">
+          <div class="card-head"><div><p class="kicker">Performance</p><h3>Concerned Authority Metrics</h3></div></div>
+          <div class="table-wrap">
+            <table class="perf-table" id="ca-perf-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Department</th>
+                  <th>Total Assigned</th>
+                  <th>Resolved</th>
+                  <th>Active</th>
+                  <th>Avg Resolution (hrs)</th>
+                </tr>
+              </thead>
+              <tbody id="ca-perf-body">
+                <tr><td colspan="7" class="loading-msg">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Resolution Time -->
+        <section class="admin-card analytics-full">
+          <div class="card-head"><div><p class="kicker">Resolution</p><h3>Average Resolution Time by Category</h3></div></div>
+          <div class="table-wrap">
+            <table class="perf-table" id="resolution-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Department</th>
+                  <th>Resolved Count</th>
+                  <th>Avg (hrs)</th>
+                  <th>Min (hrs)</th>
+                  <th>Max (hrs)</th>
+                </tr>
+              </thead>
+              <tbody id="resolution-body">
+                <tr><td colspan="6" class="loading-msg">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+  <script>
+    const COLORS = ['#4f46e5','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#14b8a6','#f97316','#6366f1'];
+    let deptChart, catChart, trendChart;
+
+    function getDeptFilter() { return document.getElementById('analytics-dept-filter').value; }
+    function getPeriod() { return document.getElementById('analytics-period-filter').value; }
+
+    async function fetchJSON(url) {
+      const res = await fetch(url);
+      return res.json();
+    }
+
+    async function loadSummary() {
+      const dept = getDeptFilter();
+      const data = await fetchJSON(`/api/analytics/summary${dept ? '?department=' + dept : ''}`);
+      const s = data.summary || {};
+      document.getElementById('stat-total').textContent = s.total || 0;
+      document.getElementById('stat-pending').textContent = s.pending || 0;
+      document.getElementById('stat-in-progress').textContent = s.in_progress || 0;
+      document.getElementById('stat-on-hold').textContent = s.on_hold || 0;
+      document.getElementById('stat-resolved').textContent = s.resolved || 0;
+      document.getElementById('stat-reopened').textContent = s.reopened || 0;
+
+      // Department chart
+      const deptData = data.by_department || [];
+      if (deptChart) deptChart.destroy();
+      deptChart = new Chart(document.getElementById('deptChart'), {
+        type: 'bar',
+        data: {
+          labels: deptData.map(d => d.department),
+          datasets: [{
+            label: 'Total Tickets',
+            data: deptData.map(d => d.ticket_count || 0),
+            backgroundColor: COLORS.slice(0, deptData.length),
+            borderRadius: 6,
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+
+      // Category chart
+      const catData = data.by_category || [];
+      if (catChart) catChart.destroy();
+      catChart = new Chart(document.getElementById('catChart'), {
+        type: 'doughnut',
+        data: {
+          labels: catData.map(c => c.category_name),
+          datasets: [{
+            data: catData.map(c => c.ticket_count || 0),
+            backgroundColor: COLORS.slice(0, catData.length),
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    }
+
+    async function loadTrends() {
+      const dept = getDeptFilter();
+      const period = getPeriod();
+      const data = await fetchJSON(`/api/analytics/trends?period=${period}${dept ? '&department=' + dept : ''}`);
+      const trends = (data.trends || []).reverse();
+      if (trendChart) trendChart.destroy();
+      trendChart = new Chart(document.getElementById('trendChart'), {
+        type: 'line',
+        data: {
+          labels: trends.map(t => t.period),
+          datasets: [
+            { label: 'Created', data: trends.map(t => t.created), borderColor: '#4f46e5', backgroundColor: 'rgba(79,70,229,.1)', fill: true, tension: .3 },
+            { label: 'Resolved', data: trends.map(t => t.resolved), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,.1)', fill: true, tension: .3 },
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+      });
+    }
+
+    async function loadCAPerformance() {
+      const dept = getDeptFilter();
+      const data = await fetchJSON(`/api/analytics/ca-performance${dept ? '?department=' + dept : ''}`);
+      const tbody = document.getElementById('ca-perf-body');
+      const perf = data.ca_performance || [];
+      if (!perf.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading-msg">No CA data available.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = perf.map(p => `
+        <tr>
+          <td><strong>${p.name}</strong></td>
+          <td>${p.email}</td>
+          <td>${p.department}</td>
+          <td>${p.total_assigned}</td>
+          <td>${p.total_resolved}</td>
+          <td>${p.active_tickets}</td>
+          <td>${p.avg_resolution_hours}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadResolutionTime() {
+      const dept = getDeptFilter();
+      const data = await fetchJSON(`/api/analytics/resolution-time${dept ? '?department=' + dept : ''}`);
+      const tbody = document.getElementById('resolution-body');
+      const rt = data.resolution_time || [];
+      if (!rt.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="loading-msg">No resolution data available.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = rt.map(r => `
+        <tr>
+          <td><strong>${r.category}</strong></td>
+          <td>${r.department}</td>
+          <td>${r.resolved_count}</td>
+          <td>${r.avg_hours}</td>
+          <td>${r.min_hours}</td>
+          <td>${r.max_hours}</td>
+        </tr>
+      `).join('');
+    }
+
+    {% if metabase_enabled %}
+    let _metabaseFailCount = 0;
+    function hideMetabaseSection() {
+      const section = document.getElementById('metabase-section');
+      if (section) section.style.display = 'none';
+    }
+
+    async function loadMetabaseDashboard(key) {
+      const container = document.getElementById('metabase-container');
+      if (!container) return;
+      container.innerHTML = '<p class="loading-msg">Loading...</p>';
+      try {
+        const res = await fetch(`/api/analytics/metabase-embed?dashboard=${key}`);
+        const data = await res.json();
+        if (!res.ok || data.error || !data.embed_url) {
+          _metabaseFailCount++;
+          if (_metabaseFailCount >= 2) { hideMetabaseSection(); return; }
+          container.innerHTML = `<p class="loading-msg">${data.error || 'Metabase embedding is not available.'}</p>`;
+          return;
+        }
+        // Create iframe with error detection
+        const iframe = document.createElement('iframe');
+        iframe.src = data.embed_url;
+        iframe.style.cssText = 'width:100%;height:850px;border:none;border-radius:12px;';
+
+        // Timeout failsafe: if iframe doesn't load in 10s, hide section
+        const timeout = setTimeout(() => {
+          if (!iframe.dataset.loaded) {
+            _metabaseFailCount++;
+            container.innerHTML = '<p class="loading-msg">Metabase took too long to respond.</p>';
+            if (_metabaseFailCount >= 2) hideMetabaseSection();
+          }
+        }, 10000);
+
+        iframe.onload = function() {
+          iframe.dataset.loaded = 'true';
+          clearTimeout(timeout);
+        };
+        iframe.onerror = function() {
+          clearTimeout(timeout);
+          _metabaseFailCount++;
+          container.innerHTML = '<p class="loading-msg">Failed to load Metabase embed.</p>';
+          if (_metabaseFailCount >= 2) hideMetabaseSection();
+        };
+
+        container.innerHTML = '';
+        container.appendChild(iframe);
+      } catch(e) {
+        _metabaseFailCount++;
+        container.innerHTML = '<p class="loading-msg">Failed to connect to Metabase.</p>';
+        if (_metabaseFailCount >= 2) hideMetabaseSection();
+      }
+    }
+    {% endif %}
+
+    function refreshAnalytics() {
+      loadSummary();
+      loadTrends();
+      loadCAPerformance();
+      loadResolutionTime();
+    }
+
+    document.addEventListener('DOMContentLoaded', refreshAnalytics);
+  </script>
+</body>
+</html>

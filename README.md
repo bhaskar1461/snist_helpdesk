@@ -7,6 +7,8 @@ A production-grade, secure ticketing and support routing platform developed for 
 ## Features
 
 - **Dynamic Ticket Routing**: Automatic ticket allocation to block-level Concerned Authorities (CAs).
+- **Embedded Metabase Analytics**: Full-fledged visual analytics with JWT dashboard embedding (Overview, Trends, CA Performance) and automatic Metabase provisioning.
+- **Legacy Sreenidhi Migration**: Built-in migration pipeline to convert legacy MySQL dumps (`sys_administrators` & `sys_complaint`) into unified helpdesk records.
 - **Multi-Tenant Partitioning**: Organization-level isolation separating distinct college databases (e.g. SNIST, SNU).
 - **Grouped CA Mapping UI**: Interactive admin screen displaying CA assignments with collapsible multiselect dropdowns.
 - **SLA Passive Alerts**: Automatic escalation flags on open tickets exceeding a 24-hour response window.
@@ -20,7 +22,8 @@ A production-grade, secure ticketing and support routing platform developed for 
 
 - **Framework**: Python 3.11, Flask 3.1.0, Flask-WTF
 - **Database**: MySQL 8.x / PyMySQL Connection Pool
-- **Aesthetics & UI**: Modern HTML5, Vanilla CSS (Outfit & Space Grotesk fonts), Lucide Icons
+- **Analytics & BI**: Metabase 0.49+ (Docker containerized with JWT static embedding)
+- **Aesthetics & UI**: Modern HTML5, Vanilla CSS (Outfit & Space Grotesk fonts), Lucide Icons, Chart.js fallback
 - **Deployment**: Docker, Docker Compose, Gunicorn
 
 ---

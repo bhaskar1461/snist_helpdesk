@@ -3,65 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ error_title | default('Error') }} – Helpdesk</title>
+  <title>Error {{ error_code }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Outfit', sans-serif;
-      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-      color: #e0e0e0;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .error-card {
-      text-align: center;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 1rem;
-      padding: 3rem 2.5rem;
-      max-width: 480px;
-      backdrop-filter: blur(12px);
-    }
-    .error-code {
-      font-size: 5rem;
-      font-weight: 700;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      line-height: 1;
-    }
-    .error-title {
-      font-size: 1.5rem;
-      font-weight: 600;
-      margin: 0.75rem 0 0.5rem;
-    }
-    .error-message {
-      color: #aaa; font-size: 0.95rem; line-height: 1.6; margin-bottom: 1.5rem;
-    }
-    .back-link {
-      display: inline-block;
-      padding: 0.65rem 1.5rem;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      color: #fff;
-      border-radius: 0.5rem;
-      text-decoration: none;
-      font-weight: 500;
-      transition: opacity .2s;
-    }
-    .back-link:hover { opacity: .85; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Outfit', sans-serif; background: #f9fafb; min-height: 100vh; display: flex; align-items: center; justify-content: center; color: #1e293b; }
+    .error-page { text-align: center; max-width: 480px; padding: 2rem; }
+    .error-code { font-size: 7rem; font-weight: 700; color: #4f46e5; line-height: 1; margin-bottom: .5rem; }
+    .error-title { font-size: 1.5rem; font-weight: 600; margin-bottom: .75rem; }
+    .error-msg { font-size: 1rem; color: #6b7280; margin-bottom: 2rem; line-height: 1.6; }
+    .error-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .error-actions a { padding: 12px 24px; border-radius: 10px; font-weight: 600; font-size: .92rem; text-decoration: none; transition: all .2s; }
+    .btn-primary { background: #4f46e5; color: white; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-secondary { background: #f3f4f6; color: #374151; }
+    .btn-secondary:hover { background: #e5e7eb; }
   </style>
 </head>
 <body>
-  <div class="error-card">
-    <div class="error-code">{{ error_code | default(500) }}</div>
-    <h1 class="error-title">{{ error_title | default('Something went wrong') }}</h1>
-    <p class="error-message">{{ error_message | default('An unexpected error occurred. Please try again later.') }}</p>
-    <a href="/" class="back-link">← Back to Login</a>
+  <div class="error-page">
+    <div class="error-code">{{ error_code }}</div>
+    <h1 class="error-title">{{ error_title }}</h1>
+    <p class="error-msg">{{ error_message }}</p>
+    <div class="error-actions">
+      <a href="/" class="btn-primary">Go Home</a>
+      <a href="javascript:history.back()" class="btn-secondary">Go Back</a>
+    </div>
   </div>
 </body>
 </html>

@@ -56,7 +56,7 @@
       <section class="admin-grid">
         <section class="admin-card">
           <div class="card-head"><div><p class="kicker">Create Location</p><h3>New Block / Room</h3></div></div>
-          <form method="post" action="{{ url_for('location_management') }}" class="admin-form">
+          <form method="post" action="{{ url_for('management.location_management') }}" class="admin-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-grid">
               <label class="field"><span>Block Name</span><input type="text" name="block" placeholder="e.g. Block 1, Academic Block 2" required></label>
@@ -72,7 +72,7 @@
           <div class="card-head"><div><p class="kicker">Existing Locations</p><h3>Campus Rooms</h3></div></div>
           
           <!-- Search locations -->
-          <form class="search-bar filter-grid" method="get" action="{{ url_for('location_management') }}" style="margin-bottom:1rem; display: flex; gap: 8px;">
+          <form class="search-bar filter-grid" method="get" action="{{ url_for('management.location_management') }}" style="margin-bottom:1rem; display: flex; gap: 8px;">
             <input type="text" name="q" value="{{ search or '' }}" placeholder="Search block, floor, room no..." style="flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
             <button type="submit" class="primary-btn">Search</button>
           </form>
@@ -96,7 +96,7 @@
                     </td>
                   </tr>
                   <tr id="loc-edit-{{ item.id }}" class="edit-row" style="display:none;">
-                    <form method="post" action="{{ url_for('update_location', location_id=item.id) }}">
+                    <form method="post" action="{{ url_for('management.update_location', location_id=item.id) }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <td><input type="text" name="block" value="{{ item.block }}" required></td>
                       <td><input type="text" name="floor" value="{{ item.floor }}" required></td>
