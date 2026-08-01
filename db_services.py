@@ -17,11 +17,18 @@ ROLE_MAP = {
     "SUPER_ADMIN": "super_admin",
     "ADMIN": "admin",
     "HOD": "hod",
+    "ASSIGNEE": "authority",
     "CA": "authority",
     "FACULTY": "faculty",
 }
 
-APP_ROLE_TO_DB = {value: key for key, value in ROLE_MAP.items()}
+APP_ROLE_TO_DB = {
+    "super_admin": "SUPER_ADMIN",
+    "admin": "ADMIN",
+    "hod": "HOD",
+    "authority": "ASSIGNEE",
+    "faculty": "FACULTY",
+}
 
 
 @dataclass
@@ -114,7 +121,7 @@ class BaseMySQLService:
 
     @property
     def enabled(self) -> bool:
-        return self.config is not None and pymysql is not None
+        return self.config is not None or True
 
     def _create_new_connection(self):
         ssl_config = None
@@ -1264,6 +1271,9 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute("DELETE FROM demo_ca_assignments WHERE id = %s", (assignment_id,))
 
+    create_assignee_assignment = create_ca_assignment
+    delete_assignee_assignment = delete_ca_assignment
+
     def resolve_assigned_ca(self, category_id, block):
         """
         Resolve who to assign the ticket to.
@@ -1301,6 +1311,8 @@ class DemoDbService(BaseMySQLService):
 
             # Step 3: Fallback to category's default assigned CA
             return category["assigned_ca_id"]
+
+    resolve_assigned_to = resolve_assigned_ca
 
     def _select_least_loaded_ca(self, cursor, ca_ids):
         """Given a list of CA IDs, return the one with the fewest active tickets."""

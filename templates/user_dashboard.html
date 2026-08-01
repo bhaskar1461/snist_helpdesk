@@ -22,7 +22,7 @@
     <main class="admin-main">
       {% set page_kicker = "User Dashboard" %}
       {% set page_heading = "Welcome, " ~ user_name %}
-      {% set page_description = "Create tickets and track only your own complaints. Category selection will auto-assign the mapped Concerned Authority." %}
+      {% set page_description = "Create tickets and track only your own complaints. Category selection will auto-assign the mapped Assignee." %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}

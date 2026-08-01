@@ -33,12 +33,13 @@ MAX_ATTEMPTS = 5    # max attempts within lockout window
 ORG_LABELS = {"2000": "SNIST", "3000": "SNU"}
 
 # ── Role Definitions ────────────────────────────────────────────────
-ROLES = ["SUPER_ADMIN", "ADMIN", "HOD", "CA", "FACULTY"]
+ROLES = ["SUPER_ADMIN", "ADMIN", "HOD", "ASSIGNEE", "CA", "FACULTY"]
 
 ROLE_DASHBOARD_ROUTES = {
     "SUPER_ADMIN": "dashboards.super_admin_dashboard",
     "ADMIN": "dashboards.admin_dashboard",
     "HOD": "dashboards.hod_dashboard",
+    "ASSIGNEE": "tickets.authority_tickets",
     "CA": "tickets.authority_tickets",
     "FACULTY": "dashboards.user_dashboard",
 }
@@ -49,9 +50,9 @@ DEFAULT_DEMO_USERS = [
     {"name": "Campus Admin", "email": "campus.admin@gmail.com", "password": "123", "role": "ADMIN", "department": "Administration", "org_id": "2000"},
     {"name": "Dr. Kavya", "email": "hod@gmail.com", "password": "123", "role": "HOD", "department": "CSE", "org_id": "2000"},
     {"name": "Dr. Harini", "email": "hod.ece@gmail.com", "password": "123", "role": "HOD", "department": "ECE", "org_id": "2000"},
-    {"name": "Chandini", "email": "ca@gmail.com", "password": "123", "role": "CA", "department": "CSE", "org_id": "2000"},
-    {"name": "Sravan", "email": "sravan.ca@gmail.com", "password": "123", "role": "CA", "department": "Facilities", "org_id": "2000"},
-    {"name": "Bhaskar", "email": "bhaskar.ca@gmail.com", "password": "123", "role": "CA", "department": "Maintenance", "org_id": "2000"},
+    {"name": "Chandini", "email": "ca@gmail.com", "password": "123", "role": "ASSIGNEE", "department": "CSE", "org_id": "2000"},
+    {"name": "Sravan", "email": "sravan.ca@gmail.com", "password": "123", "role": "ASSIGNEE", "department": "Facilities", "org_id": "2000"},
+    {"name": "Bhaskar", "email": "bhaskar.ca@gmail.com", "password": "123", "role": "ASSIGNEE", "department": "Maintenance", "org_id": "2000"},
     {"name": "Demo User", "email": "faculty@gmail.com", "password": "123", "role": "FACULTY", "department": "CSE", "org_id": "2000"},
     {"name": "SNU Admin", "email": "snu.admin@gmail.com", "password": "123", "role": "SUPER_ADMIN", "department": "Administration", "org_id": "3000"},
 ]

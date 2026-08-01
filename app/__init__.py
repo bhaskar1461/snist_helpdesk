@@ -14,6 +14,7 @@ from app.config import (
     BASE_DIR, DEFAULT_DEMO_CATEGORIES, DEFAULT_DEMO_USERS,
     MIGRATION_V2_PATH, MIGRATION_V3_PATH, SCHEMA_PATH, get_flask_config,
 )
+from app.helpers import resolve_user_org
 
 log = logging.getLogger(__name__)
 
@@ -55,17 +56,18 @@ def create_app(testing=False):
     user = os.getenv("MYSQL_USER", "")
     password = os.getenv("MYSQL_PASSWORD", "")
     database = os.getenv("MYSQL_DATABASE", "")
+    import sys
+    is_testing_env = testing or app.config.get("TESTING") or "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true"
     port = int(os.getenv("MYSQL_PORT", "3306"))
-
     db_config = None
-    if all([host, user, password, database]):
+    if not is_testing_env and all([host, user, password, database]):
         db_config = DbConfig(host=host, port=port, user=user, password=password, database=database)
 
     _live_db = LiveDbService(db_config)
     _demo_db = DemoDbService(db_config)
 
     # ── Initialize Database Schema ──────────────────────────────────
-    if os.getenv("INIT_DEMO_DB", "true").lower() == "true" and _demo_db.enabled:
+    if not is_testing_env and os.getenv("INIT_DEMO_DB", "true").lower() == "true" and _demo_db.enabled:
         try:
             _init_database_schema(_demo_db)
         except Exception as exc:
@@ -86,7 +88,15 @@ def create_app(testing=False):
     app.register_blueprint(analytics_bp)
     app.register_blueprint(api_bp)
 
+    # ── Context Processors ──────────────────────────────────────────
+    @app.context_processor
+    def inject_user_context():
+        from app.helpers import current_user
+        curr_user = current_user()
+        return {"current_user": curr_user, "user": curr_user}
+
     # ── Error Handlers ──────────────────────────────────────────────
+
     @app.errorhandler(404)
     def not_found(e):
         from flask import render_template
@@ -125,6 +135,8 @@ def create_app(testing=False):
 def _init_database_schema(demo_db):
     """Initialize base schema, run migrations, and seed default data."""
     import hashlib
+
+    from werkzeug.security import generate_password_hash
 
     with demo_db.connection() as connection, connection.cursor() as cursor:
         # ── Base Schema ─────────────────────────────────────────────
@@ -179,7 +191,7 @@ def _init_database_schema(demo_db):
         cursor.execute("SELECT COUNT(*) AS cnt FROM demo_users")
         if cursor.fetchone()["cnt"] == 0:
             for u in DEFAULT_DEMO_USERS:
-                hashed = hashlib.sha256(u["password"].encode()).hexdigest()
+                hashed = generate_password_hash(u["password"])
                 cursor.execute(
                     "INSERT INTO demo_users (name, email, password, role, department) VALUES (%s, %s, %s, %s, %s)",
                     (u["name"], u["email"], hashed, u["role"], u["department"]),
@@ -201,3 +213,10 @@ def _init_database_schema(demo_db):
                         (c["category_name"], c["department"], ca_row["id"]),
                     )
             log.info("Seeded %d default demo categories.", len(DEFAULT_DEMO_CATEGORIES))
+
+
+# Module-level exports for package import compatibility
+from app.helpers import LOGIN_ATTEMPTS  # noqa: E402
+
+
+

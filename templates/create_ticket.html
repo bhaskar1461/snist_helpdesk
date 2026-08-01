@@ -25,7 +25,7 @@
     {% include 'sidebar.html' %}
     <main class="admin-main">
       <header class="admin-topbar">
-        <div><p class="kicker">Ticket Creation</p><h2>Create a new complaint</h2><span>When you submit, the selected category automatically assigns the mapped Concerned Authority.</span></div>
+        <div><p class="kicker">Ticket Creation</p><h2>Create a new complaint</h2><span>When you submit, the selected category automatically assigns the mapped Assignee.</span></div>
         <div class="profile-pill"><div class="avatar">{{ role_title[0] }}</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
       </header>
 
@@ -45,17 +45,15 @@
           <div class="form-grid">
             <label class="field">
               <span>Department</span>
-              <select id="department-select" onchange="updateCategories()" required>
-                <option value="">Select Department</option>
-                {% for dept in departments %}
-                  <option value="{{ dept.code }}">{{ dept.name }}</option>
-                {% endfor %}
-              </select>
+              <input type="text" value="{{ user_dept_name or user_dept_code or current_user_dept }}" readonly style="background: rgba(241, 245, 249, 0.6); opacity: 0.85; cursor: not-allowed;">
             </label>
             <label class="field">
               <span>Category</span>
-              <select id="category-select" name="category_id" required disabled>
+              <select id="category-select" name="category_id" required>
                 <option value="">Select category</option>
+                {% for cat in categories %}
+                  <option value="{{ cat.id }}">{{ cat.category_name }}</option>
+                {% endfor %}
               </select>
             </label>
           </div>
@@ -108,30 +106,7 @@
   </div>
 
   <script>
-    // Build categories data
-    const ALL_CATEGORIES = {{ categories | tojson }};
-
-    function updateCategories() {
-      const deptSelect = document.getElementById('department-select');
-      const catSelect = document.getElementById('category-select');
-      const selectedDept = deptSelect.value;
-
-      catSelect.innerHTML = '<option value="">Select category</option>';
-      catSelect.disabled = true;
-
-      if (selectedDept) {
-        const filtered = ALL_CATEGORIES.filter(c => c.department === selectedDept);
-        filtered.forEach(c => {
-          const opt = document.createElement('option');
-          opt.value = c.id;
-          opt.textContent = c.category_name;
-          catSelect.appendChild(opt);
-        });
-        if (filtered.length > 0) {
-          catSelect.disabled = false;
-        }
-      }
-    }
+    // Location cascading dropdowns
 
     // Build location data from server-side locations list
     const ALL_LOCATIONS = {{ locations | tojson }};

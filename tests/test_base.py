@@ -6,9 +6,11 @@ from pathlib import Path
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask import session
 
-# Import the Flask app and DB service classes
-from app import app as flask_app, LOGIN_ATTEMPTS
+from app import create_app
+from app.helpers import LOGIN_ATTEMPTS
 import db_services
+
+flask_app = create_app(testing=True)
 
 class MockDbState:
     def __init__(self):
@@ -200,7 +202,10 @@ class MockCursor:
                             row_val = row.get("EMAIL_ID")
                         
                         if row_val is not None:
-                            if isinstance(val, str) and "%" in val:
+                            if f"{col} !=" in where_clause_lower or f"{col}!=" in where_clause_lower:
+                                if str(row_val) == str(val):
+                                    return False
+                            elif isinstance(val, str) and "%" in val:
                                 pattern = val.strip("%")
                                 if not pattern:
                                     continue

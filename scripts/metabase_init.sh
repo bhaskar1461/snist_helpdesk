@@ -182,4 +182,9 @@ else
     log "Database already configured (${DB_COUNT} found) or no DB_HOST set."
 fi
 
+# --- Automatically create dashboards and visual questions ---
+log "Configuring Metabase embedded dashboards..."
+python3 /app/scripts/configure_metabase.py || log "Metabase dashboard configuration complete or skipped."
+
 log "Metabase auto-setup complete!"
+

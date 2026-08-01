@@ -154,7 +154,7 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
             ("dashboards.super_admin_dashboard", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("dashboards.super_admin_all_tickets", "All Tickets", "ticket"),
-            ("management.category_assignments", "Category & CA Management", "folder-open"),
+            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
             ("management.location_management", "Locations", "map-pin"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
         ],
@@ -162,21 +162,28 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
             ("dashboards.admin_dashboard", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("dashboards.admin_all_tickets", "All Tickets", "ticket"),
-            ("management.category_assignments", "Category & CA Management", "folder-open"),
+            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
         ],
         "HOD": [
             ("dashboards.hod_dashboard", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("dashboards.hod_all_tickets", "Dept. Tickets", "ticket"),
-            ("management.category_assignments", "Category & CA Management", "folder-open"),
+            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
+        ],
+        "ASSIGNEE": [
+            ("tickets.authority_tickets", "Dashboard", "layout-dashboard"),
+            ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
+            ("tickets.authority_dept_tickets", "My Dept Tickets", "ticket"),
+            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
+            ("tickets.ca_report", "Reports", "bar-chart-3"),
         ],
         "CA": [
             ("tickets.authority_tickets", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("tickets.authority_dept_tickets", "My Dept Tickets", "ticket"),
-            ("management.category_assignments", "Category & CA Management", "folder-open"),
+            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
             ("tickets.ca_report", "Reports", "bar-chart-3"),
         ],
         "FACULTY": [
@@ -199,6 +206,8 @@ def page_context(role_title: str) -> dict:
     org_label = ORG_LABELS.get(org_id, "SNIST")
     logo_filename = "images/snu_logo.webp" if org_id == "3000" else "images/snist_logo.jpg"
     return {
+        "user": user,
+        "current_user": user,
         "role_title": role_title,
         "user_name": user["name"] if user else "",
         "role_email": user["email"] if user else "",
@@ -208,6 +217,7 @@ def page_context(role_title: str) -> dict:
         "org_label": org_label,
         "logo_filename": logo_filename,
     }
+
 
 
 # ── Department Helpers ──────────────────────────────────────────────

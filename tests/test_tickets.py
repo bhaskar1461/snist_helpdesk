@@ -40,6 +40,31 @@ class TestTickets(HelpdeskTestCase):
         self.assertEqual(created_tickets[0]["status"], "PENDING")
         self.assertEqual(created_tickets[0]["assigned_to"], 4) # Fallback to default CA
 
+    def test_create_ticket_readonly_department_display(self):
+        self.login_as("faculty@gmail.com")
+        response = self.client.get("/tickets/create")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b'id="department-select"', response.data)
+        self.assertIn(b'readonly', response.data)
+
+    def test_create_ticket_cross_department_rejected(self):
+        # Login as CSE Faculty (department: CSE)
+        self.login_as("faculty@gmail.com")
+
+        # Category 3 is Plumbing (department: Facilities)
+        response = self.client.post("/tickets/create", data={
+            "title": "Fix plumbing",
+            "description": "Pipe leaking in bathroom",
+            "category_id": "3",
+            "location_id": "1"
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"only create tickets for your assigned department", response.data.lower())
+
+        # Verify no ticket was created
+        created_tickets = [t for t in GLOBAL_DB_STATE.tables["demo_tickets"] if t["created_by"] == 7 and t.get("category_id") == 3]
+        self.assertEqual(len(created_tickets), 0)
+
     def test_ticket_status_transitions_happy_path(self):
         # Seed a ticket in PENDING state
         GLOBAL_DB_STATE.tables["demo_tickets"] = [{

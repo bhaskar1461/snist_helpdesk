@@ -32,19 +32,20 @@
     <main class="admin-main">
       {% set page_kicker = "Analytics" %}
       {% set page_heading = "Helpdesk Analytics" %}
-      {% set page_description = "Ticket trends, CA performance, and resolution metrics." %}
+      {% set page_description = "Ticket trends, assignee performance, and resolution metrics." %}
       {% include 'topbar.html' %}
 
       {% if metabase_enabled %}
       <!-- Metabase Embedded Dashboard — auto-hides if embedding fails -->
       <section class="admin-card analytics-full" style="margin-bottom:22px;" id="metabase-section">
         <div class="card-head"><div><p class="kicker">Metabase</p><h3>Embedded Analytics</h3></div>
-          <div class="action-row">
-            <button onclick="loadMetabaseDashboard('overview')" class="primary-btn small-btn">Overview</button>
-            <button onclick="loadMetabaseDashboard('trends')" class="secondary-btn small-btn">Trends</button>
-            <button onclick="loadMetabaseDashboard('ca_performance')" class="secondary-btn small-btn">CA Performance</button>
+          <div class="action-row" id="metabase-nav-buttons">
+            <button onclick="loadMetabaseDashboard('overview', this)" class="primary-btn small-btn">Overview</button>
+            <button onclick="loadMetabaseDashboard('trends', this)" class="secondary-btn small-btn">Trends</button>
+            <button onclick="loadMetabaseDashboard('ca_performance', this)" class="secondary-btn small-btn">Assignee Performance</button>
             <a href="{{ metabase_url }}" target="_blank" class="secondary-btn small-btn" style="text-decoration:none;">Open Metabase ↗</a>
           </div>
+
         </div>
         <div id="metabase-container" style="min-height:400px;">
           <p class="loading-msg">Loading Metabase dashboard...</p>
@@ -99,9 +100,9 @@
           <div class="chart-container"><canvas id="trendChart"></canvas></div>
         </section>
 
-        <!-- CA Performance Table -->
+        <!-- Assignee Performance Table -->
         <section class="admin-card analytics-full">
-          <div class="card-head"><div><p class="kicker">Performance</p><h3>Concerned Authority Metrics</h3></div></div>
+          <div class="card-head"><div><p class="kicker">Performance</p><h3>Assignee Metrics</h3></div></div>
           <div class="table-wrap">
             <table class="perf-table" id="ca-perf-table">
               <thead>
@@ -275,7 +276,18 @@
       if (section) section.style.display = 'none';
     }
 
-    async function loadMetabaseDashboard(key) {
+    async function loadMetabaseDashboard(key, btnElement) {
+      if (btnElement) {
+        const navContainer = document.getElementById('metabase-nav-buttons');
+        if (navContainer) {
+          const buttons = navContainer.querySelectorAll('button');
+          buttons.forEach(b => {
+            b.className = 'secondary-btn small-btn';
+          });
+        }
+        btnElement.className = 'primary-btn small-btn';
+      }
+
       const container = document.getElementById('metabase-container');
       if (!container) return;
       container.innerHTML = '<p class="loading-msg">Loading...</p>';
@@ -330,7 +342,14 @@
       loadResolutionTime();
     }
 
-    document.addEventListener('DOMContentLoaded', refreshAnalytics);
+    document.addEventListener('DOMContentLoaded', () => {
+      refreshAnalytics();
+      {% if metabase_enabled %}
+      const firstBtn = document.querySelector('#metabase-nav-buttons button');
+      if (firstBtn) loadMetabaseDashboard('overview', firstBtn);
+      {% endif %}
+    });
+
   </script>
 </body>
 </html>

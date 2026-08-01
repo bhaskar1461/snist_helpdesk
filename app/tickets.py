@@ -27,8 +27,13 @@ def create_ticket_for_role():
     demo_db = get_demo_db()
     live_db = get_live_db()
     user = current_user()
+    user_dept = (user.get("department") or "").strip()
 
-    categories = demo_db.list_categories(org_id=user["org_id"], active_only=True)
+    all_depts = live_departments(user["org_id"])
+    matched_dept = next((d for d in all_depts if d["code"].lower() == user_dept.lower() or d["name"].lower() == user_dept.lower()), None)
+    user_dept_code = matched_dept["code"] if matched_dept else user_dept
+    user_dept_name = matched_dept["name"] if matched_dept else user_dept
+
     if request.method == "POST":
         category_id = safe_int(request.form.get("category_id", "0"))
         title = request.form.get("title", "").strip()
@@ -46,15 +51,42 @@ def create_ticket_for_role():
         if len(description) > 5000:
             flash("Description cannot exceed 5000 characters.", "error")
             return redirect(url_for("tickets.create_ticket_for_role"))
+
+        # Server-side validation: derive department from user session and validate category
+        category = demo_db.get_category(category_id)
+        if not category:
+            flash("Selected category does not exist.", "error")
+            return redirect(url_for("tickets.create_ticket_for_role"))
+
+        cat_dept = (category.get("department") or "").strip().lower()
+        allowed_depts = {user_dept.lower(), user_dept_code.lower(), user_dept_name.lower()}
+        if user["role"] not in ("SUPER_ADMIN", "ADMIN") and cat_dept not in allowed_depts:
+            flash("You can only create tickets for your assigned department.", "error")
+            return redirect(url_for("tickets.create_ticket_for_role"))
+
         org_id = user["org_id"]
         demo_db.create_ticket(title=title, description=description, category_id=category_id,
                               created_by=user["id"], org_id=org_id, location_id=location_id)
         flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
+    categories = demo_db.list_categories(department=user_dept_code, org_id=user["org_id"], active_only=True)
+    if not categories and user_dept_name != user_dept_code:
+        categories = demo_db.list_categories(department=user_dept_name, org_id=user["org_id"], active_only=True)
+    if not categories and user["role"] in ("SUPER_ADMIN", "ADMIN"):
+        categories = demo_db.list_categories(org_id=user["org_id"], active_only=True)
+
     locations = live_db.fetch_locations()
-    return render_template("create_ticket.html", categories=categories, locations=locations,
-                           departments=live_departments(user["org_id"]), **page_context("Create Ticket"))
+    return render_template(
+        "create_ticket.html",
+        categories=categories,
+        locations=locations,
+        user_dept_code=user_dept_code,
+        user_dept_name=user_dept_name,
+        current_user_dept=user_dept,
+        departments=all_depts,
+        **page_context("Create Ticket"),
+    )
 
 
 @tickets_bp.route("/tickets/<int:ticket_id>")
@@ -213,12 +245,12 @@ def authority_tickets():
         dept_tickets=dept_tickets,
         filters=filters,
         summary=summary,
-        **page_context("Concerned Authority"),
+        **page_context("Assignee"),
     )
 
 
 @tickets_bp.route("/authority/dept-tickets")
-@role_required("CA")
+@role_required("ASSIGNEE", "CA")
 def authority_dept_tickets():
     from app import get_demo_db
     demo_db = get_demo_db()
@@ -237,12 +269,12 @@ def authority_dept_tickets():
         filters=filters,
         summary=summary,
         show_dept_first=True,
-        **page_context("Concerned Authority"),
+        **page_context("Assignee"),
     )
 
 
 @tickets_bp.route("/ca/report")
-@role_required("CA")
+@role_required("ASSIGNEE", "CA")
 def ca_report():
     from app import get_demo_db
     demo_db = get_demo_db()

@@ -43,9 +43,9 @@ def check_and_promote_ca(demo_db, ca_id, target_dept, actor_id, org_id):
                     target_type="user", target_id=ca_id,
                     details={"promoted_name": ca_user["name"], "department": target_dept},
                 )
-                flash(f"Promoted {ca_user['name']} to Concerned Authority for {target_dept}.", "success")
+                flash(f"Promoted {ca_user['name']} to Assignee for {target_dept}.", "success")
             else:
-                flash(f"Updated Concerned Authority department mapping for {ca_user['name']}.", "success")
+                flash(f"Updated Assignee department mapping for {ca_user['name']}.", "success")
 
 
 def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, actor_id, org_id):
@@ -65,7 +65,7 @@ def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, ac
             "name": teacher["name"],
             "email": teacher["email"],
             "password": sap_id,
-            "role": "CA",
+            "role": "ASSIGNEE",
             "department": target_dept,
         })
         demo_db.log_audit_event(
@@ -73,7 +73,7 @@ def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, ac
             target_type="user", target_id=new_user_id,
             details={"promoted_name": teacher["name"], "department": target_dept},
         )
-        flash(f"Promoted reference user {teacher['name']} to Concerned Authority for {target_dept}.", "success")
+        flash(f"Promoted reference user {teacher['name']} to Assignee for {target_dept}.", "success")
         return new_user_id
     else:
         ca_id = safe_int(assigned_ca_id_str)
@@ -138,24 +138,40 @@ def category_assignments():
             }
             cat_id = demo_db.create_category(payload)
 
-            if block and block != "all":
-                if ca_id:
+            blocks = request.form.getlist("blocks") or request.form.getlist("block")
+            if not blocks:
+                single_block = request.form.get("block", "").strip()
+                if single_block:
+                    blocks = [single_block]
+
+            created_count = 0
+            skipped_count = 0
+            if blocks and ca_id:
+                for b in blocks:
+                    b_stripped = b.strip()
+                    if not b_stripped or b_stripped == "all":
+                        continue
                     try:
-                        demo_db.create_ca_assignment(cat_id, ca_id, block)
+                        demo_db.create_ca_assignment(cat_id, ca_id, b_stripped)
                         demo_db.log_audit_event(
                             "CA_BLOCK_ASSIGNED", user["id"], user["org_id"],
                             target_type="ca_assignment", target_id=ca_id,
-                            details={"category_id": cat_id, "block": block},
+                            details={"category_id": cat_id, "block": b_stripped},
                         )
+                        created_count += 1
+                    except ValueError:
+                        skipped_count += 1
                     except Exception as e:
-                        flash(f"Category created, but location mapping failed: {e}", "warning")
-                else:
-                    flash(f"Category '{category_name}' created. Note: Location block mapping requires an assigned Concerned Authority.", "warning")
+                        flash(f"Location mapping failed for block {b_stripped}: {e}", "warning")
 
             demo_db.log_audit_event("CATEGORY_CREATED", user["id"], user["org_id"],
                                     target_type="category", target_id=cat_id,
-                                    details={"category_name": category_name, "department": department, "assigned_ca_id": ca_id, "block": block})
-            flash(f"Category '{category_name}' created successfully.", "success")
+                                    details={"category_name": category_name, "department": department, "assigned_ca_id": ca_id, "blocks": blocks})
+
+            if created_count > 0 or skipped_count > 0:
+                flash(f"Category '{category_name}' created successfully. Created {created_count} location block mapping(s) ({skipped_count} skipped because they already existed).", "success")
+            else:
+                flash(f"Category '{category_name}' created successfully.", "success")
             return redirect(url_for("management.category_assignments"))
 
         # Action 2: Update Category (Inline / Form edit)
@@ -214,24 +230,42 @@ def category_assignments():
                     },
                 )
 
-            # Handle optional Location Block mapping if specified in edit modal
-            block = request.form.get("block", "").strip()
-            if block and block != "all" and ca_id:
-                try:
-                    demo_db.create_ca_assignment(category_id, ca_id, block)
-                    demo_db.log_audit_event(
-                        "CA_BLOCK_ASSIGNED", user["id"], user["org_id"],
-                        target_type="ca_assignment", target_id=ca_id,
-                        details={"category_id": category_id, "block": block},
-                    )
-                except ValueError:
-                    pass
+            # Handle optional Location Block mappings specified in edit modal
+            blocks = request.form.getlist("blocks") or request.form.getlist("block")
+            if not blocks:
+                single_block = request.form.get("block", "").strip()
+                if single_block:
+                    blocks = [single_block]
+
+            created_count = 0
+            skipped_count = 0
+            if blocks and ca_id:
+                for b in blocks:
+                    b_stripped = b.strip()
+                    if not b_stripped or b_stripped == "all":
+                        continue
+                    try:
+                        demo_db.create_ca_assignment(category_id, ca_id, b_stripped)
+                        demo_db.log_audit_event(
+                            "CA_BLOCK_ASSIGNED", user["id"], user["org_id"],
+                            target_type="ca_assignment", target_id=ca_id,
+                            details={"category_id": category_id, "block": b_stripped},
+                        )
+                        created_count += 1
+                    except ValueError:
+                        skipped_count += 1
+                    except Exception as e:
+                        pass
 
             demo_db.update_category(category_id, payload)
             demo_db.log_audit_event("CATEGORY_UPDATED", user["id"], user["org_id"],
                                     target_type="category", target_id=category_id,
-                                    details={"category_name": category_name, "department": department, "block": block})
-            flash("Category updated successfully.", "success")
+                                    details={"category_name": category_name, "department": department, "blocks": blocks})
+
+            if created_count > 0 or skipped_count > 0:
+                flash(f"Category updated successfully. Created {created_count} location block mapping(s) ({skipped_count} skipped because they already existed).", "success")
+            else:
+                flash("Category updated successfully.", "success")
             return redirect(url_for("management.category_assignments"))
 
         # Action 3: Assign CA & Block Mappings
@@ -243,7 +277,7 @@ def category_assignments():
                 if single_cat > 0:
                     category_ids = [single_cat]
 
-            blocks = request.form.getlist("blocks")
+            blocks = request.form.getlist("blocks") or request.form.getlist("block")
             if not blocks:
                 single_block = request.form.get("block", "").strip()
                 if single_block:
@@ -263,7 +297,8 @@ def category_assignments():
                             dept_to_categories[dept] = []
                         dept_to_categories[dept].append(cat_id)
 
-                success_count = 0
+                created_count = 0
+                skipped_count = 0
                 for dept, cat_ids in dept_to_categories.items():
                     ca_id = resolve_and_promote_ca(demo_db, live_db, faculty_id_str, dept, user["id"], user["org_id"])
                     for cat_id in cat_ids:
@@ -288,12 +323,12 @@ def category_assignments():
                                     "new_assigned_ca": ca_user["name"] if ca_user else "Unknown",
                                 },
                             )
-                            success_count += 1
+                            created_count += 1
                         else:
                             # Create block-level mapping
                             for b in blocks:
                                 b_stripped = b.strip()
-                                if not b_stripped:
+                                if not b_stripped or b_stripped == "all":
                                     continue
                                 try:
                                     demo_db.create_ca_assignment(cat_id, ca_id, b_stripped)
@@ -302,11 +337,11 @@ def category_assignments():
                                         target_type="ca_assignment", target_id=ca_id,
                                         details={"category_id": cat_id, "block": b_stripped},
                                     )
-                                    success_count += 1
+                                    created_count += 1
                                 except ValueError:
-                                    pass
+                                    skipped_count += 1
 
-                flash(f"CA assigned successfully ({success_count} update(s)).", "success")
+                flash(f"CA assigned successfully. Created {created_count} location block mapping(s) ({skipped_count} skipped because they already existed).", "success")
             except Exception as e:
                 flash(f"Assignment failed: {e}", "error")
             return redirect(url_for("management.category_assignments"))
@@ -466,13 +501,45 @@ def category_assignments():
 @management_bp.route("/management/category-management", methods=["GET", "POST"])
 @role_required("HOD", "SUPER_ADMIN", "ADMIN")
 def management_category():
-    return redirect(url_for("management.category_assignments"))
+    if request.method == "POST" and not request.form.get("action"):
+        mutable_form = request.form.copy()
+        mutable_form["action"] = "create_category"
+        request.form = mutable_form
+    return category_assignments()
 
 
 @management_bp.route("/hod/ca-assignments", methods=["GET", "POST"])
-@role_required("HOD", "SUPER_ADMIN")
+@role_required("HOD", "SUPER_ADMIN", "ADMIN")
 def ca_assignments():
-    return redirect(url_for("management.category_assignments"))
+    if request.method == "POST" and not request.form.get("action"):
+        # Synthesize assign_ca action if omitted in legacy form posts
+        mutable_form = request.form.copy()
+        mutable_form["action"] = "assign_ca"
+        request.form = mutable_form
+    return category_assignments()
+
+
+@management_bp.route("/api/locations")
+@role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
+def api_locations():
+    from app import get_live_db
+    from flask import jsonify
+    live_db = get_live_db()
+    locations = live_db.fetch_locations()
+    grouped = {}
+    for loc in locations:
+        block = loc.get("block", "Unknown")
+        floor = loc.get("floor", "Unknown")
+        if block not in grouped:
+            grouped[block] = {}
+        if floor not in grouped[block]:
+            grouped[block][floor] = []
+        grouped[block][floor].append({
+            "id": loc["id"],
+            "room_no": loc.get("room_no", ""),
+            "name": loc.get("name", ""),
+        })
+    return jsonify(grouped)
 
 
 @management_bp.route("/management/category-management/<int:category_id>/update", methods=["POST"])
@@ -642,3 +709,222 @@ def delete_location(location_id):
     except Exception as e:
         flash(f"Failed to delete location: {e}", "error")
     return redirect(url_for("management.location_management"))
+
+
+# ── User Management Routes ──────────────────────────────────────────
+
+@management_bp.route("/user-management", methods=["GET", "POST"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def user_management():
+    from app import get_demo_db, get_live_db
+    from db_services import ROLE_MAP
+    demo_db = get_demo_db()
+    live_db = get_live_db()
+    user = current_user()
+    if request.method == "POST":
+        role = request.form.get("role", "").strip().upper()
+        if user["role"] == "HOD":
+            if role not in ("CA", "FACULTY"):
+                flash("Access denied: HOD can only create CA or FACULTY users.", "error")
+                return redirect(url_for("management.user_management"))
+            if role == "CA":
+                selected_depts = [d.strip() for d in request.form.getlist("department") if d.strip()]
+                if user["department"] not in selected_depts:
+                    selected_depts.append(user["department"])
+                department = ",".join(selected_depts)
+            else:
+                department = user["department"]
+        else:
+            if user["role"] != "SUPER_ADMIN" and role == "SUPER_ADMIN":
+                flash("Access denied: Only SUPER_ADMIN can create SUPER_ADMIN users.", "error")
+                return redirect(url_for("management.user_management"))
+            if role == "CA":
+                department = ",".join([d.strip() for d in request.form.getlist("department") if d.strip()])
+            else:
+                department = request.form.get("department", "").strip()
+
+        payload = {
+            "name": request.form.get("name", "").strip(),
+            "email": request.form.get("email", "").strip().lower(),
+            "password": request.form.get("password", "").strip() or "123",
+            "role": role,
+            "department": department,
+        }
+        if not all([payload["name"], payload["email"], payload["role"], payload["department"]]):
+            flash("All user fields are required.", "error")
+            return redirect(url_for("management.user_management"))
+        if len(payload["name"]) > 120:
+            flash("Name cannot exceed 120 characters.", "error")
+            return redirect(url_for("management.user_management"))
+        if len(payload["email"]) > 190:
+            flash("Email cannot exceed 190 characters.", "error")
+            return redirect(url_for("management.user_management"))
+        if not is_valid_email(payload["email"]):
+            flash("Please enter a valid email address.", "error")
+            return redirect(url_for("management.user_management"))
+
+        target_org = resolve_user_org(payload["email"], payload["department"])
+        if target_org != user["org_id"]:
+            flash(f"Access denied: User details do not resolve to your organization ({user['org_id']}).", "error")
+            return redirect(url_for("management.user_management"))
+
+        existing = demo_db.list_users(search=payload["email"])
+        if any(u["email"].lower() == payload["email"] for u in existing):
+            flash(f"A user with email '{payload['email']}' already exists.", "error")
+            return redirect(url_for("management.user_management"))
+        demo_db.create_user(payload)
+        demo_db.log_audit_event(
+            "USER_CREATED", user["id"], user["org_id"],
+            target_type="user", target_id=None,
+            details={"email": payload["email"], "role": payload["role"], "department": payload["department"]},
+        )
+        flash("Demo user created successfully.", "success")
+        return redirect(url_for("management.user_management"))
+
+    search = request.args.get("q", "").strip()
+    roles_filter = [r.upper() for r in request.args.getlist("role") if r.strip()]
+    department = request.args.get("department", "").strip() or None
+
+    if user["role"] == "HOD":
+        department = user["department"]
+        roles_list = ["CA", "FACULTY"]
+    else:
+        roles_list = list(ROLE_MAP.keys()) if user["role"] == "SUPER_ADMIN" else [r for r in ROLE_MAP.keys() if r != "SUPER_ADMIN"]
+
+    role_arg = roles_filter if len(roles_filter) > 1 else (roles_filter[0] if roles_filter else None)
+    users = demo_db.list_users(role=role_arg, department=department, search=search, org_id=user["org_id"])
+    if user["role"] == "HOD":
+        users = [u for u in users if u["role"] in ("CA", "FACULTY")]
+    departments = live_departments(user["org_id"])
+    return render_template(
+        "user_management.html",
+        users=users,
+        departments=departments,
+        filters={"q": search, "role": roles_filter[0] if len(roles_filter) == 1 else "", "roles": roles_filter, "department": department or ""},
+        roles=roles_list,
+        **page_context("User Management"),
+    )
+
+
+@management_bp.route("/user-management/<int:user_id>/update", methods=["POST"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def update_user(user_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    user = current_user()
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        flash("User not found.", "error")
+        return redirect(url_for("management.user_management"))
+
+    target_org = resolve_user_org(target_user["email"], target_user["department"])
+    if target_org != user["org_id"]:
+        flash("Access denied: User belongs to a different organization.", "error")
+        return redirect(url_for("management.user_management"))
+
+    if user["role"] == "HOD":
+        target_depts = [d.strip() for d in target_user["department"].split(",")]
+        if user["department"] not in target_depts:
+            flash("Access denied: You can only modify users in your own department.", "error")
+            return redirect(url_for("management.user_management"))
+        if target_user["role"] not in ("CA", "FACULTY"):
+            flash("Access denied: You can only modify CA or FACULTY users.", "error")
+            return redirect(url_for("management.user_management"))
+
+        role = request.form.get("role", "").strip().upper()
+        if role not in ("CA", "FACULTY"):
+            flash("Access denied: You can only assign CA or FACULTY role.", "error")
+            return redirect(url_for("management.user_management"))
+
+        if role == "CA":
+            selected_depts = [d.strip() for d in request.form.getlist("department") if d.strip()]
+            if user["department"] not in selected_depts:
+                selected_depts.append(user["department"])
+            department = ",".join(selected_depts)
+        else:
+            department = user["department"]
+    else:
+        role = request.form.get("role", "").strip().upper()
+        if user["role"] != "SUPER_ADMIN":
+            if target_user["role"] == "SUPER_ADMIN":
+                flash("Access denied: Cannot modify SUPER_ADMIN users.", "error")
+                return redirect(url_for("management.user_management"))
+            if role == "SUPER_ADMIN":
+                flash("Access denied: Cannot assign SUPER_ADMIN role.", "error")
+                return redirect(url_for("management.user_management"))
+
+        if role == "CA":
+            department = ",".join([d.strip() for d in request.form.getlist("department") if d.strip()])
+        else:
+            department = request.form.get("department", "").strip()
+
+    password = request.form.get("password", "").strip()
+    payload = {
+        "name": request.form.get("name", "").strip() or target_user["name"],
+        "email": request.form.get("email", "").strip().lower() or target_user["email"],
+        "role": role or target_user["role"],
+        "department": department or target_user["department"],
+    }
+    if password:
+        payload["password"] = password
+    if not all([payload["name"], payload["email"], payload["role"], payload["department"]]):
+        flash("All user fields are required.", "error")
+        return redirect(url_for("management.user_management"))
+    if len(payload["name"]) > 120:
+        flash("Name cannot exceed 120 characters.", "error")
+        return redirect(url_for("management.user_management"))
+    if len(payload["email"]) > 190:
+        flash("Email cannot exceed 190 characters.", "error")
+        return redirect(url_for("management.user_management"))
+    if not is_valid_email(payload["email"]):
+        flash("Please enter a valid email address.", "error")
+        return redirect(url_for("management.user_management"))
+
+    new_org = resolve_user_org(payload["email"], payload["department"])
+    if new_org != user["org_id"]:
+        flash(f"Access denied: Updated details do not resolve to your organization ({user['org_id']}).", "error")
+        return redirect(url_for("management.user_management"))
+
+    demo_db.update_user(user_id, payload)
+    flash("Demo user updated.", "success")
+    return redirect(url_for("management.user_management"))
+
+
+@management_bp.route("/user-management/<int:user_id>/delete", methods=["POST"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def delete_user(user_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    user = current_user()
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        flash("User not found.", "error")
+        return redirect(url_for("management.user_management"))
+
+    target_org = resolve_user_org(target_user["email"], target_user["department"])
+    if target_org != user["org_id"]:
+        flash("Access denied: User belongs to a different organization.", "error")
+        return redirect(url_for("management.user_management"))
+
+    if user["role"] == "HOD":
+        target_depts = [d.strip() for d in target_user["department"].split(",")]
+        if user["department"] not in target_depts:
+            flash("Access denied: You can only delete users in your own department.", "error")
+            return redirect(url_for("management.user_management"))
+        if target_user["role"] not in ("CA", "FACULTY"):
+            flash("Access denied: You can only delete CA or FACULTY users.", "error")
+            return redirect(url_for("management.user_management"))
+    else:
+        if user["role"] != "SUPER_ADMIN" and target_user["role"] == "SUPER_ADMIN":
+            flash("Access denied: Cannot delete SUPER_ADMIN users.", "error")
+            return redirect(url_for("management.user_management"))
+
+    try:
+        demo_db.delete_user(user_id)
+        flash("Demo user deleted.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    return redirect(url_for("management.user_management"))
+
+
+

@@ -80,7 +80,7 @@ def sync_database(db_id):
     return True
 
 
-def create_native_question(db_id, name, description, sql, display="table"):
+def create_native_question(db_id, name, description, sql, display="table", visualization_settings=None):
     """Create a saved native SQL question."""
     data = {
         "name": name,
@@ -91,7 +91,7 @@ def create_native_question(db_id, name, description, sql, display="table"):
             "database": db_id
         },
         "display": display,
-        "visualization_settings": {},
+        "visualization_settings": visualization_settings or {},
         "collection_id": None
     }
     result = api("POST", "/api/card", data)
@@ -100,6 +100,7 @@ def create_native_question(db_id, name, description, sql, display="table"):
         return result["id"]
     print(f"  [!] Failed to create question: {name}")
     return None
+
 
 
 def create_dashboard(name, description):
@@ -199,7 +200,7 @@ def main():
         FROM demo_tickets
         GROUP BY status
         ORDER BY FIELD(status, 'PENDING', 'IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'REOPENED')
-        """, "bar")
+        """, "bar", {"graph.dimensions": ["Status"], "graph.metrics": ["Count"]})
 
     q2 = create_native_question(db_id, "Tickets by Department",
         "Total tickets per department.",
@@ -210,7 +211,7 @@ def main():
         JOIN demo_categories c ON t.category_id = c.id
         GROUP BY c.department
         ORDER BY COUNT(t.id) DESC
-        """, "bar")
+        """, "bar", {"graph.dimensions": ["Department"], "graph.metrics": ["Tickets"]})
 
     q3 = create_native_question(db_id, "Tickets by Category",
         "Ticket distribution across categories.",
@@ -222,7 +223,7 @@ def main():
         JOIN demo_categories c ON t.category_id = c.id
         GROUP BY c.category_name, c.department
         ORDER BY COUNT(t.id) DESC
-        """, "pie")
+        """, "pie", {"pie.dimension": "Category", "pie.metric": "Tickets"})
 
     q4 = create_native_question(db_id, "Recent Tickets",
         "Latest 20 tickets with status and assignment.",
@@ -288,7 +289,7 @@ def main():
         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         GROUP BY DATE(created_at)
         ORDER BY DATE(created_at)
-        """, "line")
+        """, "line", {"graph.dimensions": ["Date"], "graph.metrics": ["Tickets Created"]})
 
     q9 = create_native_question(db_id, "Daily Resolutions",
         "Number of tickets resolved per day (last 30 days).",
@@ -300,19 +301,19 @@ def main():
           AND a.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         GROUP BY DATE(a.created_at)
         ORDER BY DATE(a.created_at)
-        """, "line")
+        """, "line", {"graph.dimensions": ["Date"], "graph.metrics": ["Tickets Resolved"]})
 
     q10 = create_native_question(db_id, "Weekly Ticket Volume",
         "Tickets created and resolved per week.",
         """
-        SELECT YEARWEEK(t.created_at, 1) AS 'Week',
+        SELECT DATE_FORMAT(t.created_at, '%Y-W%v') AS 'Week',
                COUNT(*) AS 'Created',
                SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS 'Resolved'
         FROM demo_tickets t
-        GROUP BY YEARWEEK(t.created_at, 1)
-        ORDER BY YEARWEEK(t.created_at, 1) DESC
+        GROUP BY DATE_FORMAT(t.created_at, '%Y-W%v')
+        ORDER BY DATE_FORMAT(t.created_at, '%Y-W%v') ASC
         LIMIT 12
-        """, "bar")
+        """, "bar", {"graph.dimensions": ["Week"], "graph.metrics": ["Created", "Resolved"]})
 
     q11 = create_native_question(db_id, "Status Transition Flow",
         "All status transitions with timestamps.",
@@ -332,12 +333,12 @@ def main():
     q12 = create_native_question(db_id, "Tickets by Hour of Day",
         "When are tickets created? Distribution by hour.",
         """
-        SELECT HOUR(created_at) AS 'Hour',
+        SELECT CONCAT(LPAD(HOUR(created_at), 2, '0'), ':00') AS 'Hour',
                COUNT(*) AS 'Tickets'
         FROM demo_tickets
         GROUP BY HOUR(created_at)
-        ORDER BY HOUR(created_at)
-        """, "bar")
+        ORDER BY HOUR(created_at) ASC
+        """, "bar", {"graph.dimensions": ["Hour"], "graph.metrics": ["Tickets"]})
 
     dash_trends = create_dashboard("Helpdesk Trends",
         "Ticket creation and resolution trends over time.")
@@ -384,7 +385,7 @@ def main():
         JOIN demo_ticket_activity a ON a.ticket_id = t.id AND a.to_status = 'RESOLVED'
         GROUP BY ca.id, ca.name
         ORDER BY AVG(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at))
-        """, "bar")
+        """, "bar", {"graph.dimensions": ["CA Name"], "graph.metrics": ["Avg Hours"]})
 
     q15 = create_native_question(db_id, "Resolution Time by Category",
         "Average resolution time for each ticket category.",
@@ -414,7 +415,8 @@ def main():
         GROUP BY ca.id, ca.name
         HAVING COUNT(t.id) > 0
         ORDER BY ROUND(100.0 * SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) / COUNT(t.id), 1) DESC
-        """, "bar")
+        """, "bar", {"graph.dimensions": ["CA Name"], "graph.metrics": ["Resolution Rate %"]})
+
 
     q17 = create_native_question(db_id, "Overdue/Active Tickets by CA",
         "Currently active (non-resolved) tickets per CA, oldest first.",

@@ -310,6 +310,12 @@ def route_for_role(role):
     }.get(role, "login")
 
 
+@app.route("/health", methods=["GET"])
+def health_check():
+    return jsonify({"status": "healthy", "service": "snist_helpdesk"}), 200
+
+
+
 def sidebar_links(role):
     mapping = {
         "SUPER_ADMIN": [
@@ -583,11 +589,16 @@ def my_tickets():
 @role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
 def create_ticket_for_role():
     user = current_user()
-    # Show categories for the user's organization
-    categories = demo_db.list_categories(org_id=user["org_id"], active_only=True)
+    user_dept = (user.get("department") or "").strip()
+
+    all_depts = live_departments(user["org_id"])
+    matched_dept = next((d for d in all_depts if d["code"].lower() == user_dept.lower() or d["name"].lower() == user_dept.lower()), None)
+    user_dept_code = matched_dept["code"] if matched_dept else user_dept
+    user_dept_name = matched_dept["name"] if matched_dept else user_dept
+
     if request.method == "POST":
         category_id = safe_int(request.form.get("category_id", "0"))
-        title = request.form.get("title", "").strip()  # may be empty now (auto-generated)
+        title = request.form.get("title", "").strip()
         description = request.form.get("description", "").strip()
         location_id = safe_int(request.form.get("location_id", "0")) or None
         if not category_id:
@@ -602,13 +613,41 @@ def create_ticket_for_role():
         if len(description) > 5000:
             flash("Description cannot exceed 5000 characters.", "error")
             return redirect(url_for("create_ticket_for_role"))
+
+        # Server-side validation: derive department from user session and validate category
+        category = demo_db.get_category(category_id)
+        if not category:
+            flash("Selected category does not exist.", "error")
+            return redirect(url_for("create_ticket_for_role"))
+
+        cat_dept = (category.get("department") or "").strip().lower()
+        allowed_depts = {user_dept.lower(), user_dept_code.lower(), user_dept_name.lower()}
+        if user["role"] not in ("SUPER_ADMIN", "ADMIN") and cat_dept not in allowed_depts:
+            flash("You can only create tickets for your assigned department.", "error")
+            return redirect(url_for("create_ticket_for_role"))
+
         org_id = user["org_id"]
         demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id)
         flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
+    categories = demo_db.list_categories(department=user_dept_code, org_id=user["org_id"], active_only=True)
+    if not categories and user_dept_name != user_dept_code:
+        categories = demo_db.list_categories(department=user_dept_name, org_id=user["org_id"], active_only=True)
+    if not categories and user["role"] in ("SUPER_ADMIN", "ADMIN"):
+        categories = demo_db.list_categories(org_id=user["org_id"], active_only=True)
+
     locations = live_db.fetch_locations()
-    return render_template("create_ticket.html", categories=categories, locations=locations, departments=live_departments(user["org_id"]), **page_context("Create Ticket"))
+    return render_template(
+        "create_ticket.html",
+        categories=categories,
+        locations=locations,
+        user_dept_code=user_dept_code,
+        user_dept_name=user_dept_name,
+        current_user_dept=user_dept,
+        departments=all_depts,
+        **page_context("Create Ticket")
+    )
 
 
 @app.route("/api/locations")

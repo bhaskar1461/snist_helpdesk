@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Category & CA Management</title>
+  <title>Category & Assignee Management</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
@@ -286,11 +286,117 @@
     .tbl-action-btn:hover { background: var(--slate-100); color: var(--slate-900); }
     .tbl-action-btn.danger:hover { background: #fef2f2; color: #dc2626; }
 
-    /* Modals */
-    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
-    .modal-overlay.active { display: flex; }
-    .modal-card { background: #ffffff; border-radius: 12px; padding: 1.5rem 1.75rem; max-width: 460px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.15); }
-    .modal-card h3 { font-family: 'Outfit', sans-serif; margin: 0 0 1rem; font-size: 1.15rem; color: var(--slate-900); }
+    /* Multi-Select Location Block Component */
+    .block-multi-select-container {
+      position: relative;
+      width: 100%;
+      user-select: none;
+    }
+    .multi-select-display {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 42px;
+      padding: 6px 12px;
+      background: #ffffff;
+      border: 1px solid var(--slate-300);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .multi-select-display:hover { border-color: var(--slate-400); }
+    .block-multi-select-container.open .multi-select-display {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+    .selected-chips-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      flex: 1;
+    }
+    .placeholder-text { color: #94a3b8; font-size: 0.88rem; }
+    .chip-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--primary-light);
+      color: var(--primary-hover);
+      border: 1px solid #c7d2fe;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+    .chip-item .chip-check { font-size: 0.75rem; color: var(--primary); }
+    .chip-item .chip-remove {
+      border: none;
+      background: none;
+      color: #6366f1;
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 2px;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+    }
+    .chip-item .chip-remove:hover { color: #4338ca; background: rgba(99, 102, 241, 0.15); }
+    .display-controls { display: flex; align-items: center; gap: 8px; }
+    .selection-count-badge {
+      background: var(--slate-100);
+      color: var(--slate-700);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 12px;
+      border: 1px solid var(--slate-200);
+    }
+    .dropdown-chevron { font-size: 0.75rem; color: var(--slate-600); transition: transform 0.2s ease; }
+    .block-multi-select-container.open .dropdown-chevron { transform: rotate(180deg); }
+    .multi-select-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 10px;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);
+      padding: 10px;
+    }
+    .block-multi-select-container.open .multi-select-dropdown { display: block; animation: fadeIn 0.15s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    .dropdown-header-tools { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+    .bulk-actions-wrap { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px; }
+    .btn-bulk-select-all, .btn-bulk-clear-all {
+      background: none;
+      border: none;
+      color: var(--primary);
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 2px 4px;
+    }
+    .btn-bulk-select-all:hover, .btn-bulk-clear-all:hover { text-decoration: underline; }
+    .options-scroll-list { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; padding-right: 4px; }
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.12s;
+      font-size: 0.88rem;
+      color: var(--slate-800);
+    }
+    .option-item:hover { background: var(--slate-50); }
+    .option-item input[type="checkbox"] { accent-color: var(--primary); width: 16px; height: 16px; cursor: pointer; }
+    .dropdown-footer-summary { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--slate-100); font-size: 0.78rem; color: var(--slate-600); text-align: right; }
   </style>
 </head>
 <body>
@@ -303,8 +409,8 @@
     {% include 'sidebar.html' %}
     <main class="admin-main">
       {% set page_kicker = "Management" %}
-      {% set page_heading = "Category & CA Management" %}
-      {% set page_description = "Configure department categories, assign Concerned Authorities, and set problem routing." %}
+      {% set page_heading = "Category & Assignee Management" %}
+      {% set page_description = "Configure department categories, assign ticket resolution assignees, and set problem routing." %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -330,7 +436,7 @@
           </div>
           <div class="metric-item">
             <span class="val" style="color:#3b82f6;">{{ stats.assigned_cas }}</span>
-            <span class="lbl">Assigned CAs</span>
+            <span class="lbl">Active Assignees</span>
           </div>
           <div class="metric-item">
             <span class="val" style="color:#ef4444;">{{ stats.unassigned }}</span>
@@ -373,7 +479,7 @@
               <input type="text" name="category_name" class="input-style" placeholder="e.g. WiFi Connectivity, Plumbing, Projectors" required>
             </label>
             <label class="field">
-              <span>Assigned Concerned Authority (Optional)</span>
+              <span>Assigned To (Optional)</span>
               <select name="assigned_ca_id" class="input-style">
                 <option value="">Leave Unassigned</option>
                 {% for u in users %}
@@ -381,15 +487,42 @@
                 {% endfor %}
               </select>
             </label>
-            <label class="field">
-              <span>Location Block Mapping (Optional)</span>
-              <select name="block" class="input-style">
-                <option value="">All Location Blocks (Default)</option>
-                {% for b in blocks %}
-                  <option value="{{ b }}">{{ b }}</option>
-                {% endfor %}
-              </select>
-            </label>
+            <div class="field">
+              <span>Location Block Mapping (Multi-Select)</span>
+              <div class="block-multi-select-container" id="create-block-select">
+                <div class="multi-select-display" onclick="toggleMultiSelectDropdown('create-block-select')">
+                  <div class="selected-chips-wrap">
+                    <span class="placeholder-text">Select location blocks...</span>
+                  </div>
+                  <div class="display-controls">
+                    <span class="selection-count-badge" style="display:none;">0 selected</span>
+                    <span class="dropdown-chevron">&#9662;</span>
+                  </div>
+                </div>
+                <div class="multi-select-dropdown" onclick="event.stopPropagation()">
+                  <div class="dropdown-header-tools">
+                    <div class="search-wrap">
+                      <input type="text" class="block-search-input input-style" style="width:100%; box-sizing:border-box;" placeholder="Search location blocks..." onkeyup="filterMultiSelectOptions('create-block-select', this.value)">
+                    </div>
+                    <div class="bulk-actions-wrap">
+                      <button type="button" class="btn-bulk-select-all" onclick="selectAllMultiSelect('create-block-select')">Select All</button>
+                      <button type="button" class="btn-bulk-clear-all" onclick="clearAllMultiSelect('create-block-select')">Clear All</button>
+                    </div>
+                  </div>
+                  <div class="options-scroll-list">
+                    {% for b in blocks %}
+                      <label class="option-item" data-value="{{ b }}">
+                        <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('create-block-select')">
+                        <span class="option-label-text">{{ b }}</span>
+                      </label>
+                    {% endfor %}
+                  </div>
+                  <div class="dropdown-footer-summary">
+                    <span class="footer-count">0 of {{ blocks|length }} selected</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
             <button type="submit" class="btn-primary-action">Save Category</button>
@@ -407,7 +540,7 @@
           <!-- Filter Bar -->
           <div class="filter-bar">
             <div class="filter-inputs">
-              <input type="text" name="q" value="{{ filters.q }}" placeholder="Search category or CA..." class="input-style search-input" onkeyup="if(event.key==='Enter') submitFilters()">
+              <input type="text" name="q" value="{{ filters.q }}" placeholder="Search category or assignee..." class="input-style search-input" onkeyup="if(event.key==='Enter') submitFilters()">
               {% if current_role in ['SUPER_ADMIN', 'ADMIN'] %}
                 <select name="department" class="input-style" onchange="submitFilters()">
                   <option value="">All Departments</option>
@@ -432,13 +565,13 @@
           <div class="bulk-toolbar" id="bulk-toolbar">
             <span class="bulk-count"><strong id="selected-count">0</strong> selected</span>
             <select name="bulk_op" class="input-style" style="padding:4px 8px; font-size:0.82rem;">
-              <option value="bulk_assign">Assign Selected CA</option>
+              <option value="bulk_assign">Assign Selected User</option>
               <option value="bulk_enable">Enable Selected</option>
               <option value="bulk_disable">Disable Selected</option>
-              <option value="bulk_unassign">Remove CA Assignment</option>
+              <option value="bulk_unassign">Remove Assignee Assignment</option>
             </select>
             <select name="bulk_ca_id" class="input-style" style="padding:4px 8px; font-size:0.82rem;">
-              <option value="">Choose CA...</option>
+              <option value="">Choose Assignee...</option>
               {% for u in users %}
                 <option value="{{ u.id }}">{{ u.name }}</option>
               {% endfor %}
@@ -453,7 +586,7 @@
                 {% if not read_only %}<th style="width: 32px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>{% endif %}
                 <th>Category Name</th>
                 <th>Dept</th>
-                <th>Assigned CA</th>
+                <th>Assigned To</th>
                 <th>Location Block Mappings</th>
                 <th>Active Tickets</th>
                 <th>Status</th>
@@ -509,7 +642,8 @@
                   </td>
                   {% if not read_only %}
                   <td class="actions-cell" style="text-align: right;">
-                    <button type="button" class="tbl-action-btn" onclick="openEditModal({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}', '{{ item.assigned_ca_id or '' }}')">Edit</button>
+                    {% set mapped_blocks = item.block_mappings | map(attribute='block') | list if item.block_mappings else [] %}
+                    <button type="button" class="tbl-action-btn" onclick="openEditModal({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}', '{{ item.assigned_ca_id or '' }}', {{ mapped_blocks|tojson|e }})">Edit</button>
                     {% if item.is_active == 0 %}
                       <button type="button" class="tbl-action-btn" style="color:#10b981;" onclick="toggleCatStatus({{ item.id }}, 1)">Enable</button>
                     {% else %}
@@ -557,7 +691,7 @@
         {% endif %}
 
         <label class="field" style="margin-bottom: 12px; display: block;">
-          <span>Assigned Concerned Authority</span>
+          <span>Assigned To</span>
           <select id="edit-cat-ca" name="assigned_ca_id" class="input-style" style="width:100%;">
             <option value="none">Unassigned</option>
             {% for u in users %}
@@ -566,15 +700,42 @@
           </select>
         </label>
 
-        <label class="field" style="margin-bottom: 16px; display: block;">
-          <span>Problem Location Block Mapping</span>
-          <select id="edit-cat-block" name="block" class="input-style" style="width:100%;">
-            <option value="all">All Blocks (Default Category CA)</option>
-            {% for b in blocks %}
-              <option value="{{ b }}">{{ b }}</option>
-            {% endfor %}
-          </select>
-        </label>
+        <div class="field" style="margin-bottom: 16px; display: block;">
+          <span>Problem Location Block Mapping (Multi-Select)</span>
+          <div class="block-multi-select-container" id="edit-block-select">
+            <div class="multi-select-display" onclick="toggleMultiSelectDropdown('edit-block-select')">
+              <div class="selected-chips-wrap">
+                <span class="placeholder-text">Select location blocks...</span>
+              </div>
+              <div class="display-controls">
+                <span class="selection-count-badge" style="display:none;">0 selected</span>
+                <span class="dropdown-chevron">&#9662;</span>
+              </div>
+            </div>
+            <div class="multi-select-dropdown" onclick="event.stopPropagation()">
+              <div class="dropdown-header-tools">
+                <div class="search-wrap">
+                  <input type="text" class="block-search-input input-style" style="width:100%; box-sizing:border-box;" placeholder="Search location blocks..." onkeyup="filterMultiSelectOptions('edit-block-select', this.value)">
+                </div>
+                <div class="bulk-actions-wrap">
+                  <button type="button" class="btn-bulk-select-all" onclick="selectAllMultiSelect('edit-block-select')">Select All</button>
+                  <button type="button" class="btn-bulk-clear-all" onclick="clearAllMultiSelect('edit-block-select')">Clear All</button>
+                </div>
+              </div>
+              <div class="options-scroll-list">
+                {% for b in blocks %}
+                  <label class="option-item" data-value="{{ b }}">
+                    <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('edit-block-select')">
+                    <span class="option-label-text">{{ b }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+              <div class="dropdown-footer-summary">
+                <span class="footer-count">0 of {{ blocks|length }} selected</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem;">
           <button type="button" class="btn-secondary-action" onclick="closeEditModal()">Cancel</button>
@@ -612,6 +773,128 @@
   </form>
 
   <script>
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function toggleMultiSelectDropdown(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const isOpen = container.classList.contains('open');
+      document.querySelectorAll('.block-multi-select-container').forEach(el => el.classList.remove('open'));
+      if (!isOpen) {
+        container.classList.add('open');
+        const searchInput = container.querySelector('.block-search-input');
+        if (searchInput) searchInput.focus();
+      }
+    }
+
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.block-multi-select-container')) {
+        document.querySelectorAll('.block-multi-select-container').forEach(el => el.classList.remove('open'));
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.block-multi-select-container').forEach(el => el.classList.remove('open'));
+      }
+    });
+
+    function updateMultiSelectState(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      const checkboxes = container.querySelectorAll('.options-scroll-list input[type="checkbox"]');
+      const chipsWrap = container.querySelector('.selected-chips-wrap');
+      const badge = container.querySelector('.selection-count-badge');
+      const footerCount = container.querySelector('.footer-count');
+
+      const checked = Array.from(checkboxes).filter(cb => cb.checked);
+      const total = checkboxes.length;
+
+      chipsWrap.innerHTML = '';
+      if (checked.length === 0) {
+        chipsWrap.innerHTML = '<span class="placeholder-text">Select location blocks...</span>';
+        if (badge) badge.style.display = 'none';
+      } else {
+        checked.forEach(cb => {
+          const val = cb.value;
+          const chip = document.createElement('span');
+          chip.className = 'chip-item';
+          chip.innerHTML = `
+            <span class="chip-check">✓</span>
+            <span>${escapeHtml(val)}</span>
+            <button type="button" class="chip-remove" onclick="removeMultiSelectChip('${containerId}', '${escapeHtml(val)}', event)">&times;</button>
+          `;
+          chipsWrap.appendChild(chip);
+        });
+        if (badge) {
+          badge.style.display = 'inline-block';
+          badge.textContent = `${checked.length} selected`;
+        }
+      }
+
+      if (footerCount) {
+        footerCount.textContent = `${checked.length} of ${total} selected`;
+      }
+    }
+
+    function removeMultiSelectChip(containerId, val, event) {
+      if (event) event.stopPropagation();
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const cb = Array.from(container.querySelectorAll('.options-scroll-list input[type="checkbox"]')).find(el => el.value === val);
+      if (cb) {
+        cb.checked = false;
+        updateMultiSelectState(containerId);
+      }
+    }
+
+    function filterMultiSelectOptions(containerId, query) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const q = query.toLowerCase().trim();
+      const options = container.querySelectorAll('.option-item');
+      options.forEach(opt => {
+        const val = opt.getAttribute('data-value').toLowerCase();
+        opt.style.display = val.includes(q) ? 'flex' : 'none';
+      });
+    }
+
+    function selectAllMultiSelect(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const visibleOptions = container.querySelectorAll('.option-item');
+      visibleOptions.forEach(opt => {
+        if (opt.style.display !== 'none') {
+          const cb = opt.querySelector('input[type="checkbox"]');
+          if (cb) cb.checked = true;
+        }
+      });
+      updateMultiSelectState(containerId);
+    }
+
+    function clearAllMultiSelect(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const checkboxes = container.querySelectorAll('.options-scroll-list input[type="checkbox"]');
+      checkboxes.forEach(cb => cb.checked = false);
+      updateMultiSelectState(containerId);
+    }
+
+    function setSelectedBlocks(containerId, blockList) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const blockSet = new Set(blockList || []);
+      const checkboxes = container.querySelectorAll('.options-scroll-list input[type="checkbox"]');
+      checkboxes.forEach(cb => {
+        cb.checked = blockSet.has(cb.value);
+      });
+      updateMultiSelectState(containerId);
+    }
+
     function togglePanel(panelId) {
       const panel = document.getElementById(panelId);
       if (panel) {
@@ -662,12 +945,13 @@
       document.getElementById('single-action-form').submit();
     }
 
-    function openEditModal(id, name, dept, caId) {
+    function openEditModal(id, name, dept, caId, mappedBlocks) {
       document.getElementById('edit-cat-id').value = id;
       document.getElementById('edit-cat-name').value = name;
       const deptEl = document.getElementById('edit-cat-dept');
       if (deptEl) deptEl.value = dept;
       document.getElementById('edit-cat-ca').value = caId || 'none';
+      setSelectedBlocks('edit-block-select', mappedBlocks || []);
       document.getElementById('edit-overlay').classList.add('active');
     }
 

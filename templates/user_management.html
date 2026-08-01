@@ -92,7 +92,7 @@
       <section class="admin-grid">
         <section class="admin-card">
           <div class="card-head"><div><p class="kicker">Create User</p><h3>New demo user</h3></div></div>
-          <form method="post" action="{{ url_for('user_management') }}" class="admin-form">
+          <form method="post" action="" class="admin-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-grid">
               <label class="field"><span>Name</span><input type="text" name="name" required></label>
@@ -140,7 +140,7 @@
         </section>
 
         <section class="admin-card">
-          <form class="search-bar filter-grid" method="get" action="{{ url_for('user_management') }}" id="filter-form">
+          <form class="search-bar filter-grid" method="get" action="" id="filter-form">
             <input type="text" name="q" value="{{ filters.q }}" placeholder="Search users">
             <!-- Multi-role checkbox dropdown -->
             <div class="multi-select" id="role-multi-select">
@@ -186,7 +186,7 @@
                   </tr>
                   {% if session.get('role') == 'SUPER_ADMIN' or item.role != 'SUPER_ADMIN' %}
                   <tr id="user-edit-{{ item.id }}" class="edit-row" style="display:none;">
-                    <form method="post" action="{{ url_for('update_user', user_id=item.id) }}">
+                    <form method="post" action="/user-management/{{ item.id }}/update">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       <td><input type="text" name="name" value="{{ item.name }}" required></td>
                       <td><input type="email" name="email" value="{{ item.email }}" required></td>

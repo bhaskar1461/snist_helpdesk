@@ -11,3 +11,5 @@ scratch/
 .vscode/
 .idea/
 *.pyc
+*_bandit.json
+
