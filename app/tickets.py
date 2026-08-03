@@ -100,29 +100,34 @@ def ticket_detail(ticket_id):
         flash("Ticket not found.", "error")
         return redirect(url_for("dashboards.user_dashboard" if user["role"] == "FACULTY" else "tickets.authority_tickets"))
 
+    created_email = (ticket.get("created_by_email") or "").lower()
+    assigned_email = (ticket.get("assigned_to_email") or "").lower()
+    user_email = (user.get("email") or "").lower()
+
     # Access check
     allowed = False
     if user["role"] in ("SUPER_ADMIN", "ADMIN"):
         allowed = True
-    elif user["role"] == "HOD" and ticket["department"] == user["department"]:
+    elif user["role"] == "HOD" and ticket.get("department") == user.get("department"):
         allowed = True
-    elif ticket["created_by_email"].lower() == user["email"].lower():
+    elif created_email and created_email == user_email:
         allowed = True
-    elif ticket["assigned_to_email"].lower() == user["email"].lower():
+    elif assigned_email and assigned_email == user_email:
         allowed = True
-    if not allowed or ticket["org_id"] != user["org_id"]:
+    if not allowed or ticket.get("org_id") != user.get("org_id"):
         flash("You do not have access to this ticket.", "error")
         return redirect(url_for("dashboards.user_dashboard" if user["role"] == "FACULTY" else "tickets.authority_tickets"))
 
     activity = demo_db.list_ticket_activity(ticket_id)
-    next_statuses = list(demo_db.ALLOWED_TRANSITIONS.get(ticket["status"], set()))
+    next_statuses = list(demo_db.ALLOWED_TRANSITIONS.get(ticket.get("status", ""), set()))
     can_update = user["role"] == "SUPER_ADMIN" or (
-        user["role"] == "CA" and ticket["assigned_to_email"].lower() == user["email"].lower()
+        user["role"] == "CA" and assigned_email and assigned_email == user_email
     )
     can_reopen = (
-        ticket["status"] == "RESOLVED"
-        and ticket["created_by_email"].lower() == user["email"].lower()
+        ticket.get("status") == "RESOLVED"
+        and created_email and created_email == user_email
     )
+
 
     # Fetch internal notes
     notes = demo_db.list_ticket_notes(ticket_id) if hasattr(demo_db, 'list_ticket_notes') else []

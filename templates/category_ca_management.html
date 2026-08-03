@@ -26,6 +26,47 @@
 
     body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #f8fafc; color: var(--slate-800); }
 
+    /* ── Modal Overlay Dialogs ───────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 1rem;
+    }
+    .modal-overlay.active {
+      display: flex !important;
+    }
+    .modal-card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 1.75rem;
+      width: 100%;
+      max-width: 520px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      border: 1px solid var(--slate-200);
+      animation: modalFadeIn 0.2s ease-out;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .modal-card h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--slate-900);
+      margin: 0 0 1rem;
+    }
+
+
     .header-bar {
       display: flex;
       flex-wrap: wrap;
@@ -482,11 +523,16 @@
               <span>Assigned To (Optional)</span>
               <select name="assigned_ca_id" class="input-style">
                 <option value="">Leave Unassigned</option>
-                {% for u in users %}
-                  <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+                {% for dept, dept_users in users|groupby('department') %}
+                  <optgroup label="Department: {{ dept if dept else 'General' }}">
+                    {% for u in dept_users %}
+                      <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+                    {% endfor %}
+                  </optgroup>
                 {% endfor %}
               </select>
             </label>
+
             <div class="field">
               <span>Location Block Mapping (Multi-Select)</span>
               <div class="block-multi-select-container" id="create-block-select">
@@ -572,10 +618,15 @@
             </select>
             <select name="bulk_ca_id" class="input-style" style="padding:4px 8px; font-size:0.82rem;">
               <option value="">Choose Assignee...</option>
-              {% for u in users %}
-                <option value="{{ u.id }}">{{ u.name }}</option>
+              {% for dept, dept_users in users|groupby('department') %}
+                <optgroup label="Department: {{ dept if dept else 'General' }}">
+                  {% for u in dept_users %}
+                    <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+                  {% endfor %}
+                </optgroup>
               {% endfor %}
             </select>
+
             <button type="submit" class="btn-primary-action" style="padding:5px 12px; font-size:0.82rem;">Apply Bulk Action</button>
           </div>
           {% endif %}
@@ -605,10 +656,15 @@
                     {% if not read_only %}
                       <select class="quick-select-ca" onchange="quickAssignCA({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}', this.value)">
                         <option value="none" {% if not item.assigned_ca_id %}selected{% endif %}>Unassigned</option>
-                        {% for u in users %}
-                          <option value="{{ u.id }}" {% if item.assigned_ca_id == u.id %}selected{% endif %}>{{ u.name }}</option>
+                        {% for dept, dept_users in users|groupby('department') %}
+                          <optgroup label="Department: {{ dept if dept else 'General' }}">
+                            {% for u in dept_users %}
+                              <option value="{{ u.id }}" {% if item.assigned_ca_id == u.id %}selected{% endif %}>{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+                            {% endfor %}
+                          </optgroup>
                         {% endfor %}
                       </select>
+
                     {% else %}
                       {% if item.assigned_ca_name %}
                         <div class="ca-badge-row">
@@ -694,11 +750,16 @@
           <span>Assigned To</span>
           <select id="edit-cat-ca" name="assigned_ca_id" class="input-style" style="width:100%;">
             <option value="none">Unassigned</option>
-            {% for u in users %}
-              <option value="{{ u.id }}">{{ u.name }} ({{ u.role }})</option>
+            {% for dept, dept_users in users|groupby('department') %}
+              <optgroup label="Department: {{ dept if dept else 'General' }}">
+                {% for u in dept_users %}
+                  <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+                {% endfor %}
+              </optgroup>
             {% endfor %}
           </select>
         </label>
+
 
         <div class="field" style="margin-bottom: 16px; display: block;">
           <span>Problem Location Block Mapping (Multi-Select)</span>
@@ -972,14 +1033,18 @@
     function toggleCatStatus(catId, targetStatus) {
       const form = document.getElementById('single-action-form');
       form.action = '/management/category-management/' + catId + '/toggle';
+      document.getElementById('sa-cat-id').value = catId;
+      document.getElementById('sa-action').value = 'toggle_category';
       form.submit();
     }
 
     function deleteMapping(mappingId) {
       const form = document.getElementById('single-action-form');
       form.action = '/hod/ca-assignments/' + mappingId + '/delete';
+      document.getElementById('sa-action').value = 'delete_mapping';
       form.submit();
     }
+
   </script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>lucide.createIcons();</script>

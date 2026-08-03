@@ -14,9 +14,10 @@ CREATE TABLE IF NOT EXISTS demo_categories (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   category_name VARCHAR(120) NOT NULL,
   department VARCHAR(80) NOT NULL,
-  assigned_ca_id INT UNSIGNED NOT NULL,
+  assigned_ca_id INT UNSIGNED NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
   PRIMARY KEY (id),
   UNIQUE KEY uq_demo_categories_name_dept (category_name, department),
   KEY idx_demo_categories_ca (assigned_ca_id),

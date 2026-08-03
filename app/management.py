@@ -49,7 +49,9 @@ def check_and_promote_ca(demo_db, ca_id, target_dept, actor_id, org_id):
 
 
 def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, actor_id, org_id):
-    if assigned_ca_id_str.startswith("ref:"):
+    if not assigned_ca_id_str or str(assigned_ca_id_str).strip().lower() in ("none", "unassigned", "0", ""):
+        return None
+    if str(assigned_ca_id_str).startswith("ref:"):
         ref_email = assigned_ca_id_str.split(":", 1)[1]
         teacher = live_db.lookup_teacher_by_email(ref_email)
         if not teacher:
@@ -77,8 +79,11 @@ def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, ac
         return new_user_id
     else:
         ca_id = safe_int(assigned_ca_id_str)
+        if ca_id <= 0:
+            return None
         check_and_promote_ca(demo_db, ca_id, target_dept, actor_id, org_id)
         return ca_id
+
 
 
 # ── Category & CA Management (Unified Module) ──────────────────────
@@ -397,6 +402,22 @@ def category_assignments():
                 flash("Invalid bulk operation.", "error")
             return redirect(url_for("management.category_assignments"))
 
+        # Action 5: Single Category Delete via Modal Form
+        elif action == "delete_category":
+            category_id = safe_int(request.form.get("category_id", "0"))
+            if not category_id:
+                flash("Category ID is required for deletion.", "error")
+                return redirect(url_for("management.category_assignments"))
+            return delete_category(category_id)
+
+        # Action 6: Toggle Category Status
+        elif action == "toggle_category":
+            category_id = safe_int(request.form.get("category_id", "0"))
+            if not category_id:
+                flash("Category ID is required.", "error")
+                return redirect(url_for("management.category_assignments"))
+            return toggle_category(category_id)
+
     # ── GET: Category & CA Management View ──────────────────────────────
     dept_filter = None
     if user["role"] == "HOD":
@@ -429,36 +450,52 @@ def category_assignments():
         cat["ticket_count"] = demo_db.count_tickets_by_category(cat["id"]) if hasattr(demo_db, 'count_tickets_by_category') else 0
         cat["block_mappings"] = demo_db.get_category_block_mappings(cat["id"]) if hasattr(demo_db, 'get_category_block_mappings') else []
 
-    # Fetch promoteable CAs and faculty
-    faculties = demo_db.list_users(role="FACULTY", department=dept_filter, org_id=user["org_id"])
-    cas = demo_db.list_users(role="CA", department=dept_filter, org_id=user["org_id"])
+    # Fetch promoteable CAs, Faculty, and Authorities for the target department (+ System Administrators)
+    if dept_filter:
+        dept_users = demo_db.list_users(role=["CA", "FACULTY", "ADMIN", "HOD", "SUPER_ADMIN"], department=dept_filter, org_id=user["org_id"])
+        admin_users = demo_db.list_users(role=["ADMIN", "SUPER_ADMIN"], org_id=user["org_id"])
+        candidate_users = dept_users + admin_users
+    else:
+        candidate_users = demo_db.list_users(role=["CA", "FACULTY", "ADMIN", "HOD", "SUPER_ADMIN"], org_id=user["org_id"])
 
     promoteable_users = []
     seen_emails = set()
-    for u in (faculties + cas):
-        email_lower = u["email"].lower().strip()
+
+    for u in candidate_users:
+        email_lower = (u.get("email") or "").lower().strip()
+        if not email_lower or email_lower in seen_emails:
+            continue
         seen_emails.add(email_lower)
+
+        dept_name = (u.get("department") or "General").strip()
         promoteable_users.append({
             "id": u["id"],
             "name": u["name"],
             "email": u["email"],
             "role": u["role"],
-            "department": u["department"],
+            "department": dept_name or "General",
         })
 
-    if live_db.enabled:
+    if live_db.enabled and dept_filter:
         ref_users = live_db.fetch_reference_users(department=dept_filter, org_id=user["org_id"], limit=1000)
         for r in ref_users:
             email_lower = (r.get("EMAIL_ID") or "").lower().strip()
             if email_lower and email_lower not in seen_emails:
                 seen_emails.add(email_lower)
+                dept_name = (r.get("department_code") or r.get("department_name") or "FACULTY").strip()
                 promoteable_users.append({
                     "id": f"ref:{r['EMAIL_ID']}",
                     "name": r.get("TEACHER_NAME") or "Unknown",
                     "email": r["EMAIL_ID"],
                     "role": "FACULTY",
-                    "department": r.get("department_code") or r.get("department_name") or "",
+                    "department": dept_name or "FACULTY",
                 })
+
+
+    # Sort promoteable users by department and name for clean optgroup categorization
+    promoteable_users.sort(key=lambda x: (x["department"].upper(), x["name"].upper()))
+
+
 
     locations = live_db.fetch_locations()
     blocks = sorted(list(set(loc["block"] for loc in locations if loc.get("block"))))
@@ -572,31 +609,70 @@ def update_category(category_id):
 
 
 @management_bp.route("/management/category-management/<int:category_id>/delete", methods=["POST"])
-@role_required("HOD", "SUPER_ADMIN")
+@role_required("HOD", "SUPER_ADMIN", "ADMIN", "CA")
 def delete_category(category_id):
     from app import get_demo_db
     demo_db = get_demo_db()
     user = current_user()
+    if user["role"] == "CA":
+        flash("You cannot make this change as it is against allowed workflow.", "error")
+        return redirect(url_for("management.category_assignments"))
+
+    cat = demo_db.get_category(category_id)
+    if not cat:
+        flash("Category not found.", "error")
+        return redirect(url_for("management.category_assignments"))
+
+    if user["role"] == "HOD" and cat["department"] != user["department"]:
+        flash("You cannot make this change as it is against allowed workflow.", "error")
+        return redirect(url_for("management.category_assignments"))
+
+    # Check if category has existing tickets
+    ticket_count = 0
+    if hasattr(demo_db, 'count_tickets_by_category'):
+        ticket_count = demo_db.count_tickets_by_category(category_id)
+    else:
+        try:
+            with demo_db.connection() as conn, conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) AS cnt FROM demo_tickets WHERE category_id = %s", (category_id,))
+                res = cursor.fetchone()
+                ticket_count = res["cnt"] if res else 0
+        except Exception:
+            ticket_count = 0
+
+    if ticket_count > 0:
+        flash(f"You cannot make this change as it is against allowed workflow. Category '{cat['category_name']}' has {ticket_count} existing ticket(s) associated with it. Disable the category instead.", "error")
+        return redirect(url_for("management.category_assignments"))
+
     try:
-        cat = demo_db.get_category(category_id)
         demo_db.delete_category(category_id)
         demo_db.log_audit_event("CATEGORY_DELETED", user["id"], user["org_id"],
                                 target_type="category", target_id=category_id,
-                                details={"category_name": cat["category_name"] if cat else str(category_id)})
-        flash("Category deleted successfully.", "success")
+                                details={"category_name": cat["category_name"]})
+        flash(f"Category '{cat['category_name']}' deleted successfully.", "success")
     except ValueError as exc:
         flash(str(exc), "error")
+    except Exception as e:
+        flash(f"Failed to delete category: {e}", "error")
     return redirect(url_for("management.category_assignments"))
 
 
 @management_bp.route("/management/category-management/<int:category_id>/toggle", methods=["POST"])
-@role_required("HOD", "SUPER_ADMIN")
+@role_required("HOD", "SUPER_ADMIN", "ADMIN", "CA")
 def toggle_category(category_id):
     from app import get_demo_db
     demo_db = get_demo_db()
     user = current_user()
+    if user["role"] == "CA":
+        flash("You cannot make this change as it is against allowed workflow.", "error")
+        return redirect(url_for("management.category_assignments"))
+
     existing_cat = demo_db.get_category(category_id)
     if existing_cat:
+        if user["role"] == "HOD" and existing_cat["department"] != user["department"]:
+            flash("You cannot make this change as it is against allowed workflow.", "error")
+            return redirect(url_for("management.category_assignments"))
+
         new_state = 0 if existing_cat.get("is_active", 1) == 1 else 1
         demo_db.toggle_category_status(category_id, new_state)
         demo_db.log_audit_event("CATEGORY_TOGGLED", user["id"], user["org_id"],
@@ -608,11 +684,15 @@ def toggle_category(category_id):
 
 
 @management_bp.route("/hod/ca-assignments/<int:assignment_id>/delete", methods=["POST"])
-@role_required("HOD", "SUPER_ADMIN")
+@role_required("HOD", "SUPER_ADMIN", "ADMIN", "CA")
 def delete_ca_assignment(assignment_id):
     from app import get_demo_db
     demo_db = get_demo_db()
     user = current_user()
+    if user["role"] == "CA":
+        flash("You cannot make this change as it is against allowed workflow.", "error")
+        return redirect(url_for("management.category_assignments"))
+
     try:
         demo_db.delete_ca_assignment(assignment_id)
         demo_db.log_audit_event("CA_ASSIGNMENT_REMOVED", user["id"], user["org_id"],
@@ -621,6 +701,8 @@ def delete_ca_assignment(assignment_id):
     except Exception as e:
         flash(f"Failed to delete assignment: {e}", "error")
     return redirect(url_for("management.category_assignments"))
+
+
 
 
 

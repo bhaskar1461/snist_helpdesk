@@ -52,16 +52,17 @@ def create_app(testing=False):
     # ── Database Services ───────────────────────────────────────────
     from db_services import DemoDbService, LiveDbService, DbConfig
 
-    host = os.getenv("MYSQL_HOST", "")
-    user = os.getenv("MYSQL_USER", "")
-    password = os.getenv("MYSQL_PASSWORD", "")
-    database = os.getenv("MYSQL_DATABASE", "")
+    host = os.getenv("MYSQL_HOST", "seg-dev.sreenidhi.edu.in")
+    user = os.getenv("MYSQL_USER", "demo")
+    password = os.getenv("MYSQL_PASSWORD", "Admin@321#")
+    database = os.getenv("MYSQL_DATABASE", "seg_demo")
     import sys
     is_testing_env = testing or app.config.get("TESTING") or "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true"
     port = int(os.getenv("MYSQL_PORT", "3306"))
     db_config = None
     if not is_testing_env and all([host, user, password, database]):
         db_config = DbConfig(host=host, port=port, user=user, password=password, database=database)
+
 
     _live_db = LiveDbService(db_config)
     _demo_db = DemoDbService(db_config)
@@ -114,10 +115,15 @@ def create_app(testing=False):
     @app.errorhandler(500)
     def server_error(e):
         from flask import render_template
-        log.error("Internal server error: %s", e)
+        import traceback, sys
+        err_msg = traceback.format_exc()
+        sys.stderr.write(f"\n--- EXCEPTION TRACEBACK ---\n{err_msg}\n---------------------------\n")
+        sys.stderr.flush()
+        log.error("Internal server error: %s\n%s", e, err_msg)
         return render_template("error.html", error_code=500,
                                error_title="Server Error",
                                error_message="Something went wrong. Please try again later."), 500
+
 
     # ── Static File Serving (attachments) ───────────────────────────
     @app.route("/uploads/<path:filename>")

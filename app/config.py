@@ -90,24 +90,21 @@ SSO_DEFAULT_ROLE = os.getenv("SSO_DEFAULT_ROLE", "FACULTY")
 EMERGENCY_ADMIN_ENABLED = os.getenv("EMERGENCY_ADMIN_ENABLED", "true").lower() == "true"
 
 # ── Metabase Configuration ──────────────────────────────────────────
-METABASE_SITE_URL = os.getenv("METABASE_SITE_URL", "")  # Browser-facing URL (e.g. http://localhost:3002)
-METABASE_INTERNAL_URL = os.getenv("METABASE_INTERNAL_URL", "")  # Docker-internal URL (e.g. http://metabase:3000)
-METABASE_SECRET_KEY = os.getenv("METABASE_SECRET_KEY", "")
+METABASE_SITE_URL = os.getenv("METABASE_SITE_URL", "http://localhost:3002")
+METABASE_INTERNAL_URL = os.getenv("METABASE_INTERNAL_URL", "http://localhost:3002")
+METABASE_SECRET_KEY = os.getenv("METABASE_SECRET_KEY", "b6c0144720edd6f7369910c70c66e0519ac0386c2b9d173434c57332a048e685")
 METABASE_DASHBOARD_IDS = {
-    "overview": int(os.getenv("METABASE_DASHBOARD_OVERVIEW", "0")),
-    "department": int(os.getenv("METABASE_DASHBOARD_DEPARTMENT", "0")),
-    "ca_performance": int(os.getenv("METABASE_DASHBOARD_CA_PERF", "0")),
-    "trends": int(os.getenv("METABASE_DASHBOARD_TRENDS", "0")),
+    "overview": int(os.getenv("METABASE_DASHBOARD_OVERVIEW", "2")),
+    "department": int(os.getenv("METABASE_DASHBOARD_DEPARTMENT", "2")),
+    "ca_performance": int(os.getenv("METABASE_DASHBOARD_CA_PERF", "4")),
+    "trends": int(os.getenv("METABASE_DASHBOARD_TRENDS", "3")),
 }
+
 
 
 def get_flask_config():
     """Return Flask configuration dict."""
-    _secret = os.getenv("SECRET_KEY", "")
-    if not _secret or _secret in ("change-me-in-production", "snist-helpdesk-demo-secret"):
-        import secrets as _s
-        _secret = _s.token_hex(32)
-        log.warning("SECRET_KEY not set — using a random key. Sessions will NOT persist across restarts.")
+    _secret = os.getenv("SECRET_KEY", "c69fc621e47743c584ea00c3d51053bb09a2e6659f0f9b6e828453ea1a4155b2")
     return {
         "SECRET_KEY": _secret,
         "SESSION_COOKIE_HTTPONLY": True,
@@ -116,3 +113,4 @@ def get_flask_config():
         "PERMANENT_SESSION_LIFETIME": timedelta(minutes=30),
         "MAX_CONTENT_LENGTH": MAX_UPLOAD_SIZE,
     }
+

@@ -4,6 +4,13 @@ FROM python:3.11-slim
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV SECRET_KEY=c69fc621e47743c584ea00c3d51053bb09a2e6659f0f9b6e828453ea1a4155b2
+ENV MYSQL_HOST=seg-dev.sreenidhi.edu.in
+ENV MYSQL_USER=demo
+ENV MYSQL_PASSWORD=Admin@321#
+ENV MYSQL_DATABASE=seg_demo
+ENV MYSQL_PORT=3306
+
 
 # Set working directory
 WORKDIR /app
@@ -26,4 +33,4 @@ USER appuser
 EXPOSE 5000
 
 # Command to run the application using Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "wsgi:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "wsgi:application"]
