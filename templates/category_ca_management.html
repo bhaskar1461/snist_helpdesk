@@ -487,6 +487,9 @@
 
         {% if not read_only %}
         <div class="action-toolbar">
+          <button type="button" class="btn-secondary-action" onclick="openAssignPersonModal()">
+            <i data-lucide="user-check"></i> Assign to Person
+          </button>
           <button type="button" class="btn-primary-action" onclick="togglePanel('create-panel')">
             <i data-lucide="plus"></i> Add Category
           </button>
@@ -823,6 +826,84 @@
     </div>
   </div>
 
+  <!-- Assign to Person Modal -->
+  <div id="assign-person-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width: 620px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+        <h3 style="margin: 0;">Assign Multiple Categories to a Person</h3>
+        <button type="button" class="close-panel-btn" onclick="closeAssignPersonModal()" style="font-size: 1.4rem;">&times;</button>
+      </div>
+      <p style="color: var(--slate-600); font-size: 0.85rem; margin: 0 0 1rem;">Select a person and choose all the categories you want to assign to them at once.</p>
+
+      <form method="post" action="{{ url_for('management.category_assignments') }}" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="assign_ca">
+
+        <!-- Step 1: Pick person -->
+        <label class="field" style="margin-bottom: 14px; display: block;">
+          <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">1</span>
+            Choose Person
+          </span>
+          <select name="faculty_id" id="assign-person-select" class="input-style" style="width: 100%;" required onchange="filterAssignPersonCategories()">
+            <option value="">— Select a person —</option>
+            {% for dept, dept_users in users|groupby('department') %}
+              <optgroup label="Department: {{ dept if dept else 'General' }}">
+                {% for u in dept_users %}
+                  <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+                {% endfor %}
+              </optgroup>
+            {% endfor %}
+          </select>
+        </label>
+
+        <!-- Step 2: Pick categories -->
+        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; margin-bottom: 14px;">
+          <div style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">2</span>
+            Select Categories to Assign
+            <span id="ap-selected-count" style="margin-left: auto; font-size: 0.78rem; color: var(--primary); font-weight: 600;">0 selected</span>
+          </div>
+
+          <!-- Search + bulk controls -->
+          <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+            <input type="text" id="ap-category-search" class="input-style" style="flex: 1; font-size: 0.85rem;" placeholder="Search categories..." oninput="filterApCategories()">
+            <button type="button" class="btn-bulk-select-all" onclick="apSelectAll()">Select All</button>
+            <button type="button" class="btn-bulk-clear-all" onclick="apClearAll()">Clear</button>
+          </div>
+
+          <!-- Category list -->
+          <div id="ap-category-list" style="flex: 1; overflow-y: auto; border: 1px solid var(--slate-200); border-radius: var(--radius); padding: 6px;">
+            {% for item in categories %}
+              {% if item.is_active != 0 %}
+              <label class="option-item ap-cat-item" data-name="{{ item.category_name|lower|e }}" data-dept="{{ item.department|lower|e }}" style="justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <input type="checkbox" name="categories" value="{{ item.id }}" onchange="updateApCount()">
+                  <div>
+                    <div style="font-weight: 500; font-size: 0.88rem;">{{ item.category_name }}</div>
+                    <div style="font-size: 0.75rem; color: var(--slate-600);">{{ item.department }}
+                      {% if item.assigned_ca_name %} &nbsp;·&nbsp; Currently: <em>{{ item.assigned_ca_name }}</em>{% endif %}
+                    </div>
+                  </div>
+                </div>
+                <span class="dept-badge" style="font-size: 0.72rem; flex-shrink: 0;">{{ item.department }}</span>
+              </label>
+              {% endif %}
+            {% endfor %}
+            <div id="ap-no-results" style="display: none; text-align: center; color: #94a3b8; padding: 1.5rem; font-size: 0.88rem;">No categories match your search.</div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--slate-100);">
+          <button type="button" class="btn-secondary-action" onclick="closeAssignPersonModal()">Cancel</button>
+          <button type="submit" class="btn-primary-action" id="ap-submit-btn" disabled>
+            <i data-lucide="check"></i> Assign Categories
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Single Action Helper Form -->
   <form id="single-action-form" method="post" action="{{ url_for('management.category_assignments') }}" style="display:none;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -1044,6 +1125,79 @@
       document.getElementById('sa-action').value = 'delete_mapping';
       form.submit();
     }
+
+    // ── Assign to Person Modal ────────────────────────────────────────
+    function openAssignPersonModal() {
+      document.getElementById('assign-person-overlay').classList.add('active');
+      // Reset state
+      document.getElementById('assign-person-select').value = '';
+      apClearAll();
+      document.getElementById('ap-category-search').value = '';
+      filterApCategories();
+      updateApCount();
+    }
+
+    function closeAssignPersonModal() {
+      document.getElementById('assign-person-overlay').classList.remove('active');
+    }
+
+    function filterAssignPersonCategories() {
+      // When a person is selected, optionally highlight their current assignments
+      const select = document.getElementById('assign-person-select');
+      const selectedOpt = select.options[select.selectedIndex];
+      // Just re-run the text filter; you could also pre-check if needed
+      filterApCategories();
+      updateApCount();
+    }
+
+    function filterApCategories() {
+      const query = (document.getElementById('ap-category-search').value || '').toLowerCase().trim();
+      const items = document.querySelectorAll('.ap-cat-item');
+      let visible = 0;
+      items.forEach(item => {
+        const name = item.getAttribute('data-name') || '';
+        const dept = item.getAttribute('data-dept') || '';
+        const match = !query || name.includes(query) || dept.includes(query);
+        item.style.display = match ? 'flex' : 'none';
+        if (match) visible++;
+      });
+      const noResults = document.getElementById('ap-no-results');
+      if (noResults) noResults.style.display = visible === 0 ? 'block' : 'none';
+    }
+
+    function apSelectAll() {
+      document.querySelectorAll('.ap-cat-item').forEach(item => {
+        if (item.style.display !== 'none') {
+          const cb = item.querySelector('input[type="checkbox"]');
+          if (cb) cb.checked = true;
+        }
+      });
+      updateApCount();
+    }
+
+    function apClearAll() {
+      document.querySelectorAll('.ap-cat-item input[type="checkbox"]').forEach(cb => cb.checked = false);
+      updateApCount();
+    }
+
+    function updateApCount() {
+      const checked = document.querySelectorAll('.ap-cat-item input[type="checkbox"]:checked').length;
+      const countEl = document.getElementById('ap-selected-count');
+      const submitBtn = document.getElementById('ap-submit-btn');
+      const personSelected = document.getElementById('assign-person-select').value;
+      if (countEl) countEl.textContent = checked + ' selected';
+      if (submitBtn) submitBtn.disabled = (checked === 0 || !personSelected);
+    }
+
+    // Keep submit button state updated when person changes
+    document.addEventListener('DOMContentLoaded', function() {
+      const personSelect = document.getElementById('assign-person-select');
+      if (personSelect) personSelect.addEventListener('change', updateApCount);
+      // Close modal on overlay backdrop click
+      document.getElementById('assign-person-overlay').addEventListener('click', function(e) {
+        if (e.target === this) closeAssignPersonModal();
+      });
+    });
 
   </script>
   <script src="https://unpkg.com/lucide@latest"></script>

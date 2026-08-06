@@ -13,6 +13,9 @@
     .location-group .field { margin:0; }
     .location-hint { font-size:.75rem; color:#6b7280; margin-top:2px; font-style:italic; }
     @media (max-width: 768px) { .location-group { grid-template-columns:1fr; } }
+    .dept-badge-hint { font-size:.75rem; color:#6b7280; margin-top:3px; }
+    #category-loading { display:none; font-size:.8rem; color:#6366f1; padding:6px 0; }
+    select:disabled { opacity:.6; cursor:not-allowed; }
   </style>
 </head>
 <body>
@@ -45,10 +48,25 @@
           <div class="form-grid">
             <label class="field">
               <span>Department</span>
-              <input type="text" value="{{ user_dept_name or user_dept_code or current_user_dept }}" readonly style="background: rgba(241, 245, 249, 0.6); opacity: 0.85; cursor: not-allowed;">
+              {% if available_depts and available_depts|length > 1 %}
+                <select id="dept-select" name="department" onchange="onDeptChange(this.value)">
+                  {% for d in available_depts %}
+                    <option value="{{ d.code }}" {% if d.code == selected_dept %}selected{% endif %}>
+                      {{ d.name if d.name != d.code else d.code }}
+                    </option>
+                  {% endfor %}
+                </select>
+                <span class="dept-badge-hint">{{ available_depts|length }} department(s) with active categories</span>
+              {% else %}
+                {# Only one dept with active categories — keep it simple (read-only display) #}
+                <input type="hidden" name="department" value="{{ selected_dept or user_dept_code }}">
+                <input type="text" value="{{ user_dept_name or user_dept_code or current_user_dept }}" readonly
+                       style="background:rgba(241,245,249,0.6);opacity:.85;cursor:not-allowed;">
+              {% endif %}
             </label>
             <label class="field">
               <span>Category</span>
+              <div id="category-loading">⏳ Loading categories…</div>
               <select id="category-select" name="category_id" required>
                 <option value="">Select category</option>
                 {% for cat in categories %}
@@ -106,7 +124,52 @@
   </div>
 
   <script>
-    // Location cascading dropdowns
+    // ── Department → Category dynamic reload ─────────────────────────
+    const CAT_API = '/api/categories';  // existing endpoint, no new routes
+
+    function onDeptChange(deptCode) {
+      if (!deptCode) return;
+      const catSelect = document.getElementById('category-select');
+      const loading   = document.getElementById('category-loading');
+
+      // Show spinner, disable select while loading
+      catSelect.style.display = 'none';
+      loading.style.display   = 'block';
+      catSelect.disabled      = true;
+
+      fetch(`${CAT_API}?department=${encodeURIComponent(deptCode)}`, {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+      })
+      .then(r => r.json())
+      .then(data => {
+        const cats = data.categories || [];
+        catSelect.innerHTML = '<option value="">Select category</option>';
+        cats.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value       = c.id;
+          opt.textContent = c.category_name;
+          catSelect.appendChild(opt);
+        });
+        if (cats.length === 0) {
+          const opt = document.createElement('option');
+          opt.value       = '';
+          opt.textContent = 'No active categories for this department';
+          opt.disabled    = true;
+          catSelect.appendChild(opt);
+        }
+      })
+      .catch(() => {
+        catSelect.innerHTML = '<option value="">Error loading — please refresh</option>';
+      })
+      .finally(() => {
+        loading.style.display   = 'none';
+        catSelect.style.display = '';
+        catSelect.disabled      = false;
+      });
+    }
+
+    // ── Location cascading dropdowns ──────────────────────────────────
 
     // Build location data from server-side locations list
     const ALL_LOCATIONS = {{ locations | tojson }};
@@ -124,12 +187,12 @@
     // Populate blocks
     const blockSelect = document.getElementById('block-select');
     const floorSelect = document.getElementById('floor-select');
-    const roomSelect = document.getElementById('room-select');
-    const blockCount = document.getElementById('block-count');
+    const roomSelect  = document.getElementById('room-select');
+    const blockCount  = document.getElementById('block-count');
 
     Object.keys(LOCATION_MAP).sort().forEach(block => {
       const opt = document.createElement('option');
-      opt.value = block;
+      opt.value       = block;
       opt.textContent = block;
       blockSelect.appendChild(opt);
     });

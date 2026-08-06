@@ -34,8 +34,16 @@ def create_ticket_for_role():
     user_dept_code = matched_dept["code"] if matched_dept else user_dept
     user_dept_name = matched_dept["name"] if matched_dept else user_dept
 
+    # Build list of departments that have at least one active category (for the dropdown)
+    all_active_cats = demo_db.list_categories(org_id=user["org_id"], active_only=True)
+    depts_with_active_cats = {(c.get("department") or "").strip() for c in all_active_cats if c.get("department")}
+    available_depts = [d for d in all_depts if d["code"] in depts_with_active_cats or d["name"] in depts_with_active_cats]
+    # Ensure the user's own dept appears first when it has active categories
+    available_depts.sort(key=lambda d: (0 if d["code"] == user_dept_code else 1, d["name"]))
+
     if request.method == "POST":
         category_id = safe_int(request.form.get("category_id", "0"))
+        selected_dept = (request.form.get("department", "") or user_dept_code).strip()
         title = request.form.get("title", "").strip()
         description = request.form.get("description", "").strip()
         location_id = safe_int(request.form.get("location_id", "0")) or None
@@ -52,17 +60,19 @@ def create_ticket_for_role():
             flash("Description cannot exceed 5000 characters.", "error")
             return redirect(url_for("tickets.create_ticket_for_role"))
 
-        # Server-side validation: derive department from user session and validate category
+        # Server-side validation: validate selected department has active categories
         category = demo_db.get_category(category_id)
         if not category:
             flash("Selected category does not exist.", "error")
             return redirect(url_for("tickets.create_ticket_for_role"))
 
-        cat_dept = (category.get("department") or "").strip().lower()
-        allowed_depts = {user_dept.lower(), user_dept_code.lower(), user_dept_name.lower()}
-        if user["role"] not in ("SUPER_ADMIN", "ADMIN") and cat_dept not in allowed_depts:
-            flash("You can only create tickets for your assigned department.", "error")
-            return redirect(url_for("tickets.create_ticket_for_role"))
+        cat_dept = (category.get("department") or "").strip()
+        # For non-admin roles: the chosen category must belong to a dept with active categories
+        if user["role"] not in ("SUPER_ADMIN", "ADMIN"):
+            allowed_dept_codes = depts_with_active_cats
+            if cat_dept not in allowed_dept_codes:
+                flash("The selected category does not belong to an available department.", "error")
+                return redirect(url_for("tickets.create_ticket_for_role"))
 
         org_id = user["org_id"]
         demo_db.create_ticket(title=title, description=description, category_id=category_id,
@@ -70,11 +80,11 @@ def create_ticket_for_role():
         flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
-    categories = demo_db.list_categories(department=user_dept_code, org_id=user["org_id"], active_only=True)
+    # Default: show categories for the user's own department initially
+    selected_dept = request.args.get("dept", user_dept_code).strip()
+    categories = demo_db.list_categories(department=selected_dept, org_id=user["org_id"], active_only=True)
     if not categories and user_dept_name != user_dept_code:
         categories = demo_db.list_categories(department=user_dept_name, org_id=user["org_id"], active_only=True)
-    if not categories and user["role"] in ("SUPER_ADMIN", "ADMIN"):
-        categories = demo_db.list_categories(org_id=user["org_id"], active_only=True)
 
     locations = live_db.fetch_locations()
     return render_template(
@@ -85,6 +95,8 @@ def create_ticket_for_role():
         user_dept_name=user_dept_name,
         current_user_dept=user_dept,
         departments=all_depts,
+        available_depts=available_depts,
+        selected_dept=selected_dept,
         **page_context("Create Ticket"),
     )
 
