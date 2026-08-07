@@ -52,7 +52,7 @@ DB_NAME = os.getenv("MYSQL_DATABASE", "seg_demo")
 session_token = None
 
 
-def api(method, path, data=None):
+def api(method, path, data=None, silent=False):
     """Make a Metabase API call."""
     url = f"{METABASE_URL}{path}"
     body = json.dumps(data).encode() if data else None
@@ -66,21 +66,73 @@ def api(method, path, data=None):
             return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as e:
         body = e.read().decode() if e.fp else ""
-        print(f"  API Error {e.code} on {method} {path}: {body[:200]}")
+        if not silent:
+            print(f"  API Error {e.code} on {method} {path}: {body[:200]}")
+        return None
+    except Exception as e:
+        if not silent:
+            print(f"  API Exception on {method} {path}: {e}")
         return None
 
 
 def login():
-    global session_token
-    result = api("POST", "/api/session", {
-        "username": ADMIN_EMAIL,
-        "password": ADMIN_PASSWORD
-    })
-    if result and "id" in result:
-        session_token = result["id"]
-        print(f"[OK] Logged in to Metabase.")
-        return True
-    print("[FAIL] Could not login to Metabase.")
+    global session_token, ADMIN_EMAIL, ADMIN_PASSWORD
+
+    # Check if fresh Metabase setup wizard needs to be completed
+    try:
+        props = api("GET", "/api/session/properties", silent=True)
+        if props and props.get("setup-token"):
+            setup_token = props["setup-token"]
+            print("[..] Fresh Metabase detected. Auto-completing initial setup wizard...")
+            setup_res = api("POST", "/api/setup", {
+                "token": setup_token,
+                "user": {
+                    "email": ADMIN_EMAIL,
+                    "first_name": "Admin",
+                    "last_name": "User",
+                    "password": ADMIN_PASSWORD,
+                    "site_name": "SNIST Helpdesk Analytics"
+                },
+                "prefs": {
+                    "allow_tracking": False
+                }
+            }, silent=True)
+            if setup_res and "id" in setup_res:
+                session_token = setup_res["id"]
+                print(f"[OK] Metabase initial setup completed with email: {ADMIN_EMAIL}")
+                return True
+    except Exception:
+        pass
+
+    # Try configured credentials first, followed by fallbacks
+    credentials_to_try = [
+        (ADMIN_EMAIL, ADMIN_PASSWORD),
+        ("admin@gmail.com", "Admin@321#"),
+        ("admin@gmail.com", "Admin@123"),
+        ("admin@gmail.com", "password"),
+        ("admin@gmail.com", "admin"),
+        ("admin@sreenidhi.edu.in", "Admin@321#"),
+        ("admin@sreenidhi.edu.in", "Password@123"),
+    ]
+
+    seen = set()
+    for email, password in credentials_to_try:
+        if not email or not password or (email, password) in seen:
+            continue
+        seen.add((email, password))
+
+        result = api("POST", "/api/session", {"username": email, "password": password}, silent=True)
+        if result and "id" in result:
+            session_token = result["id"]
+            ADMIN_EMAIL = email
+            ADMIN_PASSWORD = password
+            print(f"[OK] Logged in to Metabase as {email}")
+            return True
+
+    print(f"\n[FAIL] Could not login to Metabase. Invalid email or password.")
+    print("Please set your server's Metabase login credentials in your .env file:")
+    print("  MB_ADMIN_EMAIL=your-metabase-email")
+    print("  MB_ADMIN_PASSWORD=your-metabase-password\n")
     return False
 
 
