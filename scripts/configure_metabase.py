@@ -399,29 +399,29 @@ def main():
     q14 = create_native_question(db_id, "Avg Resolution Time by CA",
         "Average hours between ticket creation and resolution per CA.",
         """
-        SELECT ca.name AS 'CA Name',
-               ROUND(AVG(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at)), 1) AS 'Avg Hours'
+        SELECT ca.name AS `CA Name`,
+               ROUND(AVG(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)), 1) AS `Avg Hours`
         FROM helpdesk_tickets t
         JOIN helpdesk_users ca ON t.assigned_to = ca.id
-        JOIN helpdesk_ticket_activity a ON a.ticket_id = t.id AND a.to_status = 'RESOLVED'
+        WHERE t.status = 'RESOLVED'
         GROUP BY ca.id, ca.name
-        ORDER BY AVG(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at))
+        ORDER BY AVG(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at))
         """, "bar", {"graph.dimensions": ["CA Name"], "graph.metrics": ["Avg Hours"]})
 
     q15 = create_native_question(db_id, "Resolution Time by Category",
         "Average resolution time for each ticket category.",
         """
-        SELECT c.category_name AS 'Category',
-               c.department AS 'Department',
-               COUNT(a.id) AS 'Resolved',
-               ROUND(AVG(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at)), 1) AS 'Avg Hours',
-               ROUND(MIN(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at)), 1) AS 'Min Hours',
-               ROUND(MAX(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at)), 1) AS 'Max Hours'
+        SELECT c.category_name AS `Category`,
+               c.department AS `Department`,
+               COUNT(t.id) AS `Resolved`,
+               ROUND(AVG(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)), 1) AS `Avg Hours`,
+               ROUND(MIN(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)), 1) AS `Min Hours`,
+               ROUND(MAX(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)), 1) AS `Max Hours`
         FROM helpdesk_tickets t
         JOIN helpdesk_categories c ON t.category_id = c.id
-        JOIN helpdesk_ticket_activity a ON a.ticket_id = t.id AND a.to_status = 'RESOLVED'
+        WHERE t.status = 'RESOLVED'
         GROUP BY c.id, c.category_name, c.department
-        ORDER BY AVG(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at))
+        ORDER BY AVG(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at))
         """, "table")
 
     q16 = create_native_question(db_id, "CA Resolution Rate",
