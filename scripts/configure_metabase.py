@@ -10,7 +10,30 @@ import time
 import urllib.request
 import urllib.error
 
-METABASE_URL = os.getenv("METABASE_INTERNAL_URL", "http://metabase:3000")
+def find_metabase_url():
+    candidates = [
+        os.getenv("METABASE_INTERNAL_URL"),
+        os.getenv("METABASE_SITE_URL"),
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3002",
+        "http://metabase:3000",
+    ]
+    for url in candidates:
+        if not url:
+            continue
+        try:
+            target = url.rstrip("/")
+            req = urllib.request.Request(f"{target}/api/health", method="GET")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read())
+                if data.get("status") == "ok":
+                    return target
+        except Exception:
+            pass
+    return "http://localhost:3000"
+
+METABASE_URL = find_metabase_url()
 ADMIN_EMAIL = os.getenv("MB_ADMIN_EMAIL", "admin@gmail.com")
 ADMIN_PASSWORD = os.getenv("MB_ADMIN_PASSWORD", "Admin@321#")
 DB_NAME = os.getenv("MYSQL_DATABASE", "seg_demo")
