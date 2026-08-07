@@ -281,26 +281,24 @@ def main():
     print("\n--- Creating Trends Dashboard ---")
 
     q8 = create_native_question(db_id, "Daily Ticket Creation",
-        "Number of tickets created per day (last 30 days).",
+        "Number of tickets created per day.",
         """
         SELECT DATE(created_at) AS 'Date',
                COUNT(*) AS 'Tickets Created'
         FROM helpdesk_tickets
-        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         GROUP BY DATE(created_at)
         ORDER BY DATE(created_at)
         """, "line", {"graph.dimensions": ["Date"], "graph.metrics": ["Tickets Created"]})
 
     q9 = create_native_question(db_id, "Daily Resolutions",
-        "Number of tickets resolved per day (last 30 days).",
+        "Number of tickets resolved per day.",
         """
-        SELECT DATE(a.created_at) AS 'Date',
+        SELECT DATE(updated_at) AS 'Date',
                COUNT(*) AS 'Tickets Resolved'
-        FROM helpdesk_ticket_activity a
-        WHERE a.to_status = 'RESOLVED'
-          AND a.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
-        GROUP BY DATE(a.created_at)
-        ORDER BY DATE(a.created_at)
+        FROM helpdesk_tickets
+        WHERE status = 'RESOLVED'
+        GROUP BY DATE(updated_at)
+        ORDER BY DATE(updated_at)
         """, "line", {"graph.dimensions": ["Date"], "graph.metrics": ["Tickets Resolved"]})
 
     q10 = create_native_question(db_id, "Weekly Ticket Volume",
