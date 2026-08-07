@@ -155,8 +155,8 @@ def run_migration():
             else:
                 cursor.execute("""
                     INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id, is_active)
-                    VALUES (%s, %s, %s, 1);
-                """, (device_type, dept, default_ca_id))
+                    VALUES (%s, %s, NULL, 1);
+                """, (device_type, dept))
                 categories_cache[cat_key] = cursor.lastrowid
         cat_id = categories_cache[cat_key]
 
