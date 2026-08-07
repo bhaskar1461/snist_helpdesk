@@ -7,8 +7,17 @@ import json
 import os
 import sys
 import time
-import urllib.request
-import urllib.error
+import pathlib
+
+# Auto-load .env if present
+env_file = pathlib.Path(__file__).resolve().parent.parent / ".env"
+if env_file.exists():
+    with open(env_file, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip("'\""))
 
 def find_metabase_url():
     candidates = [
