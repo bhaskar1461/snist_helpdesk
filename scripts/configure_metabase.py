@@ -8,6 +8,8 @@ import os
 import sys
 import time
 import pathlib
+import urllib.request
+import urllib.error
 
 # Auto-load .env if present
 env_file = pathlib.Path(__file__).resolve().parent.parent / ".env"
