@@ -6,6 +6,8 @@ services:
       - "5001:5000"
     env_file:
       - .env
+    environment:
+      - METABASE_INTERNAL_URL=http://metabase:3000
     volumes:
       - ./uploads:/app/uploads
     restart: always

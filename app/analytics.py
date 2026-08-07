@@ -24,20 +24,27 @@ def analytics_dashboard():
     #   Use METABASE_INTERNAL_URL (Docker service name) for health checks,
     #   fall back to METABASE_SITE_URL (localhost) for non-Docker setups.
     metabase_enabled = False
-    health_url = METABASE_INTERNAL_URL or METABASE_SITE_URL
-    if health_url and METABASE_SECRET_KEY:
+    candidate_urls = [
+        METABASE_INTERNAL_URL,
+        "http://metabase:3000",
+        METABASE_SITE_URL,
+    ]
+    for health_url in candidate_urls:
+        if not health_url or not METABASE_SECRET_KEY:
+            continue
         try:
             import json
             import urllib.request
 
-            api_url = f"{health_url}/api/health"
+            api_url = f"{health_url.rstrip('/')}/api/health"
             req = urllib.request.Request(api_url, method="GET")
             with urllib.request.urlopen(req, timeout=2) as resp:
                 data = json.loads(resp.read())
-                metabase_enabled = data.get("status") == "ok"
+                if data.get("status") == "ok":
+                    metabase_enabled = True
+                    break
         except Exception as exc:
-            log.debug("Metabase not available: %s", exc)
-            metabase_enabled = False
+            log.debug("Metabase health check failed for %s: %s", health_url, exc)
 
     return render_template(
         "analytics.html",
