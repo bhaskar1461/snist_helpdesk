@@ -589,16 +589,16 @@
           <!-- Filter Bar -->
           <div class="filter-bar">
             <div class="filter-inputs">
-              <input type="text" name="q" value="{{ filters.q }}" placeholder="Search category or assignee..." class="input-style search-input" onkeyup="if(event.key==='Enter') submitFilters()">
+              <input type="text" name="q" id="filter-search" value="{{ filters.q }}" placeholder="Search category or assignee..." class="input-style search-input" onkeyup="if(event.key==='Enter') submitFilters()">
               {% if current_role in ['SUPER_ADMIN', 'ADMIN'] %}
-                <select name="department" class="input-style" onchange="submitFilters()">
+                <select name="department" id="filter-department" class="input-style" onchange="submitFilters()">
                   <option value="">All Departments</option>
                   {% for d in departments %}
-                    <option value="{{ d.code }}" {% if filters.department == d.code %}selected{% endif %}>{{ d.code }}</option>
+                    <option value="{{ d.code }}" {% if filters.department == d.code %}selected{% endif %}>{{ d.code }}{% if d.name and d.name != d.code %} - {{ d.name }}{% endif %}</option>
                   {% endfor %}
                 </select>
               {% endif %}
-              <select name="status" class="input-style" onchange="submitFilters()">
+              <select name="status" id="filter-status" class="input-style" onchange="submitFilters()">
                 <option value="">All Statuses</option>
                 <option value="active" {% if filters.status == 'active' %}selected{% endif %}>Active</option>
                 <option value="inactive" {% if filters.status == 'inactive' %}selected{% endif %}>Inactive</option>
@@ -1045,10 +1045,13 @@
     }
 
     function submitFilters() {
-      const q = document.querySelector('input[name="q"]').value;
-      const deptEl = document.querySelector('select[name="department"]');
+      const qEl = document.getElementById('filter-search') || document.querySelector('input[name="q"]');
+      const deptEl = document.getElementById('filter-department');
+      const statusEl = document.getElementById('filter-status') || document.querySelector('select[name="status"]');
+
+      const q = qEl ? qEl.value : '';
       const dept = deptEl ? deptEl.value : '';
-      const status = document.querySelector('select[name="status"]').value;
+      const status = statusEl ? statusEl.value : '';
 
       let url = '{{ url_for("management.category_assignments") }}?q=' + encodeURIComponent(q) + '&status=' + encodeURIComponent(status);
       if (dept) url += '&department=' + encodeURIComponent(dept);
