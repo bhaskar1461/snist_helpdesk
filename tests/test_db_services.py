@@ -244,12 +244,12 @@ class TestDemoDbService(HelpdeskTestCase):
         self.assertIsNotNone(assign_id)
 
         # Verify assignment was created in the mock state
-        assignments = GLOBAL_DB_STATE.tables["demo_ca_assignments"]
+        assignments = GLOBAL_DB_STATE.tables["helpdesk_ca_assignments"]
         self.assertTrue(any(a.get("block") == "Block B" for a in assignments))
 
         # Delete CA Assignment by id
         self.service.delete_ca_assignment(assign_id)
-        assignments_after = GLOBAL_DB_STATE.tables["demo_ca_assignments"]
+        assignments_after = GLOBAL_DB_STATE.tables["helpdesk_ca_assignments"]
         self.assertFalse(any(a.get("block") == "Block B" for a in assignments_after))
 
         # Create Location

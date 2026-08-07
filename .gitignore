@@ -13,3 +13,8 @@ scratch/
 *.pyc
 *_bandit.json
 
+# Production DB dumps (contain PII — addresses, phones, salary data)
+New Project*.sql
+*.dump.sql
+*_dump_*.sql
+sreenidhi_*.sql.gz

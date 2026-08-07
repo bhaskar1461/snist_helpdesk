@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import datetime
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
@@ -75,8 +76,10 @@ def create_ticket_for_role():
                 return redirect(url_for("tickets.create_ticket_for_role"))
 
         org_id = user["org_id"]
+        submission_key = request.form.get("submission_key", "").strip() or None
         demo_db.create_ticket(title=title, description=description, category_id=category_id,
-                              created_by=user["id"], org_id=org_id, location_id=location_id)
+                              created_by=user["id"], org_id=org_id, location_id=location_id,
+                              submission_key=submission_key)
         flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
@@ -97,6 +100,7 @@ def create_ticket_for_role():
         departments=all_depts,
         available_depts=available_depts,
         selected_dept=selected_dept,
+        submission_key=str(uuid.uuid4()),
         **page_context("Create Ticket"),
     )
 

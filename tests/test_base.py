@@ -18,13 +18,13 @@ class MockDbState:
 
     def reset(self):
         self.tables = {
-            "demo_users": [],
-            "demo_categories": [],
-            "demo_tickets": [],
-            "demo_ticket_activity": [],
-            "demo_ca_assignments": [],
-            "demo_problem_types": [],
-            "demo_audit_events": [],
+            "helpdesk_users": [],
+            "helpdesk_categories": [],
+            "helpdesk_tickets": [],
+            "helpdesk_ticket_activity": [],
+            "helpdesk_ca_assignments": [],
+            "helpdesk_problem_types": [],
+            "helpdesk_audit_events": [],
             "branch_detail": [],
             "teacher_info": [],
             "location": []
@@ -56,8 +56,8 @@ class MockDbState:
             {"id": 7, "name": "Demo Faculty", "email": "faculty@gmail.com", "password": generate_password_hash("123"), "role": "FACULTY", "department": "CSE", "org_id": "2000"},
             {"id": 8, "name": "SNU Admin", "email": "snu.admin@gmail.com", "password": generate_password_hash("123"), "role": "SUPER_ADMIN", "department": "Administration", "org_id": "3000"},
         ]
-        self.tables["demo_users"] = users
-        self.next_ids["demo_users"] = 9
+        self.tables["helpdesk_users"] = users
+        self.next_ids["helpdesk_users"] = 9
 
         # 3. Seed default categories
         categories = [
@@ -66,8 +66,8 @@ class MockDbState:
             {"id": 3, "category_name": "Plumbing", "department": "Facilities", "assigned_ca_id": 6, "is_active": 1},
             {"id": 4, "category_name": "Electrical", "department": "Maintenance", "assigned_ca_id": 6, "is_active": 1},
         ]
-        self.tables["demo_categories"] = categories
-        self.next_ids["demo_categories"] = 5
+        self.tables["helpdesk_categories"] = categories
+        self.next_ids["helpdesk_categories"] = 5
 
         # 4. Seed location table
         locations = [
@@ -90,16 +90,16 @@ class MockDbState:
         ca_assignments = [
             {"id": 1, "category_id": 1, "ca_id": 4, "block": "Block A"},
         ]
-        self.tables["demo_ca_assignments"] = ca_assignments
-        self.next_ids["demo_ca_assignments"] = 2
+        self.tables["helpdesk_ca_assignments"] = ca_assignments
+        self.next_ids["helpdesk_ca_assignments"] = 2
 
         # 7. Seed problem types
         problem_types = [
             {"id": 1, "category_id": 1, "problem_name": "WiFi Down", "is_active": 1},
             {"id": 2, "category_id": 1, "problem_name": "Slow Speed", "is_active": 1},
         ]
-        self.tables["demo_problem_types"] = problem_types
-        self.next_ids["demo_problem_types"] = 3
+        self.tables["helpdesk_problem_types"] = problem_types
+        self.next_ids["helpdesk_problem_types"] = 3
 
 GLOBAL_DB_STATE = MockDbState()
 
@@ -259,7 +259,7 @@ class MockCursor:
                     else:
                         self.lastrowid = row_data["id"]
 
-                    if table_name == "demo_categories":
+                    if table_name == "helpdesk_categories":
                         if "is_active" not in row_data:
                             row_data["is_active"] = 1
                     if "created_at" not in row_data:
@@ -421,7 +421,7 @@ class MockCursor:
         import datetime
         for r in results_copies:
             for k in ["created_at", "updated_at"]:
-                if k in r or (table_name and table_name in ["demo_tickets", "demo_ticket_history"]):
+                if k in r or (table_name and table_name in ["helpdesk_tickets", "helpdesk_ticket_history"]):
                     val = r.get(k)
                     if not val:
                         r[k] = datetime.datetime(2026, 7, 7, 12, 0, 0)
@@ -432,12 +432,12 @@ class MockCursor:
                             r[k] = datetime.datetime(2026, 7, 7, 12, 0, 0)
 
         for r in results_copies:
-            if table_name == "demo_tickets":
-                creator = next((u for u in self.state.tables["demo_users"] if u["id"] == r.get("created_by")), None)
-                assignee = next((u for u in self.state.tables["demo_users"] if u["id"] == r.get("assigned_to")), None)
-                cat = next((c for c in self.state.tables["demo_categories"] if c["id"] == r.get("category_id")), None)
+            if table_name == "helpdesk_tickets":
+                creator = next((u for u in self.state.tables["helpdesk_users"] if u["id"] == r.get("created_by")), None)
+                assignee = next((u for u in self.state.tables["helpdesk_users"] if u["id"] == r.get("assigned_to")), None)
+                cat = next((c for c in self.state.tables["helpdesk_categories"] if c["id"] == r.get("category_id")), None)
                 loc_room = next((rm for rm in self.state.tables["location"] if rm["id"] == r.get("location_id")), None)
-                prob_type = next((p for p in self.state.tables["demo_problem_types"] if p["id"] == r.get("problem_type_id")), None)
+                prob_type = next((p for p in self.state.tables["helpdesk_problem_types"] if p["id"] == r.get("problem_type_id")), None)
 
                 r["created_by_name"] = creator["name"] if creator else "Unknown Faculty"
                 r["created_by_email"] = creator["email"] if creator else ""
@@ -449,8 +449,8 @@ class MockCursor:
                 r["block_name"] = loc_room["block"] if loc_room else ""
                 r["problem_name"] = prob_type["problem_name"] if prob_type else ""
 
-            elif table_name == "demo_categories":
-                assignee = next((u for u in self.state.tables["demo_users"] if u["id"] == r.get("assigned_ca_id")), None)
+            elif table_name == "helpdesk_categories":
+                assignee = next((u for u in self.state.tables["helpdesk_users"] if u["id"] == r.get("assigned_ca_id")), None)
                 r["assigned_ca_name"] = assignee["name"] if assignee else "Unassigned CA"
                 r["assigned_ca_email"] = assignee["email"] if assignee else ""
 

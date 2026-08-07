@@ -15,6 +15,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = BASE_DIR / "sql" / "demo_schema.sql"
 MIGRATION_V2_PATH = BASE_DIR / "sql" / "migration_v2.sql"
 MIGRATION_V3_PATH = BASE_DIR / "sql" / "migration_v3.sql"
+MIGRATION_V5_PATH = BASE_DIR / "sql" / "migration_v5_dedup_keys.sql"
+MIGRATION_V6_PATH = BASE_DIR / "sql" / "migration_v6_rename_tables.sql"
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 

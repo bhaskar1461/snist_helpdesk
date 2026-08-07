@@ -35,7 +35,7 @@ class TestTickets(HelpdeskTestCase):
         self.assertIn(b"Ticket created and auto-assigned", response.data)
         
         # Verify database has the ticket
-        created_tickets = [t for t in GLOBAL_DB_STATE.tables["demo_tickets"] if t["created_by"] == 7]
+        created_tickets = [t for t in GLOBAL_DB_STATE.tables["helpdesk_tickets"] if t["created_by"] == 7]
         self.assertEqual(len(created_tickets), 1)
         self.assertEqual(created_tickets[0]["status"], "PENDING")
         self.assertEqual(created_tickets[0]["assigned_to"], 4) # Fallback to default CA
@@ -62,12 +62,12 @@ class TestTickets(HelpdeskTestCase):
         self.assertIn(b"only create tickets for your assigned department", response.data.lower())
 
         # Verify no ticket was created
-        created_tickets = [t for t in GLOBAL_DB_STATE.tables["demo_tickets"] if t["created_by"] == 7 and t.get("category_id") == 3]
+        created_tickets = [t for t in GLOBAL_DB_STATE.tables["helpdesk_tickets"] if t["created_by"] == 7 and t.get("category_id") == 3]
         self.assertEqual(len(created_tickets), 0)
 
     def test_ticket_status_transitions_happy_path(self):
         # Seed a ticket in PENDING state
-        GLOBAL_DB_STATE.tables["demo_tickets"] = [{
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"] = [{
             "id": 10,
             "title": "Broken light",
             "description": "Classroom 101",
@@ -88,7 +88,7 @@ class TestTickets(HelpdeskTestCase):
             "remarks": "I am on my way to room 101"
         }, follow_redirects=True)
         self.assertEqual(res1.status_code, 200)
-        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "IN_PROGRESS")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "IN_PROGRESS")
 
         # 2. IN_PROGRESS -> ON_HOLD
         res2 = self.client.post("/authority/update-status/10", data={
@@ -96,7 +96,7 @@ class TestTickets(HelpdeskTestCase):
             "remarks": "Waiting for a replacement bulb"
         }, follow_redirects=True)
         self.assertEqual(res2.status_code, 200)
-        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "ON_HOLD")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "ON_HOLD")
 
         # 3. ON_HOLD -> IN_PROGRESS
         res3 = self.client.post("/authority/update-status/10", data={
@@ -104,7 +104,7 @@ class TestTickets(HelpdeskTestCase):
             "remarks": "Bulb arrived, replacing it now"
         }, follow_redirects=True)
         self.assertEqual(res3.status_code, 200)
-        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "IN_PROGRESS")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "IN_PROGRESS")
 
         # 4. IN_PROGRESS -> RESOLVED
         res4 = self.client.post("/authority/update-status/10", data={
@@ -112,7 +112,7 @@ class TestTickets(HelpdeskTestCase):
             "remarks": "Bulb replaced, tested and working"
         }, follow_redirects=True)
         self.assertEqual(res4.status_code, 200)
-        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "RESOLVED")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "RESOLVED")
 
         # 5. RESOLVED -> REOPENED (Needs to be done by Faculty who created it)
         self.logout()
@@ -121,10 +121,10 @@ class TestTickets(HelpdeskTestCase):
             "remarks": "Light is flickering, please fix properly"
         }, follow_redirects=True)
         self.assertEqual(res5.status_code, 200)
-        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "REOPENED")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "REOPENED")
 
     def test_ticket_status_transitions_invalid_paths(self):
-        GLOBAL_DB_STATE.tables["demo_tickets"] = [{
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"] = [{
             "id": 20,
             "title": "Broken light",
             "description": "Classroom 101",
@@ -145,7 +145,7 @@ class TestTickets(HelpdeskTestCase):
             "remarks": "Done directly"
         }, follow_redirects=True)
         self.assertIn(b"Invalid status transition", resA.data)
-        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "PENDING")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "PENDING")
 
         # Case B: PENDING -> REOPENED directly (Invalid)
         resB = self.client.post("/authority/update-status/20", data={
@@ -164,7 +164,7 @@ class TestTickets(HelpdeskTestCase):
         }, follow_redirects=True)
         # HOD cannot update CA ticket status directly
         self.assertIn(b"You do not have access to that page", resC.data)
-        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "PENDING")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "PENDING")
 
         # Case D: Faculty trying to update status directly
         self.logout()
@@ -176,7 +176,7 @@ class TestTickets(HelpdeskTestCase):
         self.assertIn(b"You do not have access to that page", resD.data)
 
     def test_ticket_upload_validation(self):
-        GLOBAL_DB_STATE.tables["demo_tickets"] = [{
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"] = [{
             "id": 30,
             "title": "Broken light",
             "description": "Classroom 101",
@@ -199,10 +199,10 @@ class TestTickets(HelpdeskTestCase):
             "attachment": valid_png
         }, content_type='multipart/form-data', follow_redirects=True)
         self.assertIn(b"Ticket updated successfully", res.data)
-        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "RESOLVED")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "RESOLVED")
 
         # Reset status back to IN_PROGRESS
-        GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"] = "IN_PROGRESS"
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"] = "IN_PROGRESS"
 
         # Case 2: Upload a malicious file with PNG extension but MZ signature (malicious executable)
         malicious_exe = (io.BytesIO(b'MZ\x90\x00\x03\x00\x00\x00malicious-code'), 'test.png')
@@ -213,14 +213,14 @@ class TestTickets(HelpdeskTestCase):
         }, content_type='multipart/form-data', follow_redirects=True)
         self.assertIn(b"File type not allowed", res2.data)
         # Should not transition status
-        self.assertEqual(GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"], "IN_PROGRESS")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "IN_PROGRESS")
 
     def test_ticket_sla_escalation(self):
         from datetime import datetime, timedelta
         import db_services
         # 1. Seed an open ticket created 2 days ago
         old_time = datetime.now() - timedelta(days=2)
-        GLOBAL_DB_STATE.tables["demo_tickets"] = [{
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"] = [{
             "id": 40,
             "title": "Old broken light",
             "description": "Classroom 101",
@@ -240,6 +240,6 @@ class TestTickets(HelpdeskTestCase):
         self.assertTrue(ticket.get("is_escalated"), "Expected open ticket older than 24h to be escalated")
 
         # 2. Change status to RESOLVED and verify it is no longer escalated
-        GLOBAL_DB_STATE.tables["demo_tickets"][0]["status"] = "RESOLVED"
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"] = "RESOLVED"
         ticket_resolved = db_service.get_ticket(40)
         self.assertFalse(ticket_resolved.get("is_escalated"), "Expected resolved ticket to not be escalated")

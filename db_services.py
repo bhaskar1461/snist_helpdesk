@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 import os
@@ -256,7 +257,7 @@ class LiveDbService(BaseMySQLService):
         if not self.enabled:
             return
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) AS cnt FROM demo_tickets WHERE location_id = %s", (location_id,))
+            cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_tickets WHERE location_id = %s", (location_id,))
             row = cursor.fetchone()
             if row and row["cnt"] > 0:
                 raise ValueError("Cannot delete a location that is referenced by existing tickets.")
@@ -453,11 +454,11 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             # Seed users individually if they do not exist
             for u in users:
-                cursor.execute("SELECT id FROM demo_users WHERE LOWER(email) = LOWER(%s) LIMIT 1", (u["email"],))
+                cursor.execute("SELECT id FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1", (u["email"],))
                 if not cursor.fetchone():
                     cursor.execute(
                         """
-                        INSERT INTO demo_users (name, email, password, role, department)
+                        INSERT INTO helpdesk_users (name, email, password, role, department)
                         VALUES (%s, %s, %s, %s, %s)
                         """,
                         (u["name"], u["email"], generate_password_hash(u["password"]), u["role"], u["department"]),
@@ -467,17 +468,17 @@ class DemoDbService(BaseMySQLService):
             if categories:
                 for category in categories:
                     cursor.execute(
-                        "SELECT id FROM demo_categories WHERE LOWER(category_name) = LOWER(%s) AND department = %s LIMIT 1",
+                        "SELECT id FROM helpdesk_categories WHERE LOWER(category_name) = LOWER(%s) AND department = %s LIMIT 1",
                         (category["category_name"], category["department"])
                     )
                     if not cursor.fetchone():
-                        cursor.execute("SELECT id FROM demo_users WHERE email = %s LIMIT 1", (category["authority_email"],))
+                        cursor.execute("SELECT id FROM helpdesk_users WHERE email = %s LIMIT 1", (category["authority_email"],))
                         row = cursor.fetchone()
                         if not row:
                             continue
                         cursor.execute(
                             """
-                            INSERT INTO demo_categories (category_name, department, assigned_ca_id)
+                            INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id)
                             VALUES (%s, %s, %s)
                             """,
                             (category["category_name"], category["department"], row["id"]),
@@ -488,7 +489,7 @@ class DemoDbService(BaseMySQLService):
             cursor.execute(
                 """
                 SELECT id, name, email, password, role, department
-                FROM demo_users
+                FROM helpdesk_users
                 WHERE LOWER(email) = LOWER(%s)
                 LIMIT 1
                 """,
@@ -504,31 +505,31 @@ class DemoDbService(BaseMySQLService):
     def change_password(self, user_id, old_password, new_password):
         """Verify old password and update to new password. Raises ValueError on mismatch."""
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT password FROM demo_users WHERE id = %s", (user_id,))
+            cursor.execute("SELECT password FROM helpdesk_users WHERE id = %s", (user_id,))
             row = cursor.fetchone()
             if not row:
                 raise ValueError("User not found.")
             if not check_password_hash(row["password"], old_password):
                 return False
             hashed = generate_password_hash(new_password)
-            cursor.execute("UPDATE demo_users SET password = %s WHERE id = %s", (hashed, user_id))
+            cursor.execute("UPDATE helpdesk_users SET password = %s WHERE id = %s", (hashed, user_id))
             return True
 
     def get_user(self, user_id):
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT id, name, email, role, department, created_at FROM demo_users WHERE id = %s", (user_id,))
+            cursor.execute("SELECT id, name, email, role, department, created_at FROM helpdesk_users WHERE id = %s", (user_id,))
             return cursor.fetchone()
 
     def get_user_by_email(self, email):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT id, name, email, role, department, created_at FROM demo_users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
+                "SELECT id, name, email, role, department, created_at FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
                 (email,),
             )
             return cursor.fetchone()
 
     def list_users(self, role=None, department=None, search="", org_id=None, limit=None, offset=None):
-        sql = "SELECT id, name, email, role, department, created_at FROM demo_users WHERE 1=1"
+        sql = "SELECT id, name, email, role, department, created_at FROM helpdesk_users WHERE 1=1"
         params = []
         if role:
             if isinstance(role, (list, tuple)):
@@ -595,7 +596,7 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO demo_users (name, email, password, role, department)
+                INSERT INTO helpdesk_users (name, email, password, role, department)
                 VALUES (%s, %s, %s, %s, %s)
                 """,
                 (payload["name"], payload["email"], hashed, payload["role"], payload["department"]),
@@ -618,7 +619,7 @@ class DemoDbService(BaseMySQLService):
         if not fields:
             return
             
-        sql = f"UPDATE demo_users SET {', '.join(fields)} WHERE id = %s"
+        sql = f"UPDATE helpdesk_users SET {', '.join(fields)} WHERE id = %s"
         params.append(user_id)
         
         with self.connection() as connection, connection.cursor() as cursor:
@@ -629,23 +630,23 @@ class DemoDbService(BaseMySQLService):
             cursor.execute(
                 """
                 SELECT
-                    (SELECT COUNT(*) FROM demo_categories WHERE assigned_ca_id = %s) AS category_refs,
-                    (SELECT COUNT(*) FROM demo_tickets WHERE created_by = %s OR assigned_to = %s) AS ticket_refs,
-                    (SELECT COUNT(*) FROM demo_ticket_activity WHERE action_by = %s) AS activity_refs
+                    (SELECT COUNT(*) FROM helpdesk_categories WHERE assigned_ca_id = %s) AS category_refs,
+                    (SELECT COUNT(*) FROM helpdesk_tickets WHERE created_by = %s OR assigned_to = %s) AS ticket_refs,
+                    (SELECT COUNT(*) FROM helpdesk_ticket_activity WHERE action_by = %s) AS activity_refs
                 """,
                 (user_id, user_id, user_id, user_id),
             )
             refs = cursor.fetchone()
             if any(refs.values()):
                 raise ValueError("Cannot delete a user that is referenced by categories, tickets, or activity.")
-            cursor.execute("DELETE FROM demo_users WHERE id = %s", (user_id,))
+            cursor.execute("DELETE FROM helpdesk_users WHERE id = %s", (user_id,))
 
     def list_categories(self, department=None, search="", ca_id=None, org_id=None, active_only=False, limit=None, offset=None):
         sql = """
             SELECT c.id, c.category_name, c.department, c.assigned_ca_id, c.is_active, c.created_at,
                    u.name AS assigned_ca_name, u.email AS assigned_ca_email
-            FROM demo_categories c
-            LEFT JOIN demo_users u ON u.id = c.assigned_ca_id
+            FROM helpdesk_categories c
+            LEFT JOIN helpdesk_users u ON u.id = c.assigned_ca_id
             WHERE 1=1
         """
         params = []
@@ -677,7 +678,7 @@ class DemoDbService(BaseMySQLService):
 
     def category_exists(self, category_name, department, exclude_id=None):
         """Check if a category with the same name+department already exists."""
-        sql = "SELECT id FROM demo_categories WHERE LOWER(category_name) = LOWER(%s) AND department = %s"
+        sql = "SELECT id FROM helpdesk_categories WHERE LOWER(category_name) = LOWER(%s) AND department = %s"
         params = [category_name, department]
         if exclude_id:
             sql += " AND id != %s"
@@ -694,17 +695,17 @@ class DemoDbService(BaseMySQLService):
             try:
                 cursor.execute(
                     """
-                    INSERT INTO demo_categories (category_name, department, assigned_ca_id)
+                    INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id)
                     VALUES (%s, %s, %s)
                     """,
                     (payload["category_name"], payload["department"], ca_id),
                 )
             except pymysql.err.IntegrityError as err:
                 if err.args[0] == 1048 or "cannot be null" in str(err).lower():
-                    cursor.execute("ALTER TABLE demo_categories MODIFY COLUMN assigned_ca_id INT UNSIGNED NULL")
+                    cursor.execute("ALTER TABLE helpdesk_categories MODIFY COLUMN assigned_ca_id INT UNSIGNED NULL")
                     cursor.execute(
                         """
-                        INSERT INTO demo_categories (category_name, department, assigned_ca_id)
+                        INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id)
                         VALUES (%s, %s, %s)
                         """,
                         (payload["category_name"], payload["department"], ca_id),
@@ -721,7 +722,7 @@ class DemoDbService(BaseMySQLService):
             try:
                 cursor.execute(
                     """
-                    UPDATE demo_categories
+                    UPDATE helpdesk_categories
                     SET category_name = %s, department = %s, assigned_ca_id = %s
                     WHERE id = %s
                     """,
@@ -729,10 +730,10 @@ class DemoDbService(BaseMySQLService):
                 )
             except pymysql.err.IntegrityError as err:
                 if err.args[0] == 1048 or "cannot be null" in str(err).lower():
-                    cursor.execute("ALTER TABLE demo_categories MODIFY COLUMN assigned_ca_id INT UNSIGNED NULL")
+                    cursor.execute("ALTER TABLE helpdesk_categories MODIFY COLUMN assigned_ca_id INT UNSIGNED NULL")
                     cursor.execute(
                         """
-                        UPDATE demo_categories
+                        UPDATE helpdesk_categories
                         SET category_name = %s, department = %s, assigned_ca_id = %s
                         WHERE id = %s
                         """,
@@ -744,18 +745,18 @@ class DemoDbService(BaseMySQLService):
 
     def delete_category(self, category_id):
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) AS total FROM demo_tickets WHERE category_id = %s", (category_id,))
+            cursor.execute("SELECT COUNT(*) AS total FROM helpdesk_tickets WHERE category_id = %s", (category_id,))
             if cursor.fetchone()["total"]:
                 raise ValueError("Cannot delete a category that is already used by tickets.")
-            cursor.execute("DELETE FROM demo_categories WHERE id = %s", (category_id,))
+            cursor.execute("DELETE FROM helpdesk_categories WHERE id = %s", (category_id,))
 
     def get_category(self, category_id):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT c.id, c.category_name, c.department, c.assigned_ca_id, c.is_active, u.name AS assigned_ca_name
-                FROM demo_categories c
-                LEFT JOIN demo_users u ON u.id = c.assigned_ca_id
+                FROM helpdesk_categories c
+                LEFT JOIN helpdesk_users u ON u.id = c.assigned_ca_id
                 WHERE c.id = %s
                 """,
                 (category_id,),
@@ -766,7 +767,7 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
-                UPDATE demo_categories
+                UPDATE helpdesk_categories
                 SET is_active = %s
                 WHERE id = %s
                 """,
@@ -776,7 +777,7 @@ class DemoDbService(BaseMySQLService):
     def count_tickets_by_category(self, category_id):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT COUNT(*) AS total FROM demo_tickets WHERE category_id = %s AND status != 'RESOLVED'",
+                "SELECT COUNT(*) AS total FROM helpdesk_tickets WHERE category_id = %s AND status != 'RESOLVED'",
                 (category_id,),
             )
             res = cursor.fetchone()
@@ -787,8 +788,8 @@ class DemoDbService(BaseMySQLService):
             cursor.execute(
                 """
                 SELECT a.id, a.ca_id, a.block, u.name AS ca_name, u.email AS ca_email
-                FROM demo_ca_assignments a
-                JOIN demo_users u ON u.id = a.ca_id
+                FROM helpdesk_ca_assignments a
+                JOIN helpdesk_users u ON u.id = a.ca_id
                 WHERE a.category_id = %s
                 ORDER BY u.name, a.block
                 """,
@@ -802,7 +803,7 @@ class DemoDbService(BaseMySQLService):
         format_strings = ','.join(['%s'] * len(category_ids))
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                f"UPDATE demo_categories SET assigned_ca_id = %s WHERE id IN ({format_strings})",
+                f"UPDATE helpdesk_categories SET assigned_ca_id = %s WHERE id IN ({format_strings})",
                 [ca_id] + list(category_ids),
             )
             return cursor.rowcount
@@ -814,7 +815,7 @@ class DemoDbService(BaseMySQLService):
         val = 1 if is_active else 0
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                f"UPDATE demo_categories SET is_active = %s WHERE id IN ({format_strings})",
+                f"UPDATE helpdesk_categories SET is_active = %s WHERE id IN ({format_strings})",
                 [val] + list(category_ids),
             )
             return cursor.rowcount
@@ -825,13 +826,13 @@ class DemoDbService(BaseMySQLService):
         format_strings = ','.join(['%s'] * len(category_ids))
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                f"UPDATE demo_categories SET assigned_ca_id = NULL WHERE id IN ({format_strings})",
+                f"UPDATE helpdesk_categories SET assigned_ca_id = NULL WHERE id IN ({format_strings})",
                 list(category_ids),
             )
             return cursor.rowcount
 
 
-    def create_ticket(self, title, description, category_id, created_by, org_id, location_id=None):
+    def create_ticket(self, title, description, category_id, created_by, org_id, location_id=None, submission_key=None):
         category = self.get_category(category_id)
         if not category:
             raise ValueError("Selected category does not exist.")
@@ -839,6 +840,10 @@ class DemoDbService(BaseMySQLService):
         # Auto-generate title from category if title is empty
         if not title:
             title = category["category_name"]
+
+        # Generate a submission_key to prevent duplicate submissions
+        if not submission_key:
+            submission_key = str(uuid.uuid4())
 
         # Retrieve block name if location_id is provided
         block_name = None
@@ -853,17 +858,29 @@ class DemoDbService(BaseMySQLService):
         assigned_ca_id = self.resolve_assigned_ca(category_id, block_name) or category["assigned_ca_id"]
 
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO demo_tickets (title, description, category_id, created_by, assigned_to, status, org_id, location_id)
-                VALUES (%s, %s, %s, %s, %s, 'PENDING', %s, %s)
-                """,
-                (title, description, category_id, created_by, assigned_ca_id, org_id, location_id),
-            )
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO helpdesk_tickets (title, description, category_id, created_by, assigned_to, status, org_id, location_id, submission_key)
+                    VALUES (%s, %s, %s, %s, %s, 'PENDING', %s, %s, %s)
+                    """,
+                    (title, description, category_id, created_by, assigned_ca_id, org_id, location_id, submission_key),
+                )
+            except Exception as exc:
+                # If duplicate submission_key, find and return existing ticket
+                if "Duplicate entry" in str(exc) and "submission_key" in str(exc):
+                    cursor.execute(
+                        "SELECT id FROM helpdesk_tickets WHERE submission_key = %s LIMIT 1",
+                        (submission_key,),
+                    )
+                    existing = cursor.fetchone()
+                    if existing:
+                        return existing["id"]
+                raise
             ticket_id = cursor.lastrowid
             cursor.execute(
                 """
-                INSERT INTO demo_ticket_activity (ticket_id, action_by, from_status, to_status, remarks)
+                INSERT INTO helpdesk_ticket_activity (ticket_id, action_by, from_status, to_status, remarks)
                 VALUES (%s, %s, NULL, 'PENDING', %s)
                 """,
                 (ticket_id, created_by, "Ticket created"),
@@ -944,10 +961,10 @@ class DemoDbService(BaseMySQLService):
                 loc.floor AS location_floor,
                 loc.room_no AS location_room_no,
                 loc.name AS location_room_name
-            FROM demo_tickets t
-            INNER JOIN demo_categories c ON c.id = t.category_id
-            INNER JOIN demo_users creator ON creator.id = t.created_by
-            INNER JOIN demo_users assignee ON assignee.id = t.assigned_to
+            FROM helpdesk_tickets t
+            INNER JOIN helpdesk_categories c ON c.id = t.category_id
+            INNER JOIN helpdesk_users creator ON creator.id = t.created_by
+            INNER JOIN helpdesk_users assignee ON assignee.id = t.assigned_to
             LEFT JOIN location loc ON loc.id = t.location_id
             WHERE 1=1
         """
@@ -1014,8 +1031,8 @@ class DemoDbService(BaseMySQLService):
                 """
                 SELECT a.id, a.from_status, a.to_status, a.remarks, a.time_taken, a.attachment_path, a.created_at,
                        u.name AS action_by_name
-                FROM demo_ticket_activity a
-                INNER JOIN demo_users u ON u.id = a.action_by
+                FROM helpdesk_ticket_activity a
+                INNER JOIN helpdesk_users u ON u.id = a.action_by
                 WHERE a.ticket_id = %s
                 ORDER BY a.created_at DESC
                 """,
@@ -1080,12 +1097,12 @@ class DemoDbService(BaseMySQLService):
 
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "UPDATE demo_tickets SET status = %s WHERE id = %s",
+                "UPDATE helpdesk_tickets SET status = %s WHERE id = %s",
                 (status, ticket_id),
             )
             cursor.execute(
                 """
-                INSERT INTO demo_ticket_activity
+                INSERT INTO helpdesk_ticket_activity
                     (ticket_id, action_by, from_status, to_status, remarks, time_taken, attachment_path)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
@@ -1125,8 +1142,8 @@ class DemoDbService(BaseMySQLService):
                    SUM(CASE WHEN t.status = 'ON_HOLD' THEN 1 ELSE 0 END) AS on_hold,
                    SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved,
                    SUM(CASE WHEN t.status = 'REOPENED' THEN 1 ELSE 0 END) AS reopened
-            FROM demo_categories c
-            LEFT JOIN demo_tickets t {on_clause}
+            FROM helpdesk_categories c
+            LEFT JOIN helpdesk_tickets t {on_clause}
             WHERE 1=1
         """
         if department:
@@ -1213,9 +1230,9 @@ class DemoDbService(BaseMySQLService):
                 u.department,
                 COUNT(DISTINCT c.id) AS category_count,
                 COUNT(DISTINCT t.id) AS ticket_count
-            FROM demo_users u
-            LEFT JOIN demo_categories c ON c.department = u.department
-            LEFT JOIN demo_tickets t ON t.category_id = c.id
+            FROM helpdesk_users u
+            LEFT JOIN helpdesk_categories c ON c.department = u.department
+            LEFT JOIN helpdesk_tickets t ON t.category_id = c.id
             WHERE u.role = 'HOD'
         """
         params = []
@@ -1265,9 +1282,9 @@ class DemoDbService(BaseMySQLService):
             SELECT a.id, a.category_id, a.ca_id, a.block, a.created_at,
                    c.category_name, c.department,
                    u.name AS ca_name, u.email AS ca_email
-            FROM demo_ca_assignments a
-            INNER JOIN demo_categories c ON c.id = a.category_id
-            INNER JOIN demo_users u ON u.id = a.ca_id
+            FROM helpdesk_ca_assignments a
+            INNER JOIN helpdesk_categories c ON c.id = a.category_id
+            INNER JOIN helpdesk_users u ON u.id = a.ca_id
             WHERE 1=1
         """
         params = []
@@ -1291,7 +1308,7 @@ class DemoDbService(BaseMySQLService):
             # Check if assignment already exists
             cursor.execute(
                 """
-                SELECT id FROM demo_ca_assignments
+                SELECT id FROM helpdesk_ca_assignments
                 WHERE category_id = %s AND ca_id = %s AND LOWER(block) = LOWER(%s)
                 LIMIT 1
                 """,
@@ -1301,7 +1318,7 @@ class DemoDbService(BaseMySQLService):
                 raise ValueError("This CA is already assigned to this category and block.")
             cursor.execute(
                 """
-                INSERT INTO demo_ca_assignments (category_id, ca_id, block)
+                INSERT INTO helpdesk_ca_assignments (category_id, ca_id, block)
                 VALUES (%s, %s, %s)
                 """,
                 (category_id, ca_id, block),
@@ -1310,7 +1327,7 @@ class DemoDbService(BaseMySQLService):
 
     def delete_ca_assignment(self, assignment_id):
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("DELETE FROM demo_ca_assignments WHERE id = %s", (assignment_id,))
+            cursor.execute("DELETE FROM helpdesk_ca_assignments WHERE id = %s", (assignment_id,))
 
     create_assignee_assignment = create_ca_assignment
     delete_assignee_assignment = delete_ca_assignment
@@ -1319,7 +1336,7 @@ class DemoDbService(BaseMySQLService):
         """
         Resolve who to assign the ticket to.
         Multi-CA routing engine (Feature 6):
-        1. Find all CAs assigned to this category+block via demo_ca_assignments.
+        1. Find all CAs assigned to this category+block via helpdesk_ca_assignments.
         2. If block match found, select least-loaded CA among matches.
         3. If no block match, find ALL CAs for this category (any block) as secondary pool.
         4. Fall back to category's default assigned_ca_id.
@@ -1332,7 +1349,7 @@ class DemoDbService(BaseMySQLService):
             # Step 1: Exact block match
             if block:
                 cursor.execute(
-                    "SELECT ca_id FROM demo_ca_assignments WHERE category_id = %s AND LOWER(block) = LOWER(%s)",
+                    "SELECT ca_id FROM helpdesk_ca_assignments WHERE category_id = %s AND LOWER(block) = LOWER(%s)",
                     (category_id, block),
                 )
                 rows = cursor.fetchall()
@@ -1342,7 +1359,7 @@ class DemoDbService(BaseMySQLService):
 
             # Step 2: Any block for this category
             cursor.execute(
-                "SELECT DISTINCT ca_id FROM demo_ca_assignments WHERE category_id = %s",
+                "SELECT DISTINCT ca_id FROM helpdesk_ca_assignments WHERE category_id = %s",
                 (category_id,),
             )
             rows = cursor.fetchall()
@@ -1362,8 +1379,8 @@ class DemoDbService(BaseMySQLService):
         placeholders = ", ".join(["%s"] * len(ca_ids))
         sql_load = f"""
             SELECT u.id, COUNT(t.id) AS active_count
-            FROM demo_users u
-            LEFT JOIN demo_tickets t ON t.assigned_to = u.id AND t.status IN ('PENDING', 'IN_PROGRESS', 'REOPENED')
+            FROM helpdesk_users u
+            LEFT JOIN helpdesk_tickets t ON t.assigned_to = u.id AND t.status IN ('PENDING', 'IN_PROGRESS', 'REOPENED')
             WHERE u.id IN ({placeholders})
             GROUP BY u.id
             ORDER BY active_count ASC, u.id ASC
@@ -1384,7 +1401,7 @@ class DemoDbService(BaseMySQLService):
             with self.connection() as connection, connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO demo_audit_events (event_type, actor_id, target_type, target_id, org_id, details)
+                    INSERT INTO helpdesk_audit_events (event_type, actor_id, target_type, target_id, org_id, details)
                     VALUES (%s, %s, %s, %s, %s, %s)
                     """,
                     (event_type, actor_id, target_type, target_id, org_id, details_str),
@@ -1397,8 +1414,8 @@ class DemoDbService(BaseMySQLService):
             SELECT a.id, a.event_type, a.actor_id, a.target_type, a.target_id,
                    a.org_id, a.details, a.created_at,
                    u.name AS actor_name, u.email AS actor_email
-            FROM demo_audit_events a
-            INNER JOIN demo_users u ON u.id = a.actor_id
+            FROM helpdesk_audit_events a
+            INNER JOIN helpdesk_users u ON u.id = a.actor_id
             WHERE 1=1
         """
         params = []
@@ -1459,10 +1476,10 @@ class DemoDbService(BaseMySQLService):
     # ── New Methods for Refactored Blueprints ────────────────────────
 
     def search_users(self, q="", role="", department="", org_id=None, limit=20):
-        """Search demo_users by name, email, or department for autocomplete."""
+        """Search helpdesk_users by name, email, or department for autocomplete."""
         if not q:
             return []
-        sql = "SELECT id, name, email, role, department FROM demo_users WHERE 1=1"
+        sql = "SELECT id, name, email, role, department FROM helpdesk_users WHERE 1=1"
         params = []
         like = f"%{q}%"
         sql += " AND (name LIKE %s OR email LIKE %s)"
@@ -1482,7 +1499,7 @@ class DemoDbService(BaseMySQLService):
     def count_tickets_by_category(self, category_id):
         """Count total tickets for a given category."""
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) AS cnt FROM demo_tickets WHERE category_id = %s", (category_id,))
+            cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_tickets WHERE category_id = %s", (category_id,))
             row = cursor.fetchone()
             return row["cnt"] if row else 0
 
@@ -1490,7 +1507,7 @@ class DemoDbService(BaseMySQLService):
         """Count active (non-resolved/closed) tickets assigned to a CA."""
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT COUNT(*) AS cnt FROM demo_tickets WHERE assigned_to = %s AND status IN ('PENDING', 'IN_PROGRESS', 'REOPENED')",
+                "SELECT COUNT(*) AS cnt FROM helpdesk_tickets WHERE assigned_to = %s AND status IN ('PENDING', 'IN_PROGRESS', 'REOPENED')",
                 (ca_id,),
             )
             row = cursor.fetchone()
@@ -1504,8 +1521,8 @@ class DemoDbService(BaseMySQLService):
                     """
                     SELECT n.id, n.ticket_id, n.author_id, n.note, n.is_internal, n.created_at,
                            u.name AS author_name, u.email AS author_email
-                    FROM demo_ticket_notes n
-                    INNER JOIN demo_users u ON u.id = n.author_id
+                    FROM helpdesk_ticket_notes n
+                    INNER JOIN helpdesk_users u ON u.id = n.author_id
                     WHERE n.ticket_id = %s
                     ORDER BY n.created_at DESC
                     """,
@@ -1520,7 +1537,7 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO demo_ticket_notes (ticket_id, author_id, note, is_internal)
+                INSERT INTO helpdesk_ticket_notes (ticket_id, author_id, note, is_internal)
                 VALUES (%s, %s, %s, %s)
                 """,
                 (ticket_id, author_id, note, 1 if is_internal else 0),
@@ -1543,8 +1560,8 @@ class DemoDbService(BaseMySQLService):
             SELECT {group_expr} AS period,
                    COUNT(*) AS total_created,
                    SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS total_resolved
-            FROM demo_tickets t
-            INNER JOIN demo_categories c ON c.id = t.category_id
+            FROM helpdesk_tickets t
+            INNER JOIN helpdesk_categories c ON c.id = t.category_id
             WHERE 1=1
         """
         params = []
@@ -1571,9 +1588,9 @@ class DemoDbService(BaseMySQLService):
                    SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS total_resolved,
                    SUM(CASE WHEN t.status IN ('PENDING', 'IN_PROGRESS', 'REOPENED') THEN 1 ELSE 0 END) AS active_tickets,
                    AVG(CASE WHEN t.status = 'RESOLVED' THEN TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at) END) AS avg_resolution_hours
-            FROM demo_users u
-            LEFT JOIN demo_tickets t ON t.assigned_to = u.id
-            LEFT JOIN demo_categories c ON c.id = t.category_id
+            FROM helpdesk_users u
+            LEFT JOIN helpdesk_tickets t ON t.assigned_to = u.id
+            LEFT JOIN helpdesk_categories c ON c.id = t.category_id
             WHERE u.role = 'CA'
         """
         params = []
@@ -1612,8 +1629,8 @@ class DemoDbService(BaseMySQLService):
                    AVG(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)) AS avg_hours,
                    MIN(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)) AS min_hours,
                    MAX(TIMESTAMPDIFF(HOUR, t.created_at, t.updated_at)) AS max_hours
-            FROM demo_tickets t
-            INNER JOIN demo_categories c ON c.id = t.category_id
+            FROM helpdesk_tickets t
+            INNER JOIN helpdesk_categories c ON c.id = t.category_id
             WHERE t.status = 'RESOLVED'
         """
         params = []

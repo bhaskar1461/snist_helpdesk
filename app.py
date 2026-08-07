@@ -5,6 +5,7 @@ import io
 import logging
 import os
 import re
+import uuid
 from functools import wraps
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -139,7 +140,7 @@ def bootstrap_demo_database():
         try:
             with demo_db.connection() as conn, conn.cursor() as cur:
                 cur.execute("""
-                    CREATE TABLE IF NOT EXISTS demo_ca_assignments (
+                    CREATE TABLE IF NOT EXISTS helpdesk_ca_assignments (
                       id INT UNSIGNED NOT NULL AUTO_INCREMENT,
                       category_id INT UNSIGNED NOT NULL,
                       ca_id INT UNSIGNED NOT NULL,
@@ -149,9 +150,9 @@ def bootstrap_demo_database():
                       UNIQUE KEY uq_demo_ca_assignments_cat_block_ca (category_id, block, ca_id)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
                 """)
-                log.info("Migration: created demo_ca_assignments table if not exists.")
+                log.info("Migration: created helpdesk_ca_assignments table if not exists.")
         except Exception as mig_exc:
-            log.warning("Migration check for demo_ca_assignments: %s", mig_exc)
+            log.warning("Migration check for helpdesk_ca_assignments: %s", mig_exc)
         # Migration v2: run migration_v2.sql for problem_types, audit_events, etc.
         try:
             if MIGRATION_V2_PATH.exists():
@@ -166,13 +167,13 @@ def bootstrap_demo_database():
                 log.info("Migration v2 executed successfully.")
         except Exception as mig_exc:
             log.warning("Migration v2: %s", mig_exc)
-        # Migration v2: add problem_type_id column to demo_tickets
+        # Migration v2: add problem_type_id column to helpdesk_tickets
         try:
             with demo_db.connection() as conn, conn.cursor() as cur:
-                cur.execute("SHOW COLUMNS FROM demo_tickets LIKE 'problem_type_id'")
+                cur.execute("SHOW COLUMNS FROM helpdesk_tickets LIKE 'problem_type_id'")
                 if not cur.fetchone():
-                    cur.execute("ALTER TABLE demo_tickets ADD COLUMN problem_type_id INT UNSIGNED NULL AFTER category_id")
-                    log.info("Migration v2: added problem_type_id column to demo_tickets.")
+                    cur.execute("ALTER TABLE helpdesk_tickets ADD COLUMN problem_type_id INT UNSIGNED NULL AFTER category_id")
+                    log.info("Migration v2: added problem_type_id column to helpdesk_tickets.")
         except Exception as mig_exc:
             log.warning("Migration v2 problem_type_id: %s", mig_exc)
         # Migration v2: add is_archived column to branch_detail
@@ -184,6 +185,38 @@ def bootstrap_demo_database():
                     log.info("Migration v2: added is_archived column to branch_detail.")
         except Exception as mig_exc:
             log.warning("Migration v2 is_archived: %s", mig_exc)
+        # Migration v5: dedup keys (submission_key on tickets, unique indexes)
+        try:
+            v5_path = BASE_DIR / "sql" / "migration_v5_dedup_keys.sql"
+            if v5_path.is_file():
+                v5_sql = v5_path.read_text(encoding="utf-8")
+                with demo_db.connection() as conn, conn.cursor() as cur:
+                    for stmt in v5_sql.split(";"):
+                        stmt = stmt.strip()
+                        if stmt and not stmt.startswith("--"):
+                            try:
+                                cur.execute(stmt)
+                            except Exception:
+                                pass  # Column/index may already exist
+                log.info("Migration v5 (dedup keys) executed successfully.")
+        except Exception as mig_exc:
+            log.warning("Migration v5: %s", mig_exc)
+        # Migration v6: rename demo_* tables to production helpdesk_*
+        try:
+            v6_path = BASE_DIR / "sql" / "migration_v6_rename_tables.sql"
+            if v6_path.is_file():
+                v6_sql = v6_path.read_text(encoding="utf-8")
+                with demo_db.connection() as conn, conn.cursor() as cur:
+                    for stmt in v6_sql.split(";"):
+                        stmt = stmt.strip()
+                        if stmt and not stmt.startswith("--"):
+                            try:
+                                cur.execute(stmt)
+                            except Exception:
+                                pass
+                log.info("Migration v6 (rename tables) executed successfully.")
+        except Exception as mig_exc:
+            log.warning("Migration v6: %s", mig_exc)
         log.info("Demo database bootstrapped successfully.")
     except Exception as exc:
         log.error("Demo DB bootstrap failed: %s", exc)
@@ -627,7 +660,8 @@ def create_ticket_for_role():
             return redirect(url_for("create_ticket_for_role"))
 
         org_id = user["org_id"]
-        demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id)
+        submission_key = request.form.get("submission_key", "").strip() or None
+        demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id, submission_key=submission_key)
         flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
@@ -646,6 +680,7 @@ def create_ticket_for_role():
         user_dept_name=user_dept_name,
         current_user_dept=user_dept,
         departments=all_depts,
+        submission_key=str(uuid.uuid4()),
         **page_context("Create Ticket")
     )
 
@@ -1631,12 +1666,14 @@ def api_demo_tickets():
     if len(description) > 5000:
         return jsonify({"error": "description cannot exceed 5000 characters."}), 400
     org_id = live_db.resolve_org_id(email=user["email"], department=user["department"])
+    submission_key = (payload.get("submission_key") or "").strip() or None
     ticket_id = demo_db.create_ticket(
         title=title,
         description=description,
         category_id=category_id,
         created_by=user["id"],
         org_id=org_id,
+        submission_key=submission_key,
     )
     return jsonify({"id": ticket_id}), 201
 

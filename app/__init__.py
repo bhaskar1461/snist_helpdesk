@@ -12,7 +12,8 @@ from flask_wtf.csrf import CSRFProtect
 
 from app.config import (
     BASE_DIR, DEFAULT_DEMO_CATEGORIES, DEFAULT_DEMO_USERS,
-    MIGRATION_V2_PATH, MIGRATION_V3_PATH, SCHEMA_PATH, get_flask_config,
+    MIGRATION_V2_PATH, MIGRATION_V3_PATH, MIGRATION_V5_PATH, MIGRATION_V6_PATH,
+    SCHEMA_PATH, get_flask_config,
 )
 from app.helpers import resolve_user_org
 
@@ -178,9 +179,31 @@ def _init_database_schema(demo_db):
                     except Exception:
                         pass  # Table may already exist
 
+        # ── Migration V5: Dedup Keys ───────────────────────────────
+        if MIGRATION_V5_PATH.is_file():
+            v5_text = MIGRATION_V5_PATH.read_text(encoding="utf-8")
+            for stmt in v5_text.split(";"):
+                stmt = stmt.strip()
+                if stmt and not stmt.startswith("--"):
+                    try:
+                        cursor.execute(stmt)
+                    except Exception:
+                        pass  # Column/index may already exist
+
+        # ── Migration V6: Rename Tables to Production helpdesk_* ─────
+        if MIGRATION_V6_PATH.is_file():
+            v6_text = MIGRATION_V6_PATH.read_text(encoding="utf-8")
+            for stmt in v6_text.split(";"):
+                stmt = stmt.strip()
+                if stmt and not stmt.startswith("--"):
+                    try:
+                        cursor.execute(stmt)
+                    except Exception:
+                        pass  # Table rename procedure may already have run
+
         # ── CA Assignments Table ────────────────────────────────────
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS demo_ca_assignments (
+            CREATE TABLE IF NOT EXISTS helpdesk_ca_assignments (
                 id INT UNSIGNED NOT NULL AUTO_INCREMENT,
                 category_id INT UNSIGNED NOT NULL,
                 ca_id INT UNSIGNED NOT NULL,
@@ -194,28 +217,28 @@ def _init_database_schema(demo_db):
         """)
 
         # ── Seed Default Users ──────────────────────────────────────
-        cursor.execute("SELECT COUNT(*) AS cnt FROM demo_users")
+        cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_users")
         if cursor.fetchone()["cnt"] == 0:
             for u in DEFAULT_DEMO_USERS:
                 hashed = generate_password_hash(u["password"])
                 cursor.execute(
-                    "INSERT INTO demo_users (name, email, password, role, department) VALUES (%s, %s, %s, %s, %s)",
+                    "INSERT INTO helpdesk_users (name, email, password, role, department) VALUES (%s, %s, %s, %s, %s)",
                     (u["name"], u["email"], hashed, u["role"], u["department"]),
                 )
             log.info("Seeded %d default demo users.", len(DEFAULT_DEMO_USERS))
 
         # ── Seed Default Categories ─────────────────────────────────
-        cursor.execute("SELECT COUNT(*) AS cnt FROM demo_categories")
+        cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_categories")
         if cursor.fetchone()["cnt"] == 0:
             for c in DEFAULT_DEMO_CATEGORIES:
                 cursor.execute(
-                    "SELECT id FROM demo_users WHERE email = %s LIMIT 1",
+                    "SELECT id FROM helpdesk_users WHERE email = %s LIMIT 1",
                     (c["authority_email"],),
                 )
                 ca_row = cursor.fetchone()
                 if ca_row:
                     cursor.execute(
-                        "INSERT INTO demo_categories (category_name, department, assigned_ca_id) VALUES (%s, %s, %s)",
+                        "INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id) VALUES (%s, %s, %s)",
                         (c["category_name"], c["department"], ca_row["id"]),
                     )
             log.info("Seeded %d default demo categories.", len(DEFAULT_DEMO_CATEGORIES))

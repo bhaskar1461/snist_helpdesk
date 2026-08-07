@@ -7,7 +7,7 @@ class TestReportsExport(HelpdeskTestCase):
     def setUp(self):
         super().setUp()
         # Seed tickets for export testing
-        GLOBAL_DB_STATE.tables["demo_tickets"] = [
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"] = [
             {
                 "id": 1,
                 "title": "=1+2 (Formula Injection Test)", # Formula injection character
@@ -110,7 +110,7 @@ class TestReportsExport(HelpdeskTestCase):
         })
 
         # Verify audit event table contains the log entry
-        audit_events = GLOBAL_DB_STATE.tables["demo_audit_events"]
+        audit_events = GLOBAL_DB_STATE.tables["helpdesk_audit_events"]
         self.assertTrue(len(audit_events) >= 1)
         self.assertEqual(audit_events[-1]["org_id"], "2000")
         

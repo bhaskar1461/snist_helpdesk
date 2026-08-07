@@ -77,8 +77,21 @@ To secure the application with Let's Encrypt SSL, configure Nginx as a reverse p
 
 ---
 
-## 4. Legacy Database Migration
+## 4. Production Database Setup & Migrations
 
+### Production Schema Application
+To initialize a clean production database using the production schema:
+```bash
+mysql -u <username> -p <database_name> < sql/production_schema.sql
+```
+This sets up all `helpdesk_*` tables, indexes, foreign keys, and double-submit `submission_key` deduplication constraints.
+
+### Automatic Migrations
+The application automatically executes database migrations (`v2` through `v6`) on startup.
+- **Migration V5**: Adds `submission_key` to `helpdesk_tickets` and unique indexes on activity/notes for deduplication.
+- **Migration V6**: Safely renames existing `demo_*` tables to production `helpdesk_*` names.
+
+### Legacy Database Migration
 To migrate historical data from legacy dumps (e.g. `sreenidhi.sys_administrators` and `sreenidhi.sys_complaint`):
 
 1. **Place Dump File**: Ensure `sql/sreenidhi_dump.sql` exists in the codebase root.
@@ -87,10 +100,10 @@ To migrate historical data from legacy dumps (e.g. `sreenidhi.sys_administrators
    docker exec snist_helpdesk-web-1 python scripts/migrate_legacy_data.py
    ```
    This automatically:
-   - Imports `sys_administrators` -> `demo_users` (mapping teacher roles and accounts).
-   - Extracts unique block/room coordinates -> `demo_locations`.
-   - Maps complaint device categories -> `demo_categories`.
-   - Imports all historical tickets into `demo_tickets`.
+   - Imports `sys_administrators` -> `helpdesk_users` (mapping teacher roles and accounts).
+   - Extracts unique block/room coordinates -> `location`.
+   - Maps complaint device categories -> `helpdesk_categories`.
+   - Imports all historical tickets into `helpdesk_tickets`.
 
 ---
 

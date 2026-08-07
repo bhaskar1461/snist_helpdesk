@@ -87,12 +87,13 @@ bash install.sh
 
 ## Database Setup
 
-- **Initialization**: Automatically boots database tables and seeds demo profiles on startup. Can be disabled via `INIT_DEMO_DB=false`.
-- **Seed Script**: Run seeds manually using:
+- **Production Schema**: The production-ready database schema is provided in [`sql/production_schema.sql`](sql/production_schema.sql) with clean `helpdesk_*` table prefixes.
+- **Anti-Duplication**: Built-in double-submit protection using UUID `submission_key` constraints on `helpdesk_tickets` and unique deduplication indexes on activities & notes.
+- **Automated Bootstrapping & Migrations**: Automatically builds database tables and executes migrations (`v2` to `v6`) on application startup. Can be disabled via `INIT_DEMO_DB=false`.
+- **Manual Schema Setup**:
   ```bash
-  python scripts/init_demo_db.py
+  mysql -u <user> -p <db_name> < sql/production_schema.sql
   ```
-- **Backup & Restore**: Refer to [docs/deployment.md](docs/deployment.md) for full commands.
 
 ---
 

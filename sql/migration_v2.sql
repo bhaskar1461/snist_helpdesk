@@ -5,7 +5,7 @@
 -- ============================================================
 
 -- 1. Problem Types (Feature 8, 10)
-CREATE TABLE IF NOT EXISTS demo_problem_types (
+CREATE TABLE IF NOT EXISTS helpdesk_problem_types (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   category_id INT UNSIGNED NOT NULL,
   problem_name VARCHAR(180) NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS demo_problem_types (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2. Audit Events (Feature 3, 4, 5, 11)
-CREATE TABLE IF NOT EXISTS demo_audit_events (
+CREATE TABLE IF NOT EXISTS helpdesk_audit_events (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   event_type VARCHAR(60) NOT NULL,
   actor_id INT UNSIGNED NOT NULL,

@@ -45,6 +45,7 @@
       <section class="admin-card">
         <form class="admin-form" method="post" action="{{ url_for('tickets.create_ticket_for_role') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="submission_key" value="{{ submission_key }}">
           <div class="form-grid">
             <label class="field">
               <span>Department</span>

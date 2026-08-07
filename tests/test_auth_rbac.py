@@ -72,14 +72,14 @@ class TestAuthRbac(HelpdeskTestCase):
 
     def test_auto_provisioning_flow(self):
         # Check that user 'seeded@sreenidhi.edu.in' does not exist in demo_users initially
-        GLOBAL_DB_STATE.tables["demo_users"] = [u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["email"] != "seeded@sreenidhi.edu.in"]
+        GLOBAL_DB_STATE.tables["helpdesk_users"] = [u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["email"] != "seeded@sreenidhi.edu.in"]
         
         # Try to login with email = 'seeded@sreenidhi.edu.in' and password = '10001' (SAP_ID from teacher_info)
         response = self.client.post("/", data={"email": "seeded@sreenidhi.edu.in", "password": "10001"}, follow_redirects=True)
         self.assertEqual(response.status_code, 200) # Returns dashboard on success
         
         # Verify user was automatically created in the database and logged in
-        created_user = next((u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["email"] == "seeded@sreenidhi.edu.in"), None)
+        created_user = next((u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["email"] == "seeded@sreenidhi.edu.in"), None)
         self.assertIsNotNone(created_user)
         self.assertEqual(created_user["role"], "FACULTY")
         self.assertEqual(created_user["name"], "Seeded Teacher")
@@ -177,6 +177,6 @@ class TestAuthRbac(HelpdeskTestCase):
             self.assertNotIn("acting_department", sess)
 
         # Audit event created
-        audit_events = GLOBAL_DB_STATE.tables["demo_audit_events"]
+        audit_events = GLOBAL_DB_STATE.tables["helpdesk_audit_events"]
         self.assertTrue(any(e["event_type"] == "IMPERSONATION_START" for e in audit_events))
         self.assertTrue(any(e["event_type"] == "IMPERSONATION_STOP" for e in audit_events))
