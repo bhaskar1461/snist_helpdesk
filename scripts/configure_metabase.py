@@ -1,4 +1,4 @@
-﻿"""
+"""
 Metabase Dashboard Auto-Configurator for SNIST Helpdesk.
 Creates 3 embedded dashboards: Overview, Trends, CA Performance.
 Uses the Metabase REST API to create questions, dashboards, and enable embedding.
@@ -333,10 +333,10 @@ def main():
     q12 = create_native_question(db_id, "Tickets by Hour of Day",
         "When are tickets created? Distribution by hour.",
         """
-        SELECT CONCAT(LPAD(HOUR(created_at), 2, '0'), ':00') AS 'Hour',
-               COUNT(*) AS 'Tickets'
+        SELECT CONCAT(LPAD(HOUR(created_at), 2, '0'), ':00') AS `Hour`,
+               COUNT(*) AS `Tickets`
         FROM helpdesk_tickets
-        GROUP BY HOUR(created_at)
+        GROUP BY HOUR(created_at), CONCAT(LPAD(HOUR(created_at), 2, '0'), ':00')
         ORDER BY HOUR(created_at) ASC
         """, "bar", {"graph.dimensions": ["Hour"], "graph.metrics": ["Tickets"]})
 
