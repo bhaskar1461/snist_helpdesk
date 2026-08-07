@@ -114,8 +114,8 @@ def run_full_migration():
                 continue
 
             cursor.execute("""
-                INSERT INTO helpdesk_users (name, email, password, role, department, org_id)
-                VALUES (%s, %s, %s, 'FACULTY', %s, '2000')
+                INSERT INTO helpdesk_users (name, email, password, role, department)
+                VALUES (%s, %s, %s, 'FACULTY', %s)
             """, (name, email, default_pw, dept))
             existing_emails.add(email)
             teachers_inserted += 1
@@ -150,8 +150,8 @@ def run_full_migration():
                 uid = row["id"]
             else:
                 cursor.execute("""
-                    INSERT INTO helpdesk_users (name, email, password, role, department, org_id)
-                    VALUES (%s, %s, %s, %s, %s, '2000');
+                    INSERT INTO helpdesk_users (name, email, password, role, department)
+                    VALUES (%s, %s, %s, %s, %s);
                 """, (name, email, generate_password_hash("Password@123"), role, dept))
                 uid = cursor.lastrowid
 
