@@ -84,7 +84,7 @@ def login():
         if props and props.get("setup-token"):
             setup_token = props["setup-token"]
             print("[..] Fresh Metabase detected. Auto-completing initial setup wizard...")
-            setup_res = api("POST", "/api/setup", {
+            setup_payload = {
                 "token": setup_token,
                 "user": {
                     "email": ADMIN_EMAIL,
@@ -94,15 +94,19 @@ def login():
                     "site_name": "SNIST Helpdesk Analytics"
                 },
                 "prefs": {
+                    "site_name": "SNIST Helpdesk Analytics",
                     "allow_tracking": False
                 }
-            }, silent=True)
+            }
+            setup_res = api("POST", "/api/setup", setup_payload, silent=False)
             if setup_res and "id" in setup_res:
                 session_token = setup_res["id"]
                 print(f"[OK] Metabase initial setup completed with email: {ADMIN_EMAIL}")
                 return True
-    except Exception:
-        pass
+            else:
+                print(f"[!] Setup call did not return session ID: {setup_res}")
+    except Exception as exc:
+        print(f"[!] Metabase setup exception: {exc}")
 
     # Try configured credentials first, followed by fallbacks
     credentials_to_try = [
