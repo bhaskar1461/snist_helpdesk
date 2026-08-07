@@ -1,4 +1,4 @@
-"""
+﻿"""
 Metabase Dashboard Auto-Configurator for SNIST Helpdesk.
 Creates 3 embedded dashboards: Overview, Trends, CA Performance.
 Uses the Metabase REST API to create questions, dashboards, and enable embedding.
@@ -73,7 +73,7 @@ def sync_database(db_id):
         result = api("GET", f"/api/database/{db_id}/metadata")
         if result and result.get("tables"):
             tables = [t["name"] for t in result["tables"]]
-            if "demo_tickets" in tables:
+            if "helpdesk_tickets" in tables:
                 print(f"[OK] Database synced. Found {len(tables)} tables.")
                 return True
     print("[WARN] Sync may still be running.")
@@ -175,7 +175,7 @@ def enable_dashboard_embedding(dashboard_id):
 
 def main():
     print("=" * 60)
-    print("SNIST Helpdesk — Metabase Dashboard Configurator")
+    print("SNIST Helpdesk â€” Metabase Dashboard Configurator")
     print("=" * 60)
 
     if not login():
@@ -197,7 +197,7 @@ def main():
         """
         SELECT status AS 'Status',
                COUNT(*) AS 'Count'
-        FROM demo_tickets
+        FROM helpdesk_tickets
         GROUP BY status
         ORDER BY FIELD(status, 'PENDING', 'IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'REOPENED')
         """, "bar", {"graph.dimensions": ["Status"], "graph.metrics": ["Count"]})
@@ -207,8 +207,8 @@ def main():
         """
         SELECT c.department AS 'Department',
                COUNT(t.id) AS 'Tickets'
-        FROM demo_tickets t
-        JOIN demo_categories c ON t.category_id = c.id
+        FROM helpdesk_tickets t
+        JOIN helpdesk_categories c ON t.category_id = c.id
         GROUP BY c.department
         ORDER BY COUNT(t.id) DESC
         """, "bar", {"graph.dimensions": ["Department"], "graph.metrics": ["Tickets"]})
@@ -219,8 +219,8 @@ def main():
         SELECT c.category_name AS 'Category',
                c.department AS 'Department',
                COUNT(t.id) AS 'Tickets'
-        FROM demo_tickets t
-        JOIN demo_categories c ON t.category_id = c.id
+        FROM helpdesk_tickets t
+        JOIN helpdesk_categories c ON t.category_id = c.id
         GROUP BY c.category_name, c.department
         ORDER BY COUNT(t.id) DESC
         """, "pie", {"pie.dimension": "Category", "pie.metric": "Tickets"})
@@ -236,27 +236,27 @@ def main():
                u.name AS 'Created By',
                ca.name AS 'Assigned To',
                t.created_at AS 'Created'
-        FROM demo_tickets t
-        JOIN demo_categories c ON t.category_id = c.id
-        JOIN demo_users u ON t.created_by = u.id
-        JOIN demo_users ca ON t.assigned_to = ca.id
+        FROM helpdesk_tickets t
+        JOIN helpdesk_categories c ON t.category_id = c.id
+        JOIN helpdesk_users u ON t.created_by = u.id
+        JOIN helpdesk_users ca ON t.assigned_to = ca.id
         ORDER BY t.created_at DESC
         LIMIT 20
         """, "table")
 
     q5 = create_native_question(db_id, "Total Ticket Count",
         "Single number: total tickets.",
-        "SELECT COUNT(*) AS 'Total Tickets' FROM demo_tickets",
+        "SELECT COUNT(*) AS 'Total Tickets' FROM helpdesk_tickets",
         "scalar")
 
     q6 = create_native_question(db_id, "Pending Ticket Count",
         "Single number: pending tickets.",
-        "SELECT COUNT(*) AS 'Pending' FROM demo_tickets WHERE status = 'PENDING'",
+        "SELECT COUNT(*) AS 'Pending' FROM helpdesk_tickets WHERE status = 'PENDING'",
         "scalar")
 
     q7 = create_native_question(db_id, "Resolved Ticket Count",
         "Single number: resolved tickets.",
-        "SELECT COUNT(*) AS 'Resolved' FROM demo_tickets WHERE status = 'RESOLVED'",
+        "SELECT COUNT(*) AS 'Resolved' FROM helpdesk_tickets WHERE status = 'RESOLVED'",
         "scalar")
 
     dash_overview = create_dashboard("Helpdesk Overview",
@@ -285,7 +285,7 @@ def main():
         """
         SELECT DATE(created_at) AS 'Date',
                COUNT(*) AS 'Tickets Created'
-        FROM demo_tickets
+        FROM helpdesk_tickets
         WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         GROUP BY DATE(created_at)
         ORDER BY DATE(created_at)
@@ -296,7 +296,7 @@ def main():
         """
         SELECT DATE(a.created_at) AS 'Date',
                COUNT(*) AS 'Tickets Resolved'
-        FROM demo_ticket_activity a
+        FROM helpdesk_ticket_activity a
         WHERE a.to_status = 'RESOLVED'
           AND a.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
         GROUP BY DATE(a.created_at)
@@ -309,7 +309,7 @@ def main():
         SELECT DATE_FORMAT(t.created_at, '%Y-W%v') AS 'Week',
                COUNT(*) AS 'Created',
                SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS 'Resolved'
-        FROM demo_tickets t
+        FROM helpdesk_tickets t
         GROUP BY DATE_FORMAT(t.created_at, '%Y-W%v')
         ORDER BY DATE_FORMAT(t.created_at, '%Y-W%v') ASC
         LIMIT 12
@@ -320,12 +320,12 @@ def main():
         """
         SELECT a.id,
                u.name AS 'Action By',
-               COALESCE(a.from_status, '—') AS 'From',
+               COALESCE(a.from_status, 'â€”') AS 'From',
                a.to_status AS 'To',
                a.remarks AS 'Remarks',
                a.created_at AS 'Timestamp'
-        FROM demo_ticket_activity a
-        JOIN demo_users u ON a.action_by = u.id
+        FROM helpdesk_ticket_activity a
+        JOIN helpdesk_users u ON a.action_by = u.id
         ORDER BY a.created_at DESC
         LIMIT 50
         """, "table")
@@ -335,7 +335,7 @@ def main():
         """
         SELECT CONCAT(LPAD(HOUR(created_at), 2, '0'), ':00') AS 'Hour',
                COUNT(*) AS 'Tickets'
-        FROM demo_tickets
+        FROM helpdesk_tickets
         GROUP BY HOUR(created_at)
         ORDER BY HOUR(created_at) ASC
         """, "bar", {"graph.dimensions": ["Hour"], "graph.metrics": ["Tickets"]})
@@ -369,8 +369,8 @@ def main():
                SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS 'Resolved',
                SUM(CASE WHEN t.status IN ('PENDING','IN_PROGRESS','REOPENED') THEN 1 ELSE 0 END) AS 'Active',
                SUM(CASE WHEN t.status = 'ON_HOLD' THEN 1 ELSE 0 END) AS 'On Hold'
-        FROM demo_tickets t
-        JOIN demo_users ca ON t.assigned_to = ca.id
+        FROM helpdesk_tickets t
+        JOIN helpdesk_users ca ON t.assigned_to = ca.id
         GROUP BY ca.id, ca.name, ca.email, ca.department
         ORDER BY COUNT(t.id) DESC
         """, "table")
@@ -380,9 +380,9 @@ def main():
         """
         SELECT ca.name AS 'CA Name',
                ROUND(AVG(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at)), 1) AS 'Avg Hours'
-        FROM demo_tickets t
-        JOIN demo_users ca ON t.assigned_to = ca.id
-        JOIN demo_ticket_activity a ON a.ticket_id = t.id AND a.to_status = 'RESOLVED'
+        FROM helpdesk_tickets t
+        JOIN helpdesk_users ca ON t.assigned_to = ca.id
+        JOIN helpdesk_ticket_activity a ON a.ticket_id = t.id AND a.to_status = 'RESOLVED'
         GROUP BY ca.id, ca.name
         ORDER BY AVG(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at))
         """, "bar", {"graph.dimensions": ["CA Name"], "graph.metrics": ["Avg Hours"]})
@@ -396,9 +396,9 @@ def main():
                ROUND(AVG(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at)), 1) AS 'Avg Hours',
                ROUND(MIN(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at)), 1) AS 'Min Hours',
                ROUND(MAX(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at)), 1) AS 'Max Hours'
-        FROM demo_tickets t
-        JOIN demo_categories c ON t.category_id = c.id
-        JOIN demo_ticket_activity a ON a.ticket_id = t.id AND a.to_status = 'RESOLVED'
+        FROM helpdesk_tickets t
+        JOIN helpdesk_categories c ON t.category_id = c.id
+        JOIN helpdesk_ticket_activity a ON a.ticket_id = t.id AND a.to_status = 'RESOLVED'
         GROUP BY c.id, c.category_name, c.department
         ORDER BY AVG(TIMESTAMPDIFF(HOUR, t.created_at, a.created_at))
         """, "table")
@@ -410,8 +410,8 @@ def main():
                COUNT(t.id) AS 'Total',
                SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) AS 'Resolved',
                ROUND(100.0 * SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) / COUNT(t.id), 1) AS 'Resolution Rate %'
-        FROM demo_tickets t
-        JOIN demo_users ca ON t.assigned_to = ca.id
+        FROM helpdesk_tickets t
+        JOIN helpdesk_users ca ON t.assigned_to = ca.id
         GROUP BY ca.id, ca.name
         HAVING COUNT(t.id) > 0
         ORDER BY ROUND(100.0 * SUM(CASE WHEN t.status = 'RESOLVED' THEN 1 ELSE 0 END) / COUNT(t.id), 1) DESC
@@ -428,9 +428,9 @@ def main():
                c.category_name AS 'Category',
                t.created_at AS 'Created',
                TIMESTAMPDIFF(HOUR, t.created_at, NOW()) AS 'Age (hrs)'
-        FROM demo_tickets t
-        JOIN demo_users ca ON t.assigned_to = ca.id
-        JOIN demo_categories c ON t.category_id = c.id
+        FROM helpdesk_tickets t
+        JOIN helpdesk_users ca ON t.assigned_to = ca.id
+        JOIN helpdesk_categories c ON t.category_id = c.id
         WHERE t.status NOT IN ('RESOLVED')
         ORDER BY t.created_at ASC
         LIMIT 50
@@ -474,3 +474,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

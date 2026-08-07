@@ -121,6 +121,22 @@ for setting in ['enable-embedding', 'enable-embedding-static']:
         print(f'{setting} enable error:', e)
 " 2>&1
 
+# --- Set Site URL ---
+log "Setting site URL..."
+python3 -c "
+import urllib.request, json
+site_url = '${METABASE_SITE_URL:-http://localhost:3002}'
+data = json.dumps({'value': site_url}).encode()
+req = urllib.request.Request('${METABASE_URL}/api/setting/site-url', data=data, method='PUT')
+req.add_header('Content-Type', 'application/json')
+req.add_header('X-Metabase-Session', '${SESSION_ID}')
+try:
+    urllib.request.urlopen(req, timeout=10)
+    print('Site URL set to:', site_url)
+except Exception as e:
+    print('Site URL error:', e)
+" 2>&1
+
 # --- Set embedding secret key ---
 if [ -n "$SECRET_KEY" ]; then
     log "Setting embedding secret key..."

@@ -634,7 +634,7 @@ def delete_category(category_id):
     else:
         try:
             with demo_db.connection() as conn, conn.cursor() as cursor:
-                cursor.execute("SELECT COUNT(*) AS cnt FROM demo_tickets WHERE category_id = %s", (category_id,))
+                cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_tickets WHERE category_id = %s", (category_id,))
                 res = cursor.fetchone()
                 ticket_count = res["cnt"] if res else 0
         except Exception:

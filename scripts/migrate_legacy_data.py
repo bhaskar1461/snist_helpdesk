@@ -91,13 +91,13 @@ def run_migration():
             role = "FACULTY"
 
         # Check if user already exists
-        cursor.execute("SELECT id FROM demo_users WHERE email = %s;", (email,))
+        cursor.execute("SELECT id FROM helpdesk_users WHERE email = %s;", (email,))
         row = cursor.fetchone()
         if row:
             uid = row["id"]
         else:
             cursor.execute("""
-                INSERT INTO demo_users (name, email, password, role, department)
+                INSERT INTO helpdesk_users (name, email, password, role, department)
                 VALUES (%s, %s, %s, %s, %s);
             """, (name, email, default_pw_hash, role, dept))
             uid = cursor.lastrowid
@@ -108,12 +108,12 @@ def run_migration():
     print(f"[OK] Migrated/mapped {len(teacher_to_user_id)} legacy users ({users_migrated} new users added).")
 
     # Get a default CA user ID for category mapping
-    cursor.execute("SELECT id FROM demo_users WHERE role IN ('SUPER_ADMIN', 'ADMIN', 'CA') LIMIT 1;")
+    cursor.execute("SELECT id FROM helpdesk_users WHERE role IN ('SUPER_ADMIN', 'ADMIN', 'CA') LIMIT 1;")
     default_ca = cursor.fetchone()
     default_ca_id = default_ca["id"] if default_ca else 1
 
     # 3. Migrate locations & categories & complaints
-    print("[..] Migrating demo_sys_complaint -> demo_tickets...")
+    print("[..] Migrating demo_sys_complaint -> helpdesk_tickets...")
     cursor.execute("SELECT * FROM demo_sys_complaint WHERE TICKET_ID > 1;")
     complaints = cursor.fetchall()
 
@@ -145,28 +145,16 @@ def run_migration():
 
         title = f"{device_type} Issue at {block} - {room}" if device_type else f"Issue at {block} - {room}"
 
-        # 3a. Resolve location_id
-        loc_key = (block, room)
-        if loc_key not in locations_cache:
-            cursor.execute("SELECT id FROM demo_locations WHERE block = %s AND room = %s;", (block, room))
-            lrow = cursor.fetchone()
-            if lrow:
-                locations_cache[loc_key] = lrow["id"]
-            else:
-                cursor.execute("INSERT INTO demo_locations (block, room) VALUES (%s, %s);", (block, room))
-                locations_cache[loc_key] = cursor.lastrowid
-        loc_id = locations_cache[loc_key]
-
         # 3b. Resolve category_id
         cat_key = (device_type, dept)
         if cat_key not in categories_cache:
-            cursor.execute("SELECT id FROM demo_categories WHERE category_name = %s AND department = %s;", (device_type, dept))
+            cursor.execute("SELECT id FROM helpdesk_categories WHERE category_name = %s AND department = %s;", (device_type, dept))
             crow = cursor.fetchone()
             if crow:
                 categories_cache[cat_key] = crow["id"]
             else:
                 cursor.execute("""
-                    INSERT INTO demo_categories (category_name, department, assigned_ca_id, is_active)
+                    INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id, is_active)
                     VALUES (%s, %s, %s, 1);
                 """, (device_type, dept, default_ca_id))
                 categories_cache[cat_key] = cursor.lastrowid
@@ -176,13 +164,13 @@ def run_migration():
         creator_id = teacher_to_user_id.get(raised_by_tid, default_ca_id)
 
         # Check if ticket already imported
-        cursor.execute("SELECT id FROM demo_tickets WHERE id = %s;", (ticket_id,))
+        cursor.execute("SELECT id FROM helpdesk_tickets WHERE id = %s;", (ticket_id,))
         if not cursor.fetchone():
             cursor.execute("""
-                INSERT INTO demo_tickets 
-                (id, title, description, category_id, created_by, assigned_to, status, org_id, location_id, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', '2000', %s, %s);
-            """, (ticket_id, title[:180], description, cat_id, creator_id, default_ca_id, loc_id, raised_dt))
+                INSERT INTO helpdesk_tickets 
+                (id, title, description, category_id, created_by, assigned_to, status, org_id, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'PENDING', '2000', %s);
+            """, (ticket_id, title[:180], description, cat_id, creator_id, default_ca_id, raised_dt))
             tickets_migrated += 1
 
     print(f"[OK] Migration completed! Successfully imported {tickets_migrated} legacy tickets.")

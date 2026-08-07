@@ -155,7 +155,17 @@ def _init_database_schema(demo_db):
                     try:
                         cursor.execute(stmt)
                     except Exception as exc:
-                        log.warning("Warning executing statement in base schema: %s", exc)
+                        if "REFERENCES command denied" in str(exc) or "1142" in str(exc):
+                            import re
+                            fallback = re.sub(r',?\s*CONSTRAINT\s+[\w`]+\s+FOREIGN\s+KEY\s*\([^)]+\)\s*REFERENCES\s+[\w`.]+\s*\([^)]+\)(?:\s+ON\s+(?:DELETE|UPDATE)\s+[A-Z\s]+)*', '', stmt, flags=re.IGNORECASE)
+                            fallback = re.sub(r',?\s*FOREIGN\s+KEY\s*\([^)]+\)\s*REFERENCES\s+[\w`.]+\s*\([^)]+\)(?:\s+ON\s+(?:DELETE|UPDATE)\s+[A-Z\s]+)*', '', fallback, flags=re.IGNORECASE)
+                            fallback = re.sub(r',\s*(\n?\s*\))', r'\1', fallback)
+                            try:
+                                cursor.execute(fallback)
+                            except Exception as inner_exc:
+                                log.warning("Warning executing fallback statement in base schema: %s", inner_exc)
+                        else:
+                            log.warning("Warning executing statement in base schema: %s", exc)
 
         # ── Migration V2 ───────────────────────────────────────────
         if MIGRATION_V2_PATH.is_file():

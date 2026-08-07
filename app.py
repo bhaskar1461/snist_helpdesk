@@ -109,34 +109,34 @@ def bootstrap_demo_database():
         # Migration: add location_id if it doesn't exist yet
         try:
             with demo_db.connection() as conn, conn.cursor() as cur:
-                cur.execute("SHOW COLUMNS FROM demo_tickets LIKE 'location_id'")
+                cur.execute("SHOW COLUMNS FROM helpdesk_tickets LIKE 'location_id'")
                 if not cur.fetchone():
-                    cur.execute("ALTER TABLE demo_tickets ADD COLUMN location_id INT UNSIGNED NULL COMMENT 'FK to location table' AFTER org_id")
-                    log.info("Migration: added location_id column to demo_tickets.")
+                    cur.execute("ALTER TABLE helpdesk_tickets ADD COLUMN location_id INT UNSIGNED NULL COMMENT 'FK to location table' AFTER org_id")
+                    log.info("Migration: added location_id column to helpdesk_tickets.")
         except Exception as mig_exc:
             log.warning("Migration check for location_id: %s", mig_exc)
-        # Migration: add is_active to demo_categories if it doesn't exist yet
+        # Migration: add is_active to helpdesk_categories if it doesn't exist yet
         try:
             with demo_db.connection() as conn, conn.cursor() as cur:
-                cur.execute("SHOW COLUMNS FROM demo_categories LIKE 'is_active'")
+                cur.execute("SHOW COLUMNS FROM helpdesk_categories LIKE 'is_active'")
                 if not cur.fetchone():
-                    cur.execute("ALTER TABLE demo_categories ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER assigned_ca_id")
-                    log.info("Migration: added is_active column to demo_categories.")
+                    cur.execute("ALTER TABLE helpdesk_categories ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1 AFTER assigned_ca_id")
+                    log.info("Migration: added is_active column to helpdesk_categories.")
         except Exception as mig_exc:
-            log.warning("Migration check for is_active in demo_categories: %s", mig_exc)
+            log.warning("Migration check for is_active in helpdesk_categories: %s", mig_exc)
         # Migration: add ON_HOLD and REOPENED to status ENUM
         try:
             with demo_db.connection() as conn, conn.cursor() as cur:
-                cur.execute("SHOW COLUMNS FROM demo_tickets LIKE 'status'")
+                cur.execute("SHOW COLUMNS FROM helpdesk_tickets LIKE 'status'")
                 col = cur.fetchone()
                 if col and 'ON_HOLD' not in str(col.get('Type', '')):
-                    cur.execute("ALTER TABLE demo_tickets MODIFY COLUMN status ENUM('PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED') NOT NULL DEFAULT 'PENDING'")
-                    cur.execute("ALTER TABLE demo_ticket_activity MODIFY COLUMN from_status ENUM('PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED') NULL")
-                    cur.execute("ALTER TABLE demo_ticket_activity MODIFY COLUMN to_status ENUM('PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED') NOT NULL")
+                    cur.execute("ALTER TABLE helpdesk_tickets MODIFY COLUMN status ENUM('PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED') NOT NULL DEFAULT 'PENDING'")
+                    cur.execute("ALTER TABLE helpdesk_ticket_activity MODIFY COLUMN from_status ENUM('PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED') NULL")
+                    cur.execute("ALTER TABLE helpdesk_ticket_activity MODIFY COLUMN to_status ENUM('PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED') NOT NULL")
                     log.info("Migration: added ON_HOLD and REOPENED to status ENUMs.")
         except Exception as mig_exc:
             log.warning("Migration check for status ENUM: %s", mig_exc)
-        # Migration: create demo_ca_assignments table
+        # Migration: create helpdesk_ca_assignments table
         try:
             with demo_db.connection() as conn, conn.cursor() as cur:
                 cur.execute("""
