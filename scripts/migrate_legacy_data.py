@@ -54,9 +54,9 @@ def run_migration():
     # Select main database
     cursor.execute(f"USE `{MYSQL_DATABASE}`;")
 
-    # Ensure demo_locations table exists
+    # Ensure helpdesk_locations table exists
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS demo_locations (
+        CREATE TABLE IF NOT EXISTS helpdesk_locations (
             id INT UNSIGNED NOT NULL AUTO_INCREMENT,
             block VARCHAR(100) NOT NULL,
             room VARCHAR(100) NOT NULL,
