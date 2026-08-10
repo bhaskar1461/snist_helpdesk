@@ -281,6 +281,28 @@ def enable_global_embedding():
     site_url = os.getenv("METABASE_SITE_URL")
     if site_url:
         api("PUT", "/api/setting/site-url", {"value": site_url}, silent=True)
+    enable_all_existing_dashboards_embedding()
+
+
+def enable_all_existing_dashboards_embedding():
+    """Fetch all existing dashboards in Metabase and force-enable embedding on each."""
+    result = api("GET", "/api/dashboard", silent=True)
+    if not result:
+        return
+    dash_list = result if isinstance(result, list) else result.get("data", [])
+    for d in dash_list:
+        did = d.get("id")
+        if did:
+            res = api("PUT", f"/api/dashboard/{did}", {
+                "enable_embedding": True,
+                "embedding_params": {}
+            }, silent=True)
+            if not res:
+                api("PUT", f"/api/dashboard/{did}", {
+                    "enable-embedding": True,
+                    "embedding-params": {}
+                }, silent=True)
+            print(f"  [+] Force-enabled embedding on existing dashboard ID {did} ('{d.get('name')}')")
 
 
 def enable_dashboard_embedding(dashboard_id):
