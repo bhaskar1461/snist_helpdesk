@@ -251,6 +251,16 @@ def run_full_migration():
     print(f"  Total Tickets in helpdesk_tickets:           {total_tickets:,}")
     print("=" * 65 + "\n")
 
+    # Trigger Metabase database sync if available
+    try:
+        from scripts.configure_metabase import login, find_database, sync_database
+        if login():
+            db_id = find_database()
+            if db_id:
+                sync_database(db_id)
+    except Exception as exc:
+        print(f"[!] Metabase sync trigger note: {exc}")
+
 
 if __name__ == "__main__":
     run_full_migration()
