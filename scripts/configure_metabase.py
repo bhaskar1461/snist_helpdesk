@@ -27,8 +27,6 @@ def find_metabase_url():
         os.getenv("METABASE_SITE_URL"),
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:3002",
-        "http://metabase:3000",
     ]
     for url in candidates:
         if not url:
@@ -140,17 +138,52 @@ def login():
     return False
 
 
-def find_database():
-    """Find our helpdesk database in Metabase."""
-    result = api("GET", "/api/database")
-    if not result:
-        return None
-    for db in result.get("data", []):
-        if not db.get("is_sample") and db.get("engine") == "mysql":
-            print(f"[OK] Found database: {db['name']} (ID: {db['id']})")
-            return db["id"]
-    print("[FAIL] No MySQL database found in Metabase.")
+def add_database():
+    """Add the MySQL database to Metabase using env-var connection details."""
+    host = os.getenv("MYSQL_HOST", "localhost")
+    port = int(os.getenv("MYSQL_PORT", "3306"))
+    dbname = os.getenv("MYSQL_DATABASE", DB_NAME)
+    user = os.getenv("MYSQL_USER", "root")
+    password = os.getenv("MYSQL_PASSWORD", "")
+    ssl = os.getenv("MYSQL_SSL", "false").lower() in ("true", "1", "yes")
+
+    print(f"[..] Adding MySQL database '{dbname}' @ {host}:{port} to Metabase...")
+    payload = {
+        "engine": "mysql",
+        "name": dbname,
+        "details": {
+            "host": host,
+            "port": port,
+            "dbname": dbname,
+            "user": user,
+            "password": password,
+            "ssl": ssl,
+            "tunnel-enabled": False,
+        },
+        "is_full_sync": True,
+        "auto_run_queries": True,
+    }
+    result = api("POST", "/api/database", payload)
+    if result and "id" in result:
+        print(f"[OK] Database added: {result['name']} (ID: {result['id']})")
+        return result["id"]
+    print("[FAIL] Could not add MySQL database to Metabase.")
+    if result:
+        print(f"  Response: {json.dumps(result)[:300]}")
     return None
+
+
+def find_database():
+    """Find our helpdesk database in Metabase, or add it if missing."""
+    result = api("GET", "/api/database")
+    if result:
+        for db in result.get("data", []):
+            if not db.get("is_sample") and db.get("engine") == "mysql":
+                print(f"[OK] Found database: {db['name']} (ID: {db['id']})")
+                return db["id"]
+    # No MySQL database registered yet — auto-add it
+    print("[..] No MySQL database found in Metabase. Attempting to add one...")
+    return add_database()
 
 
 def sync_database(db_id):

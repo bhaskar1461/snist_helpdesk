@@ -26,10 +26,8 @@ def analytics_dashboard():
     metabase_enabled = False
     candidate_urls = [
         METABASE_INTERNAL_URL,
-        "http://metabase:3000",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://localhost:3002",
         METABASE_SITE_URL,
     ]
     for health_url in candidate_urls:

@@ -92,8 +92,8 @@ SSO_DEFAULT_ROLE = os.getenv("SSO_DEFAULT_ROLE", "FACULTY")
 EMERGENCY_ADMIN_ENABLED = os.getenv("EMERGENCY_ADMIN_ENABLED", "true").lower() == "true"
 
 # ── Metabase Configuration ──────────────────────────────────────────
-METABASE_SITE_URL = os.getenv("METABASE_SITE_URL", "http://localhost:3002")
-METABASE_INTERNAL_URL = os.getenv("METABASE_INTERNAL_URL", "http://metabase:3000")
+METABASE_SITE_URL = os.getenv("METABASE_SITE_URL", "https://metabase.1sports.app")
+METABASE_INTERNAL_URL = os.getenv("METABASE_INTERNAL_URL", "http://localhost:3000")
 METABASE_SECRET_KEY = os.getenv("METABASE_SECRET_KEY", "b6c0144720edd6f7369910c70c66e0519ac0386c2b9d173434c57332a048e685")
 METABASE_DASHBOARD_IDS = {
     "overview": int(os.getenv("METABASE_DASHBOARD_OVERVIEW", "2")),
