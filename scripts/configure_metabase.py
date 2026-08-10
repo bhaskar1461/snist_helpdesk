@@ -79,7 +79,7 @@ def login():
     # Check if fresh Metabase setup wizard needs to be completed
     try:
         props = api("GET", "/api/session/properties", silent=True)
-        if props and props.get("setup-token"):
+        if props and props.get("setup-token") and not props.get("has-user-setup"):
             setup_token = props["setup-token"]
             print("[..] Fresh Metabase detected. Auto-completing initial setup wizard...")
             setup_payload = {
@@ -272,6 +272,14 @@ def finalize_dashboard(dashboard_id):
         print(f"  [!] Failed to add cards to dashboard {dashboard_id}")
 
 
+def enable_global_embedding():
+    """Ensure embedding feature is enabled globally in Metabase settings."""
+    api("PUT", "/api/setting/enable-embedding", {"value": True}, silent=True)
+    secret_key = os.getenv("METABASE_SECRET_KEY")
+    if secret_key:
+        api("PUT", "/api/setting/embedding-secret-key", {"value": secret_key}, silent=True)
+
+
 def enable_dashboard_embedding(dashboard_id):
     """Enable embedding for a dashboard."""
     # First finalize any queued cards
@@ -298,11 +306,13 @@ def enable_dashboard_embedding(dashboard_id):
 
 def main():
     print("=" * 60)
-    print("SNIST Helpdesk â€” Metabase Dashboard Configurator")
+    print("SNIST Helpdesk — Metabase Dashboard Configurator")
     print("=" * 60)
 
     if not login():
         sys.exit(1)
+
+    enable_global_embedding()
 
     db_id = find_database()
     if not db_id:
