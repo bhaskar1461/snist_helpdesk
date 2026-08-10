@@ -253,7 +253,11 @@ def run_full_migration():
 
     # Trigger Metabase database sync if available
     try:
-        from scripts.configure_metabase import login, find_database, sync_database
+        try:
+            from scripts.configure_metabase import login, find_database, sync_database
+        except ImportError:
+            from configure_metabase import login, find_database, sync_database
+            
         if login():
             db_id = find_database()
             if db_id:
