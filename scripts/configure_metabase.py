@@ -273,11 +273,14 @@ def finalize_dashboard(dashboard_id):
 
 
 def enable_global_embedding():
-    """Ensure embedding feature is enabled globally in Metabase settings."""
+    """Ensure embedding feature and site URL are enabled globally in Metabase settings."""
     api("PUT", "/api/setting/enable-embedding", {"value": True}, silent=True)
     secret_key = os.getenv("METABASE_SECRET_KEY")
     if secret_key:
         api("PUT", "/api/setting/embedding-secret-key", {"value": secret_key}, silent=True)
+    site_url = os.getenv("METABASE_SITE_URL")
+    if site_url:
+        api("PUT", "/api/setting/site-url", {"value": site_url}, silent=True)
 
 
 def enable_dashboard_embedding(dashboard_id):

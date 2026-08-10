@@ -96,10 +96,10 @@ METABASE_SITE_URL = os.getenv("METABASE_SITE_URL", "https://metabase.1sports.app
 METABASE_INTERNAL_URL = os.getenv("METABASE_INTERNAL_URL", "http://localhost:3000")
 METABASE_SECRET_KEY = os.getenv("METABASE_SECRET_KEY", "b6c0144720edd6f7369910c70c66e0519ac0386c2b9d173434c57332a048e685")
 METABASE_DASHBOARD_IDS = {
-    "overview": int(os.getenv("METABASE_DASHBOARD_OVERVIEW", "2")),
-    "department": int(os.getenv("METABASE_DASHBOARD_DEPARTMENT", "2")),
-    "ca_performance": int(os.getenv("METABASE_DASHBOARD_CA_PERF", "4")),
-    "trends": int(os.getenv("METABASE_DASHBOARD_TRENDS", "3")),
+    "overview": int(os.getenv("METABASE_DASHBOARD_OVERVIEW", "1")),
+    "department": int(os.getenv("METABASE_DASHBOARD_DEPARTMENT", "1")),
+    "ca_performance": int(os.getenv("METABASE_DASHBOARD_CA_PERF", "3")),
+    "trends": int(os.getenv("METABASE_DASHBOARD_TRENDS", "2")),
 }
 
 
