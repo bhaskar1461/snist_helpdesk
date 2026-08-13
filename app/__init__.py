@@ -46,6 +46,7 @@ def create_app(testing=False):
         static_folder=str(BASE_DIR / "static"),
     )
     app.config.update(get_flask_config())
+    app.secret_key = app.config["SECRET_KEY"]
 
     # CSRF protection
     _csrf.init_app(app)
