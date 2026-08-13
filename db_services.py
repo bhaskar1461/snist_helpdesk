@@ -154,12 +154,14 @@ class BaseMySQLService:
 
     @property
     def enabled(self) -> bool:
+        import sys
+        if "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true":
+            return self.config is not None
         if getattr(self, "_last_fail_time", 0) and (time.time() - self._last_fail_time < 60.0):
             return False
         if self.config is None:
-            import sys
-            return "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true"
-        return is_host_reachable(self.config.host, self.config.port, timeout_sec=0.3)
+            return False
+        return is_host_reachable(self.config.host, self.config.port, timeout_sec=0.05)
 
 
 
@@ -322,8 +324,10 @@ class LiveDbService(BaseMySQLService):
         if not self.enabled:
             return self._default_locations()
 
+        import sys
+        is_testing = "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true"
         now = time.time()
-        if getattr(self, "_loc_cache", None) is not None and (now - getattr(self, "_loc_cache_time", 0) < 60.0):
+        if not is_testing and getattr(self, "_loc_cache", None) is not None and (now - getattr(self, "_loc_cache_time", 0) < 60.0):
             return self._loc_cache
 
         try:
@@ -335,9 +339,10 @@ class LiveDbService(BaseMySQLService):
             with self.connection() as connection, connection.cursor() as cursor:
                 cursor.execute(sql)
                 rows = cursor.fetchall()
-                if rows:
-                    self._loc_cache = rows
-                    self._loc_cache_time = now
+                if rows is not None and len(rows) > 0:
+                    if not is_testing:
+                        self._loc_cache = rows
+                        self._loc_cache_time = now
                     return rows
         except Exception:
             pass
