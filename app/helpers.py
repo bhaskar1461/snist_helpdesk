@@ -230,7 +230,16 @@ def page_context(role_title: str) -> dict:
 
 
 # ── Department Helpers ──────────────────────────────────────────────
+_DEPT_CACHE: dict[str, list[dict]] = {}
+_DEPT_CACHE_TIME: float = 0.0
+
 def live_departments(org_id=None):
+    global _DEPT_CACHE, _DEPT_CACHE_TIME
+    now = time.time()
+    cache_key = org_id or "ALL"
+    if cache_key in _DEPT_CACHE and (now - _DEPT_CACHE_TIME < 60.0):
+        return _DEPT_CACHE[cache_key]
+
     from app import get_live_db
     live_db = get_live_db()
     rows = live_db.fetch_departments() if live_db.enabled else []
@@ -259,6 +268,9 @@ def live_departments(org_id=None):
             {"code": "Maintenance", "name": "Maintenance", "org_id": "2000"},
         ]
         departments = [d for d in default_list if not org_id or d["org_id"] == org_id]
+
+    _DEPT_CACHE[cache_key] = departments
+    _DEPT_CACHE_TIME = now
     return departments
 
 
