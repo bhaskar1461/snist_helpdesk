@@ -133,17 +133,110 @@ def list_locations():
     return jsonify({"locations": result})
 
 
+# Cache for location blocks
+_BLOCKS_CACHE: dict[str, list[str]] = {}
+_BLOCKS_CACHE_TIME: float = 0.0
+
 @api_bp.route("/locations/blocks")
 @role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
 def list_blocks():
-    """List unique blocks for location selection."""
+    """List unique blocks for location selection with 60s TTL memory caching."""
+    global _BLOCKS_CACHE, _BLOCKS_CACHE_TIME
+    import time
     from app import get_live_db
+    user = current_user()
+    org_id = str(user.get("org_id", "2000")) if user else "2000"
+    now = time.time()
+
+    if org_id in _BLOCKS_CACHE and (now - _BLOCKS_CACHE_TIME < 60.0):
+        return jsonify({"blocks": _BLOCKS_CACHE[org_id]})
+
+    live_db = get_live_db()
+    locations = live_db.fetch_locations() if live_db.enabled else []
+    filtered = [loc for loc in locations if str(loc.get("ORG_ID", "2000")) == org_id]
+    blocks = sorted(list(set(loc.get("block", "") for loc in filtered if loc.get("block"))))
+
+    _BLOCKS_CACHE[org_id] = blocks
+    _BLOCKS_CACHE_TIME = now
+    return jsonify({"blocks": blocks})
+
+
+@api_bp.route("/users/assignees")
+def list_assignees():
+    """On-demand async endpoint: Fetch active users belonging ONLY to the selected department with search and limit."""
+    from app import get_demo_db, get_live_db
+    from app.helpers import safe_int
+    demo_db = get_demo_db()
     live_db = get_live_db()
     user = current_user()
-    locations = live_db.fetch_locations() if live_db.enabled else []
-    filtered = [loc for loc in locations if str(loc.get("ORG_ID", "2000")) == str(user.get("org_id", "2000"))]
-    blocks = sorted(list(set(loc.get("block", "") for loc in filtered if loc.get("block"))))
-    return jsonify({"blocks": blocks})
+    if not user:
+        return jsonify({"results": [], "error": "Unauthorized"}), 401
+
+    department = request.args.get("department", "").strip()
+    search = request.args.get("search", "").strip().lower()
+    limit = min(safe_int(request.args.get("limit", "20"), 20), 50)
+
+    if not department:
+        return jsonify({"results": [], "total": 0})
+
+    results = []
+    seen = set()
+
+    # 1. Active users matching department from demo_db
+    demo_users = demo_db.list_users(org_id=user["org_id"])
+    for u in demo_users:
+        if (u.get("department") or "").strip().lower() == department.lower():
+            if str(u.get("is_active", 1)) == "0":
+                continue
+            name = (u.get("name") or "").strip()
+            email = (u.get("email") or "").strip()
+            if search and search not in name.lower() and search not in email.lower():
+                continue
+            seen.add(email.lower())
+            results.append({
+                "id": u["id"],
+                "name": name,
+                "email": email,
+                "department": u.get("department"),
+            })
+            if len(results) >= limit:
+                break
+
+    # 2. Active reference users from live_db if needed
+    if live_db and live_db.enabled and len(results) < limit:
+        ref_users = live_db.fetch_reference_users(department=department, org_id=user["org_id"], limit=limit)
+        for ru in ref_users:
+            ref_email = (ru.get("email") or "").strip()
+            if ref_email.lower() in seen:
+                continue
+            ref_name = (ru.get("name") or "").strip()
+            if search and search not in ref_name.lower() and search not in ref_email.lower():
+                continue
+            seen.add(ref_email.lower())
+            results.append({
+                "id": ref_email,
+                "name": ref_name,
+                "email": ref_email,
+                "department": department,
+            })
+            if len(results) >= limit:
+                break
+
+    return jsonify({"results": results, "total": len(results)})
+
+
+@api_bp.route("/categories-by-department")
+def categories_by_department():
+    """Returns active categories matching department."""
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    user = current_user()
+    department = request.args.get("department", "").strip()
+    if not department:
+        return jsonify([])
+    org_id = user["org_id"] if user else "2000"
+    cats = demo_db.list_categories(department=department, org_id=org_id, active_only=True)
+    return jsonify([{"id": c["id"], "category_name": c["category_name"], "department": c["department"]} for c in cats])
 
 
 @api_bp.route("/categories")
