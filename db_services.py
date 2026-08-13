@@ -123,6 +123,8 @@ class BaseMySQLService:
 
     @property
     def enabled(self) -> bool:
+        if getattr(self, "_last_fail_time", 0) and (time.time() - self._last_fail_time < 60.0):
+            return False
         if self.config is not None:
             return True
         import sys
