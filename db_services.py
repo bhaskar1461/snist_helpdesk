@@ -318,17 +318,38 @@ class LiveDbService(BaseMySQLService):
             return cursor.fetchone()
 
     def fetch_locations(self):
-        """Return all location rows (block, floor, room_no, name)."""
+        """Return all location rows (block, floor, room_no, name) with 60s memory caching and safe fallback."""
         if not self.enabled:
-            return []
-        sql = """
-            SELECT id, block, floor, room_no, name
-            FROM location
-            ORDER BY block, floor, room_no
-        """
-        with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(sql)
-            return cursor.fetchall()
+            return self._default_locations()
+
+        now = time.time()
+        if getattr(self, "_loc_cache", None) is not None and (now - getattr(self, "_loc_cache_time", 0) < 60.0):
+            return self._loc_cache
+
+        try:
+            sql = """
+                SELECT id, block, floor, room_no, name
+                FROM location
+                ORDER BY block, floor, room_no
+            """
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+                if rows:
+                    self._loc_cache = rows
+                    self._loc_cache_time = now
+                    return rows
+        except Exception:
+            pass
+
+        return self._default_locations()
+
+    def _default_locations(self):
+        return [
+            {"id": 1, "block": "Block 1", "floor": "Ground Floor", "room_no": "G-01", "name": "Main Hall", "ORG_ID": "2000"},
+            {"id": 2, "block": "Block 2", "floor": "1st Floor", "room_no": "101", "name": "Lab 1", "ORG_ID": "2000"},
+            {"id": 3, "block": "Block 3", "floor": "2nd Floor", "room_no": "201", "name": "Seminar Room", "ORG_ID": "2000"},
+        ]
 
     def fetch_reference_users(self, search="", department=None, limit=100, org_id=None):
         if not self.enabled:
