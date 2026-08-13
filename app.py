@@ -516,7 +516,7 @@ def export_response(tickets, export_format, filename):
     return Response(table_html, mimetype="application/vnd.ms-excel", headers={"Content-Disposition": f"attachment; filename={filename}.xls"})
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/", methods=["GET", "POST"], endpoint="auth.login")
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
