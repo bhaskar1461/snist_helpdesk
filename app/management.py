@@ -459,6 +459,10 @@ def category_assignments():
     promoteable_users = []
     seen_emails = set()
 
+    depts = live_departments(user["org_id"])
+    dept_map = {str(d["id"]): d.get("code") or d.get("name") for d in depts if d.get("id")}
+    dept_map.update({str(d.get("code")): d.get("code") for d in depts if d.get("code")})
+
     for u in candidate_users:
         if u.get("is_active", 1) == 0:
             continue
@@ -470,7 +474,8 @@ def category_assignments():
             continue
         seen_emails.add(email_lower)
 
-        dept_name = (u.get("department") or "General").strip()
+        raw_dept = (u.get("department") or "General").strip()
+        dept_name = dept_map.get(raw_dept) or dept_map.get(raw_dept.upper()) or raw_dept
         promoteable_users.append({
             "id": u["id"],
             "name": u["name"],
@@ -485,7 +490,8 @@ def category_assignments():
             email_lower = (r.get("EMAIL_ID") or "").lower().strip()
             if email_lower and email_lower not in seen_emails:
                 seen_emails.add(email_lower)
-                dept_name = (r.get("department_code") or r.get("department_name") or "FACULTY").strip()
+                raw_dept = (r.get("department_code") or r.get("department_name") or "FACULTY").strip()
+                dept_name = dept_map.get(raw_dept) or dept_map.get(raw_dept.upper()) or raw_dept
                 promoteable_users.append({
                     "id": f"ref:{r['EMAIL_ID']}",
                     "name": r.get("TEACHER_NAME") or "Unknown",
@@ -493,7 +499,6 @@ def category_assignments():
                     "role": "FACULTY",
                     "department": dept_name or "FACULTY",
                 })
-
 
     # Sort promoteable users by department and name for clean optgroup categorization
     promoteable_users.sort(key=lambda x: (x["department"].upper(), x["name"].upper()))
