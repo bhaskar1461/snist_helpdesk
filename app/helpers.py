@@ -131,6 +131,12 @@ def route_for_role(role: str) -> str:
 # ── Decorators ──────────────────────────────────────────────────────
 def role_required(*roles):
     """Restrict access to specified roles."""
+    allowed_roles = set(roles)
+    if "CA" in allowed_roles:
+        allowed_roles.add("ASSIGNEE")
+    if "ASSIGNEE" in allowed_roles:
+        allowed_roles.add("CA")
+
     def decorator(view_func):
         @wraps(view_func)
         def wrapper(*args, **kwargs):
@@ -138,7 +144,7 @@ def role_required(*roles):
             if not user:
                 flash("Please log in to continue.", "error")
                 return redirect(url_for("auth.login"))
-            if user["role"] not in roles:
+            if user["role"] not in allowed_roles:
                 flash("You do not have access to that page.", "error")
                 target = url_for(route_for_role(user["role"]))
                 if target == request.path:
