@@ -115,6 +115,27 @@ class TransactionConnection:
         pass
 
 
+_REACHABLE_CACHE: dict[str, tuple[bool, float]] = {}
+
+def is_host_reachable(host: str, port: int, timeout_sec: float = 0.3) -> bool:
+    import socket
+    key = f"{host}:{port}"
+    now = time.time()
+    if key in _REACHABLE_CACHE:
+        is_ok, cached_at = _REACHABLE_CACHE[key]
+        if now - cached_at < 60.0:
+            return is_ok
+
+    try:
+        s = socket.create_connection((host, port), timeout=timeout_sec)
+        s.close()
+        _REACHABLE_CACHE[key] = (True, now)
+        return True
+    except Exception:
+        _REACHABLE_CACHE[key] = (False, now)
+        return False
+
+
 class BaseMySQLService:
     def __init__(self, config: DbConfig | None):
         self.config = config
@@ -125,10 +146,10 @@ class BaseMySQLService:
     def enabled(self) -> bool:
         if getattr(self, "_last_fail_time", 0) and (time.time() - self._last_fail_time < 60.0):
             return False
-        if self.config is not None:
-            return True
-        import sys
-        return "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true"
+        if self.config is None:
+            import sys
+            return "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true"
+        return is_host_reachable(self.config.host, self.config.port, timeout_sec=0.3)
 
 
 
