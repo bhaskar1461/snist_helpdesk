@@ -106,7 +106,7 @@ METABASE_DASHBOARD_IDS = {
 
 def get_flask_config():
     """Return Flask configuration dict."""
-    _secret = os.getenv("SECRET_KEY", "c69fc621e47743c584ea00c3d51053bb09a2e6659f0f9b6e828453ea1a4155b2")
+    _secret = os.getenv("SECRET_KEY") or "c69fc621e47743c584ea00c3d51053bb09a2e6659f0f9b6e828453ea1a4155b2"
     return {
         "SECRET_KEY": _secret,
         "SESSION_COOKIE_HTTPONLY": True,
