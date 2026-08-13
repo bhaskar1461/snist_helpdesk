@@ -45,7 +45,17 @@ class DbConfig:
 def env_db_config() -> DbConfig | None:
     if pymysql is None:
         return None
-    host = os.getenv("MYSQL_HOST", "seg-dev.sreenidhi.edu.in")
+    host = os.getenv("MYSQL_HOST", "").strip()
+    if not host or host == "seg-dev.sreenidhi.edu.in":
+        if os.getenv("MYSQL_ENABLE_REMOTE", "false").lower() == "true":
+            host = "seg-dev.sreenidhi.edu.in"
+        elif is_host_reachable("127.0.0.1", 3306, timeout_sec=0.05):
+            host = "127.0.0.1"
+        elif is_host_reachable("localhost", 3306, timeout_sec=0.05):
+            host = "localhost"
+        else:
+            return None
+
     user = os.getenv("MYSQL_USER", "demo")
     password = os.getenv("MYSQL_PASSWORD", "Admin@321#")
     database = os.getenv("MYSQL_DATABASE", "seg_demo")
