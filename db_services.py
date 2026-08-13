@@ -5,6 +5,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import time
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -151,6 +152,10 @@ class BaseMySQLService:
         if not self.enabled:
             raise RuntimeError("MySQL is not configured.")
         
+        now = time.time()
+        if getattr(self, "_last_fail_time", 0) and (now - self._last_fail_time < 30.0):
+            raise RuntimeError("MySQL connection circuit open due to recent failure.")
+
         # If there is an active transaction connection on this thread, return it
         if getattr(self._local, "active_conn", None) is not None:
             return self._local.active_conn
@@ -159,7 +164,12 @@ class BaseMySQLService:
             conn = self._pool.get_nowait()
             conn.ping(reconnect=True)
         except (Empty, Exception):
-            conn = self._create_new_connection()
+            try:
+                conn = self._create_new_connection()
+                self._last_fail_time = 0
+            except Exception as conn_exc:
+                self._last_fail_time = time.time()
+                raise conn_exc
         return PooledConnection(conn, self._pool)
 
     @contextlib.contextmanager
