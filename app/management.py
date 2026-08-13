@@ -22,30 +22,26 @@ management_bp = Blueprint("management", __name__)
 def check_and_promote_ca(demo_db, ca_id, target_dept, actor_id, org_id):
     ca_user = demo_db.get_user(ca_id)
     if ca_user:
-        target_depts = [d.strip() for d in ca_user["department"].split(",") if d.strip()]
-        dept_updated = False
-        if target_dept not in target_depts:
-            target_depts.append(target_dept)
-            dept_updated = True
+        user_dept = (ca_user.get("department") or "").strip()
+        user_depts = [d.strip().lower() for d in user_dept.split(",") if d.strip()]
+        target_dept_lower = target_dept.strip().lower()
+        if user_dept and target_dept_lower not in user_depts:
+            raise ValueError(f"User '{ca_user['name']}' belongs to department '{user_dept}', which does not match target department '{target_dept}'. Cross-department Assignee assignment is not allowed.")
 
-        if ca_user["role"] == "FACULTY" or dept_updated:
+        if ca_user["role"] == "FACULTY":
             new_role = "CA"
-            new_dept_str = ",".join(target_depts)
             demo_db.update_user(ca_id, {
                 "name": ca_user["name"],
                 "email": ca_user["email"],
                 "role": new_role,
-                "department": new_dept_str,
+                "department": ca_user["department"],
             })
-            if ca_user["role"] == "FACULTY":
-                demo_db.log_audit_event(
-                    "CA_PROMOTED", actor_id, org_id,
-                    target_type="user", target_id=ca_id,
-                    details={"promoted_name": ca_user["name"], "department": target_dept},
-                )
-                flash(f"Promoted {ca_user['name']} to Assignee for {target_dept}.", "success")
-            else:
-                flash(f"Updated Assignee department mapping for {ca_user['name']}.", "success")
+            demo_db.log_audit_event(
+                "CA_PROMOTED", actor_id, org_id,
+                target_type="user", target_id=ca_id,
+                details={"promoted_name": ca_user["name"], "department": target_dept},
+            )
+            flash(f"Promoted {ca_user['name']} to Assignee for {target_dept}.", "success")
 
 
 def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, actor_id, org_id):
@@ -57,6 +53,10 @@ def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, ac
         if not teacher:
             raise ValueError("Selected authority not found in reference directory.")
 
+        teacher_dept = (teacher.get("department_code") or teacher.get("department_name") or "").strip()
+        if teacher_dept and teacher_dept.lower() != target_dept.lower():
+            raise ValueError(f"Reference user '{teacher.get('TEACHER_NAME', 'Teacher')}' belongs to department '{teacher_dept}', not '{target_dept}'.")
+
         sap_id = str(teacher.get("sap_id", "123")).strip()
         existing = demo_db.get_user_by_email(teacher["email"])
         if existing:
@@ -67,7 +67,7 @@ def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, ac
             "name": teacher["name"],
             "email": teacher["email"],
             "password": sap_id,
-            "role": "ASSIGNEE",
+            "role": "CA",
             "department": target_dept,
         })
         demo_db.log_audit_event(
@@ -450,20 +450,23 @@ def category_assignments():
         cat["ticket_count"] = demo_db.count_tickets_by_category(cat["id"]) if hasattr(demo_db, 'count_tickets_by_category') else 0
         cat["block_mappings"] = demo_db.get_category_block_mappings(cat["id"]) if hasattr(demo_db, 'get_category_block_mappings') else []
 
-    # Fetch promoteable CAs, Faculty, and Authorities for the target department (+ System Administrators)
+    # Fetch promoteable Assignees and Faculty strictly for the target department (only active users)
     if dept_filter:
-        dept_users = demo_db.list_users(role=["CA", "FACULTY", "ADMIN", "HOD", "SUPER_ADMIN"], department=dept_filter, org_id=user["org_id"])
-        admin_users = demo_db.list_users(role=["ADMIN", "SUPER_ADMIN"], org_id=user["org_id"])
-        candidate_users = dept_users + admin_users
+        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE", "FACULTY", "ADMIN", "HOD", "SUPER_ADMIN"], department=dept_filter, org_id=user["org_id"])
     else:
-        candidate_users = demo_db.list_users(role=["CA", "FACULTY", "ADMIN", "HOD", "SUPER_ADMIN"], org_id=user["org_id"])
+        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE", "FACULTY", "ADMIN", "HOD", "SUPER_ADMIN"], org_id=user["org_id"])
 
     promoteable_users = []
     seen_emails = set()
 
     for u in candidate_users:
+        if u.get("is_active", 1) == 0:
+            continue
         email_lower = (u.get("email") or "").lower().strip()
         if not email_lower or email_lower in seen_emails:
+            continue
+        u_dept = (u.get("department") or "").strip()
+        if dept_filter and u_dept.lower() != dept_filter.lower():
             continue
         seen_emails.add(email_lower)
 

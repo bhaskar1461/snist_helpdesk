@@ -511,7 +511,7 @@
             {% if current_role in ['SUPER_ADMIN', 'ADMIN'] %}
             <label class="field">
               <span>Department</span>
-              <select name="department" class="input-style" required>
+              <select id="create-cat-dept" name="department" class="input-style" onchange="filterAssigneesByDept('create-cat-dept', 'create-cat-ca')" required>
                 {% for d in departments %}
                   <option value="{{ d.code }}">{{ d.code }} - {{ d.name }}</option>
                 {% endfor %}
@@ -524,12 +524,12 @@
             </label>
             <label class="field">
               <span>Assigned To (Optional)</span>
-              <select name="assigned_ca_id" class="input-style">
+              <select id="create-cat-ca" name="assigned_ca_id" class="input-style">
                 <option value="">Leave Unassigned</option>
                 {% for dept, dept_users in users|groupby('department') %}
                   <optgroup label="Department: {{ dept if dept else 'General' }}">
                     {% for u in dept_users %}
-                      <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+                      <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
                     {% endfor %}
                   </optgroup>
                 {% endfor %}
@@ -1144,23 +1144,63 @@
       document.getElementById('assign-person-overlay').classList.remove('active');
     }
 
+    function filterAssigneesByDept(deptSelectId, caSelectId) {
+      const deptSelect = document.getElementById(deptSelectId);
+      const caSelect = document.getElementById(caSelectId);
+      if (!deptSelect || !caSelect) return;
+      const selectedDept = (deptSelect.value || '').toLowerCase().trim();
+
+      let hasValidSelection = false;
+      Array.from(caSelect.options).forEach(opt => {
+        if (!opt.value || opt.value === 'none') {
+          opt.style.display = '';
+          return;
+        }
+        const optDept = (opt.getAttribute('data-dept') || '').toLowerCase().trim();
+        if (!selectedDept || !optDept || optDept === selectedDept) {
+          opt.style.display = '';
+          if (opt.selected) hasValidSelection = true;
+        } else {
+          opt.style.display = 'none';
+          if (opt.selected) opt.selected = false;
+        }
+      });
+      if (!hasValidSelection) {
+        caSelect.value = '';
+      }
+    }
+
     function filterAssignPersonCategories() {
-      // When a person is selected, optionally highlight their current assignments
       const select = document.getElementById('assign-person-select');
       const selectedOpt = select.options[select.selectedIndex];
-      // Just re-run the text filter; you could also pre-check if needed
+      const personDept = selectedOpt ? (selectedOpt.getAttribute('data-dept') || '').toLowerCase().trim() : '';
+
+      // Uncheck categories that do not belong to personDept
+      document.querySelectorAll('.ap-cat-item').forEach(item => {
+        const dept = (item.getAttribute('data-dept') || '').toLowerCase().trim();
+        if (personDept && dept && dept !== personDept) {
+          const cb = item.querySelector('input[type="checkbox"]');
+          if (cb) cb.checked = false;
+        }
+      });
       filterApCategories();
       updateApCount();
     }
 
     function filterApCategories() {
+      const select = document.getElementById('assign-person-select');
+      const selectedOpt = select.options[select.selectedIndex];
+      const personDept = selectedOpt ? (selectedOpt.getAttribute('data-dept') || '').toLowerCase().trim() : '';
+
       const query = (document.getElementById('ap-category-search').value || '').toLowerCase().trim();
       const items = document.querySelectorAll('.ap-cat-item');
       let visible = 0;
       items.forEach(item => {
-        const name = item.getAttribute('data-name') || '';
-        const dept = item.getAttribute('data-dept') || '';
-        const match = !query || name.includes(query) || dept.includes(query);
+        const name = (item.getAttribute('data-name') || '').toLowerCase();
+        const dept = (item.getAttribute('data-dept') || '').toLowerCase();
+        const matchDept = !personDept || dept === personDept;
+        const matchQuery = !query || name.includes(query) || dept.includes(query);
+        const match = matchDept && matchQuery;
         item.style.display = match ? 'flex' : 'none';
         if (match) visible++;
       });

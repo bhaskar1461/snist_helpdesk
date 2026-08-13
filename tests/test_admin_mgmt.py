@@ -27,7 +27,7 @@ class TestAdminMgmt(HelpdeskTestCase):
         self.assertEqual(res_create.status_code, 200)
         
         # CSE HOD's action should force creation in CSE, not ECE
-        created_user = next((u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["email"] == "csenew@gmail.com"), None)
+        created_user = next((u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["email"] == "csenew@gmail.com"), None)
         self.assertIsNotNone(created_user)
         self.assertEqual(created_user["department"], "CSE") # Forced to HOD's department
 
@@ -43,7 +43,7 @@ class TestAdminMgmt(HelpdeskTestCase):
         }, follow_redirects=True)
         self.assertEqual(res_sa_create.status_code, 200)
         
-        ece_user = next((u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["email"] == "ecenew@gmail.com"), None)
+        ece_user = next((u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["email"] == "ecenew@gmail.com"), None)
         self.assertIsNotNone(ece_user)
         self.assertEqual(ece_user["department"], "ECE")
 
@@ -59,7 +59,7 @@ class TestAdminMgmt(HelpdeskTestCase):
         }, follow_redirects=True)
         self.assertEqual(res_update.status_code, 200)
         
-        updated_user = next((u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["id"] == 7), None)
+        updated_user = next((u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["id"] == 7), None)
         self.assertEqual(updated_user["name"], "Demo Faculty Updated")
         self.assertEqual(updated_user["role"], "CA")
 
@@ -68,7 +68,7 @@ class TestAdminMgmt(HelpdeskTestCase):
         res_delete = self.client.post("/user-management/7/delete", follow_redirects=True)
         self.assertEqual(res_delete.status_code, 200)
         
-        deleted_user = next((u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["id"] == 7), None)
+        deleted_user = next((u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["id"] == 7), None)
         self.assertIsNone(deleted_user)
 
     def test_category_crud(self):
@@ -84,7 +84,7 @@ class TestAdminMgmt(HelpdeskTestCase):
         self.assertEqual(res_cat_create.status_code, 200)
 
         # Check category was created
-        new_cat = next((c for c in GLOBAL_DB_STATE.tables["demo_categories"] if c["category_name"] == "Laptops"), None)
+        new_cat = next((c for c in GLOBAL_DB_STATE.tables["helpdesk_categories"] if c["category_name"] == "Laptops"), None)
         self.assertIsNotNone(new_cat)
 
         # Toggle category status
@@ -92,14 +92,14 @@ class TestAdminMgmt(HelpdeskTestCase):
         res_toggle = self.client.post(f"/management/category-management/{new_cat['id']}/toggle", follow_redirects=True)
         self.assertEqual(res_toggle.status_code, 200)
         
-        toggled_cat = next((c for c in GLOBAL_DB_STATE.tables["demo_categories"] if c["id"] == new_cat["id"]), None)
+        toggled_cat = next((c for c in GLOBAL_DB_STATE.tables["helpdesk_categories"] if c["id"] == new_cat["id"]), None)
         self.assertEqual(toggled_cat["is_active"], 0)
 
         # Delete category
         # Route: POST /management/category-management/<id>/delete
         res_delete = self.client.post(f"/management/category-management/{new_cat['id']}/delete", follow_redirects=True)
         self.assertEqual(res_delete.status_code, 200)
-        self.assertNotIn(new_cat["id"], [c["id"] for c in GLOBAL_DB_STATE.tables["demo_categories"]])
+        self.assertNotIn(new_cat["id"], [c["id"] for c in GLOBAL_DB_STATE.tables["helpdesk_categories"]])
 
     def test_ca_assignments_and_promotion(self):
         # Login as HOD
@@ -115,11 +115,11 @@ class TestAdminMgmt(HelpdeskTestCase):
         self.assertEqual(response.status_code, 200)
 
         # Check that user 7 (Demo Faculty) was promoted to role CA
-        promoted_user = next((u for u in GLOBAL_DB_STATE.tables["demo_users"] if u["id"] == 7), None)
+        promoted_user = next((u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["id"] == 7), None)
         self.assertEqual(promoted_user["role"], "CA")
 
         # Verify assignment was created
-        assignment = next((a for a in GLOBAL_DB_STATE.tables["demo_ca_assignments"] if a["ca_id"] == 7 and a["category_id"] == 1 and a["block"] == "Block A"), None)
+        assignment = next((a for a in GLOBAL_DB_STATE.tables["helpdesk_ca_assignments"] if a["ca_id"] == 7 and a["category_id"] == 1 and a["block"] == "Block A"), None)
         self.assertIsNotNone(assignment)
 
     def test_multi_ca_assignments(self):
@@ -136,7 +136,7 @@ class TestAdminMgmt(HelpdeskTestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify assignments were created for both categories and blocks (4 combinations)
-        assignments = GLOBAL_DB_STATE.tables["demo_ca_assignments"]
+        assignments = GLOBAL_DB_STATE.tables["helpdesk_ca_assignments"]
         for cat in [1, 2]:
             for blk in ["Block B", "Block C"]:
                 assignment = next((a for a in assignments if a["ca_id"] == 7 and a["category_id"] == cat and a["block"] == blk), None)
@@ -151,7 +151,7 @@ class TestAdminMgmt(HelpdeskTestCase):
         self.assertEqual(res_get.status_code, 200)
 
         # Clear existing assignments in test state
-        GLOBAL_DB_STATE.tables["demo_ca_assignments"] = []
+        GLOBAL_DB_STATE.tables["helpdesk_ca_assignments"] = []
 
         # Assign Faculty (user ID 7 is FACULTY) to multiple categories (1 and 2) and multiple blocks (Block B and Block C)
         response = self.client.post("/hod/ca-assignments", data={
@@ -162,7 +162,7 @@ class TestAdminMgmt(HelpdeskTestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify assignments were created for all combinations
-        assignments = GLOBAL_DB_STATE.tables["demo_ca_assignments"]
+        assignments = GLOBAL_DB_STATE.tables["helpdesk_ca_assignments"]
         for cat in [1, 2]:
             for blk in ["Block B", "Block C"]:
                 assignment = next((a for a in assignments if a["ca_id"] == 7 and a["category_id"] == cat and a["block"] == blk), None)
@@ -206,7 +206,7 @@ class TestAdminMgmt(HelpdeskTestCase):
             return original_create(args[0], *args[1:], **kwargs)
 
         # Clear existing assignments in test state
-        GLOBAL_DB_STATE.tables["demo_ca_assignments"] = []
+        GLOBAL_DB_STATE.tables["helpdesk_ca_assignments"] = []
 
         with patch.object(db_services.DemoDbService, "create_ca_assignment", side_effect=side_effect):
             # Attempt to assign CA to category 1 across two blocks (Block B and Block C)
@@ -219,5 +219,19 @@ class TestAdminMgmt(HelpdeskTestCase):
             self.assertIn(b"Assignment failed", response.data)
 
         # Verify that because of transaction rollback, NO assignments were created in the database
-        assignments = GLOBAL_DB_STATE.tables["demo_ca_assignments"]
+        assignments = GLOBAL_DB_STATE.tables["helpdesk_ca_assignments"]
         self.assertEqual(len(assignments), 0, "Expected all assignments to be rolled back on failure")
+
+    def test_cross_department_assignee_assignment_rejected(self):
+        # Login as Admin
+        self.login_as("admin@gmail.com")
+
+        # Category 3 is Plumbing (Facilities). User 7 is CSE Faculty.
+        # Attempt to assign CSE Faculty (user 7) to Facilities Category (3)
+        response = self.client.post("/hod/ca-assignments", data={
+            "faculty_id": "7",
+            "category_id": "3"
+        }, follow_redirects=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"does not match target department", response.data)

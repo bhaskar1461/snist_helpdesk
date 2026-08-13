@@ -28,7 +28,7 @@
     {% include 'sidebar.html' %}
     <main class="admin-main">
       <header class="admin-topbar">
-        <div><p class="kicker">Ticket Creation</p><h2>Create a new complaint</h2><span>When you submit, the selected category automatically assigns the mapped Assignee.</span></div>
+        <div><p class="kicker">Ticket Creation</p><h2>Create a new ticket</h2></div>
         <div class="profile-pill"><div class="avatar">{{ role_title[0] }}</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
       </header>
 
@@ -57,7 +57,6 @@
                     </option>
                   {% endfor %}
                 </select>
-                <span class="dept-badge-hint">{{ available_depts|length }} department(s) with active categories</span>
               {% else %}
                 {# Only one dept with active categories — keep it simple (read-only display) #}
                 <input type="hidden" name="department" value="{{ selected_dept or user_dept_code }}">

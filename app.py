@@ -316,6 +316,12 @@ def current_user():
 
 
 def role_required(*roles):
+    allowed_roles = set(roles)
+    if "CA" in allowed_roles:
+        allowed_roles.add("ASSIGNEE")
+    if "ASSIGNEE" in allowed_roles:
+        allowed_roles.add("CA")
+
     def decorator(view_func):
         @wraps(view_func)
         def wrapper(*args, **kwargs):
@@ -323,7 +329,7 @@ def role_required(*roles):
             if not user:
                 flash("Please log in to continue.", "error")
                 return redirect("/login")
-            if user["role"] not in roles:
+            if user["role"] not in allowed_roles:
                 flash("You do not have access to that page.", "error")
                 return redirect(url_for(route_for_role(user["role"])))
             return view_func(*args, **kwargs)
@@ -339,6 +345,7 @@ def route_for_role(role):
         "ADMIN": "admin_dashboard",
         "HOD": "hod_dashboard",
         "CA": "authority_tickets",
+        "ASSIGNEE": "authority_tickets",
         "FACULTY": "user_dashboard",
     }.get(role, "login")
 
@@ -376,6 +383,11 @@ def sidebar_links(role):
             ("ca_assignments", "CA Assignments", "users"),
         ],
         "CA": [
+            ("create_ticket_for_role", "Create Ticket", "plus-circle"),
+            ("authority_tickets", "CA Dashboard", "layout-dashboard"),
+            ("ca_report", "Reports", "bar-chart-3"),
+        ],
+        "ASSIGNEE": [
             ("create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("authority_tickets", "CA Dashboard", "layout-dashboard"),
             ("ca_report", "Reports", "bar-chart-3"),
@@ -647,22 +659,32 @@ def create_ticket_for_role():
             flash("Description cannot exceed 5000 characters.", "error")
             return redirect(url_for("create_ticket_for_role"))
 
-        # Server-side validation: derive department from user session and validate category
+        # Server-side security validation
         category = demo_db.get_category(category_id)
         if not category:
             flash("Selected category does not exist.", "error")
             return redirect(url_for("create_ticket_for_role"))
 
-        cat_dept = (category.get("department") or "").strip().lower()
-        allowed_depts = {user_dept.lower(), user_dept_code.lower(), user_dept_name.lower()}
-        if user["role"] not in ("SUPER_ADMIN", "ADMIN") and cat_dept not in allowed_depts:
-            flash("You can only create tickets for your assigned department.", "error")
+        if category.get("is_active") == 0:
+            flash("Selected category is inactive.", "error")
+            return redirect(url_for("create_ticket_for_role"))
+
+        selected_dept = (request.form.get("department", "") or user_dept_code).strip()
+        cat_dept = (category.get("department") or "").strip()
+        matched_sel_dept = next((d for d in all_depts if d["code"].lower() == selected_dept.lower() or d["name"].lower() == selected_dept.lower()), None)
+        valid_selected_codes = {selected_dept.lower()}
+        if matched_sel_dept:
+            valid_selected_codes.add(matched_sel_dept["code"].lower())
+            valid_selected_codes.add(matched_sel_dept["name"].lower())
+
+        if cat_dept.lower() not in valid_selected_codes:
+            flash("Selected category does not belong to the selected department.", "error")
             return redirect(url_for("create_ticket_for_role"))
 
         org_id = user["org_id"]
         submission_key = request.form.get("submission_key", "").strip() or None
         demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id, submission_key=submission_key)
-        flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
+        flash("Ticket created and auto-assigned to the mapped Assignee.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
     categories = demo_db.list_categories(department=user_dept_code, org_id=user["org_id"], active_only=True)
@@ -825,7 +847,7 @@ def hod_all_tickets():
 
 
 @app.route("/authority/tickets")
-@role_required("CA")
+@role_required("ASSIGNEE", "CA")
 def authority_tickets():
     user = current_user()
     filters = filters_from_request()
@@ -2187,4 +2209,4 @@ def api_categories_by_department():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    app.run(debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")
+    app.run(host=os.getenv("HOST", "0.0.0.0"), port=int(os.getenv("PORT", 5000)), debug=os.getenv("FLASK_DEBUG", "false").lower() == "true")

@@ -111,16 +111,16 @@ def current_user():
         return None
     from app import get_live_db
     live_db = get_live_db()
-    email = session["user_email"]
-    dept = session.get("acting_department") or session["department"]
-    role = session.get("acting_role") or session["role"]
+    email = session.get("user_email", "")
+    dept = session.get("acting_department") or session.get("department", "")
+    role = session.get("acting_role") or session.get("role") or session.get("user_role", "")
     return {
-        "id": session["user_id"],
-        "name": session["user_name"],
+        "id": session.get("user_id"),
+        "name": session.get("user_name", ""),
         "email": email,
         "role": role,
         "department": dept,
-        "org_id": resolve_user_org(email, dept, live_db),
+        "org_id": session.get("org_id") or resolve_user_org(email, dept, live_db),
     }
 
 
@@ -140,7 +140,10 @@ def role_required(*roles):
                 return redirect(url_for("auth.login"))
             if user["role"] not in roles:
                 flash("You do not have access to that page.", "error")
-                return redirect(url_for(route_for_role(user["role"])))
+                target = url_for(route_for_role(user["role"]))
+                if target == request.path:
+                    return redirect(url_for("auth.login"))
+                return redirect(target)
             return view_func(*args, **kwargs)
         return wrapper
     return decorator

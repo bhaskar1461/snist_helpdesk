@@ -180,3 +180,16 @@ class TestAuthRbac(HelpdeskTestCase):
         audit_events = GLOBAL_DB_STATE.tables["helpdesk_audit_events"]
         self.assertTrue(any(e["event_type"] == "IMPERSONATION_START" for e in audit_events))
         self.assertTrue(any(e["event_type"] == "IMPERSONATION_STOP" for e in audit_events))
+
+    def test_assignee_role_access(self):
+        # Test that users with role ASSIGNEE can log in and access /authority/tickets without redirect loops
+        self.login_as("ca@gmail.com")
+        res = self.client.get("/authority/tickets", follow_redirects=True)
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b"Assignee Dashboard", res.data)
+        
+        # Test login redirect when already logged in as ASSIGNEE
+        res_login = self.client.get("/login", follow_redirects=True)
+        self.assertEqual(res_login.status_code, 200)
+        self.logout()
+

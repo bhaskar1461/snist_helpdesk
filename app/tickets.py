@@ -61,18 +61,30 @@ def create_ticket_for_role():
             flash("Description cannot exceed 5000 characters.", "error")
             return redirect(url_for("tickets.create_ticket_for_role"))
 
-        # Server-side validation: validate selected department has active categories
+        # Server-side security validation
         category = demo_db.get_category(category_id)
         if not category:
             flash("Selected category does not exist.", "error")
             return redirect(url_for("tickets.create_ticket_for_role"))
 
+        if category.get("is_active") == 0:
+            flash("Selected category is inactive.", "error")
+            return redirect(url_for("tickets.create_ticket_for_role"))
+
         cat_dept = (category.get("department") or "").strip()
-        # For non-admin roles: the chosen category must belong to a dept with active categories
+        matched_sel_dept = next((d for d in all_depts if d["code"].lower() == selected_dept.lower() or d["name"].lower() == selected_dept.lower()), None)
+        valid_selected_codes = {selected_dept.lower()}
+        if matched_sel_dept:
+            valid_selected_codes.add(matched_sel_dept["code"].lower())
+            valid_selected_codes.add(matched_sel_dept["name"].lower())
+
+        if cat_dept.lower() not in valid_selected_codes:
+            flash("Selected category does not belong to the selected department.", "error")
+            return redirect(url_for("tickets.create_ticket_for_role"))
+
         if user["role"] not in ("SUPER_ADMIN", "ADMIN"):
-            allowed_dept_codes = depts_with_active_cats
-            if cat_dept not in allowed_dept_codes:
-                flash("The selected category does not belong to an available department.", "error")
+            if cat_dept not in depts_with_active_cats and (matched_sel_dept and matched_sel_dept["code"] not in depts_with_active_cats):
+                flash("The selected department has no active categories.", "error")
                 return redirect(url_for("tickets.create_ticket_for_role"))
 
         org_id = user["org_id"]
@@ -80,7 +92,7 @@ def create_ticket_for_role():
         demo_db.create_ticket(title=title, description=description, category_id=category_id,
                               created_by=user["id"], org_id=org_id, location_id=location_id,
                               submission_key=submission_key)
-        flash("Ticket created and auto-assigned to the mapped Concerned Authority.", "success")
+        flash("Ticket created and auto-assigned to the mapped Assignee.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 
     # Default: show categories for the user's own department initially
@@ -161,7 +173,7 @@ def ticket_detail(ticket_id):
 
 
 @tickets_bp.route("/authority/update-status/<int:ticket_id>", methods=["POST"])
-@role_required("CA", "SUPER_ADMIN")
+@role_required("ASSIGNEE", "CA", "SUPER_ADMIN")
 def authority_update_status(ticket_id):
     from app import get_demo_db
     demo_db = get_demo_db()
@@ -207,7 +219,7 @@ def authority_update_status(ticket_id):
 
 
 @tickets_bp.route("/tickets/<int:ticket_id>/reopen", methods=["POST"])
-@role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
+@role_required("FACULTY", "ASSIGNEE", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
 def reopen_ticket(ticket_id):
     from app import get_demo_db
     demo_db = get_demo_db()
@@ -227,7 +239,7 @@ def reopen_ticket(ticket_id):
 
 
 @tickets_bp.route("/tickets/<int:ticket_id>/notes", methods=["POST"])
-@role_required("CA", "HOD", "ADMIN", "SUPER_ADMIN")
+@role_required("ASSIGNEE", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
 def add_ticket_note(ticket_id):
     """Add an internal note to a ticket."""
     from app import get_demo_db
@@ -247,7 +259,7 @@ def add_ticket_note(ticket_id):
 
 
 @tickets_bp.route("/authority/tickets")
-@role_required("CA")
+@role_required("ASSIGNEE", "CA")
 def authority_tickets():
     from app import get_demo_db
     demo_db = get_demo_db()

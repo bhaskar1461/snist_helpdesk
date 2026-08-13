@@ -42,28 +42,64 @@ class TestTickets(HelpdeskTestCase):
 
     def test_create_ticket_readonly_department_display(self):
         self.login_as("faculty@gmail.com")
+        # Keep only CSE categories so available_depts has length 1
+        GLOBAL_DB_STATE.tables["helpdesk_categories"] = [
+            c for c in GLOBAL_DB_STATE.tables["helpdesk_categories"] if c.get("department") == "CSE"
+        ]
         response = self.client.get("/tickets/create")
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn(b'id="department-select"', response.data)
+        self.assertNotIn(b'id="dept-select"', response.data)
         self.assertIn(b'readonly', response.data)
 
     def test_create_ticket_cross_department_rejected(self):
         # Login as CSE Faculty (department: CSE)
         self.login_as("faculty@gmail.com")
 
-        # Category 3 is Plumbing (department: Facilities)
+        # Category 999 is non-existent/invalid
         response = self.client.post("/tickets/create", data={
             "title": "Fix plumbing",
             "description": "Pipe leaking in bathroom",
-            "category_id": "3",
+            "category_id": "999",
             "location_id": "1"
         }, follow_redirects=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"only create tickets for your assigned department", response.data.lower())
+        self.assertIn(b"does not exist", response.data.lower())
 
         # Verify no ticket was created
-        created_tickets = [t for t in GLOBAL_DB_STATE.tables["helpdesk_tickets"] if t["created_by"] == 7 and t.get("category_id") == 3]
+        created_tickets = [t for t in GLOBAL_DB_STATE.tables["helpdesk_tickets"] if t["created_by"] == 7 and t.get("category_id") == 999]
         self.assertEqual(len(created_tickets), 0)
+
+    def test_create_ticket_inactive_category_rejected(self):
+        self.login_as("faculty@gmail.com")
+
+        # Category 2 is inactive in GLOBAL_DB_STATE
+        cat2 = next((c for c in GLOBAL_DB_STATE.tables["helpdesk_categories"] if c["id"] == 2), None)
+        if cat2:
+            cat2["is_active"] = 0
+
+        response = self.client.post("/tickets/create", data={
+            "title": "Inactive category test",
+            "description": "Testing submitting inactive category",
+            "category_id": "2",
+            "department": "CSE",
+            "location_id": "1"
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"inactive", response.data.lower())
+
+    def test_create_ticket_mismatched_department_category_rejected(self):
+        self.login_as("faculty@gmail.com")
+
+        # Category 3 is Plumbing (Facilities). Submit with department = CSE
+        response = self.client.post("/tickets/create", data={
+            "title": "Mismatched dept test",
+            "description": "Category belongs to Facilities but department submitted is CSE",
+            "category_id": "3",
+            "department": "CSE",
+            "location_id": "1"
+        }, follow_redirects=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"does not belong to the selected department", response.data.lower())
 
     def test_ticket_status_transitions_happy_path(self):
         # Seed a ticket in PENDING state

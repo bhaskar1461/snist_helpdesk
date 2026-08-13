@@ -141,9 +141,27 @@ class MockCursor:
             return cols
 
         def match_row(row, where_clause_lower, where_params):
+            where_params = list(where_params)
             for keyw in ["order by", "group by", "limit", "offset"]:
                 if keyw in where_clause_lower:
                     where_clause_lower = where_clause_lower[:where_clause_lower.index(keyw)].strip()
+
+            sub_target = "c.department in (select branch_code from branch_detail where cast(org_id as char) = %s)"
+            if sub_target in where_clause_lower:
+                sub_pos = where_clause_lower.index(sub_target)
+                param_idx = where_clause_lower[:sub_pos].count("%s")
+                if param_idx < len(where_params):
+                    target_org = str(where_params[param_idx])
+                    valid_branches = {
+                        b.get("BRANCH_CODE") or b.get("department_code")
+                        for b in self.state.tables["branch_detail"]
+                        if str(b.get("ORG_ID") or b.get("org_id")) == target_org
+                    }
+                    row_dept = row.get("department") or row.get("department_code") or row.get("BRANCH_CODE")
+                    if row_dept not in valid_branches:
+                        return False
+                    where_clause_lower = where_clause_lower[:sub_pos] + where_clause_lower[sub_pos + len(sub_target):]
+                    where_params = where_params[:param_idx] + where_params[param_idx+1:]
 
             if "is_archived" in where_clause_lower:
                 if "is_archived, 0) = 0" in where_clause_lower or "is_archived = 0" in where_clause_lower:
