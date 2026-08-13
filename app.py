@@ -40,6 +40,21 @@ app.config.update(
 )
 csrf = CSRFProtect(app)
 
+# Register Modular Blueprints
+from app.auth import auth_bp
+from app.tickets import tickets_bp
+from app.management import management_bp
+from app.dashboards import dashboards_bp
+from app.analytics import analytics_bp
+from app.api import api_bp
+
+app.register_blueprint(auth_bp)
+app.register_blueprint(tickets_bp)
+app.register_blueprint(management_bp)
+app.register_blueprint(dashboards_bp)
+app.register_blueprint(analytics_bp)
+app.register_blueprint(api_bp)
+
 # Brute-force protection / Rate limiting (H-3)
 LOGIN_ATTEMPTS = defaultdict(list)
 LOCKOUT_TIME = 60  # 1 minute lockout
