@@ -189,9 +189,9 @@ class BaseMySQLService:
             cursorclass=pymysql.cursors.DictCursor,
             autocommit=True,
             ssl=ssl_config,
-            connect_timeout=3,
-            read_timeout=5,
-            write_timeout=5,
+            connect_timeout=5,
+            read_timeout=10,
+            write_timeout=10,
         )
 
     def connection(self):

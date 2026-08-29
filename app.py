@@ -532,65 +532,58 @@ def login():
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "").strip()
 
-        # 1) Try demo_users first (existing accounts)
-        user = demo_db.authenticate_user(email, password)
+        try:
+            # 1) Try demo_users first (existing accounts)
+            user = demo_db.authenticate_user(email, password)
 
-        # 2) If not found and email is a valid Sreenidhi domain, try teacher_info
-        teacher_lookup_occurred = False
-        if not user and email.endswith(("@sreenidhi.edu.in", "@suh.edu.in", "@sreegroup.edu.in")):
-            # If the email already exists in demo_users, it means they have already been provisioned
-            # and simply entered an incorrect password. Avoid duplicate entry error.
-            if demo_db.get_user_by_email(email):
-                record_login_attempt(ip)
-                if live_db.enabled:
-                    try:
-                        with live_db.connection() as conn, conn.cursor() as cur:
-                            cur.execute("SELECT 1")
-                            cur.fetchone()
-                    except Exception:
-                        pass
-                flash("Invalid email or password.", "error")
-                return render_template("login.html")
+            # 2) If not found and email is a valid Sreenidhi domain, try teacher_info
+            teacher_lookup_occurred = False
+            if not user and email.endswith(("@sreenidhi.edu.in", "@suh.edu.in", "@sreegroup.edu.in")):
+                # If the email already exists in demo_users, it means they have already been provisioned
+                # and simply entered an incorrect password. Avoid duplicate entry error.
+                if demo_db.get_user_by_email(email):
+                    record_login_attempt(ip)
+                    flash("Invalid email or password.", "error")
+                    return render_template("login.html")
 
-            teacher_lookup_occurred = True
-            teacher = live_db.lookup_teacher_by_email(email)
-            if teacher and teacher.get("sap_id"):
-                # Verify password against SAP ID
-                sap_id = str(teacher["sap_id"]).strip()
-                if password == sap_id:
-                    # Auto-provision into demo_users as FACULTY
-                    teacher_name = (teacher.get("name") or "User").strip()
-                    teacher_dept = (teacher.get("department") or "").strip() or "General"
-                    try:
-                        user_id = demo_db.create_user({
-                            "name": teacher_name,
-                            "email": email,
-                            "password": sap_id,  # stored as hash by create_user
-                            "role": "FACULTY",
-                            "department": teacher_dept,
-                        })
-                        user = {
-                            "id": user_id,
-                            "name": teacher_name,
-                            "email": email,
-                            "role": "FACULTY",
-                            "department": teacher_dept,
-                        }
-                        log.info("Auto-provisioned teacher %s (%s) as FACULTY.", teacher_name, email)
-                    except Exception as exc:
-                        log.error("Failed to auto-provision teacher %s: %s", email, exc)
-                        flash("Account setup failed. Please contact the administrator.", "error")
-                        return render_template("login.html")
-
-        # Normalize timing for non-Sreenidhi emails or already found users
-        if not teacher_lookup_occurred:
-            if live_db.enabled:
+                teacher_lookup_occurred = True
                 try:
-                    with live_db.connection() as conn, conn.cursor() as cur:
-                        cur.execute("SELECT 1")
-                        cur.fetchone()
-                except Exception:
-                    pass
+                    teacher = live_db.lookup_teacher_by_email(email)
+                except Exception as e:
+                    log.warning("Live DB lookup failed: %s", e)
+                    teacher = None
+
+                if teacher and teacher.get("sap_id"):
+                    # Verify password against SAP ID
+                    sap_id = str(teacher["sap_id"]).strip()
+                    if password == sap_id:
+                        # Auto-provision into demo_users as FACULTY
+                        teacher_name = (teacher.get("name") or "User").strip()
+                        teacher_dept = (teacher.get("department") or "").strip() or "General"
+                        try:
+                            user_id = demo_db.create_user({
+                                "name": teacher_name,
+                                "email": email,
+                                "password": sap_id,  # stored as hash by create_user
+                                "role": "FACULTY",
+                                "department": teacher_dept,
+                            })
+                            user = {
+                                "id": user_id,
+                                "name": teacher_name,
+                                "email": email,
+                                "role": "FACULTY",
+                                "department": teacher_dept,
+                            }
+                            log.info("Auto-provisioned teacher %s (%s) as FACULTY.", teacher_name, email)
+                        except Exception as exc:
+                            log.error("Failed to auto-provision teacher %s: %s", email, exc)
+                            flash("Account setup failed. Please contact the administrator.", "error")
+                            return render_template("login.html")
+        except Exception as db_err:
+            log.error("Database error during login: %s", db_err)
+            flash("Database temporarily unavailable. Please try again in a few moments.", "error")
+            return render_template("login.html")
 
         if not user:
             record_login_attempt(ip)
