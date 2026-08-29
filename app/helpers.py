@@ -75,13 +75,8 @@ def safe_int(value, default=0):
 
 # ── Org Resolution ──────────────────────────────────────────────────
 def resolve_user_org(email, department, live_db=None):
-    """Determine which organization a user belongs to."""
+    """Determine which organization a user belongs to instantly via domain/dept heuristics."""
     email_lower = (email or "").lower().strip()
-
-    if live_db and live_db.enabled and email_lower:
-        resolved = live_db.resolve_org_id(email=email_lower)
-        if resolved:
-            return resolved
 
     domain = ""
     if "@" in email_lower:
@@ -91,15 +86,26 @@ def resolve_user_org(email, department, live_db=None):
         return "3000"
     if domain == "sreenidhi.edu.in" or "sreenidhi" in domain:
         return "2000"
-    if email_lower in ("admin@gmail.com", "campus.admin@gmail.com"):
+    if email_lower in ("admin@gmail.com", "campus.admin@gmail.com", "superadmin@gmail.com"):
         return "2000"
     if email_lower == "snu.admin@gmail.com":
         return "3000"
 
+    if live_db and live_db.enabled and email_lower:
+        try:
+            resolved = live_db.resolve_org_id(email=email_lower)
+            if resolved:
+                return resolved
+        except Exception:
+            pass
+
     if department and live_db and live_db.enabled:
-        resolved = live_db.resolve_org_id(department=department)
-        if resolved:
-            return resolved
+        try:
+            resolved = live_db.resolve_org_id(department=department)
+            if resolved:
+                return resolved
+        except Exception:
+            pass
 
     return "2000"
 
@@ -109,19 +115,22 @@ def current_user():
     """Get the current logged-in user from session."""
     if not session.get("user_id"):
         return None
-    from app import get_live_db
-    live_db = get_live_db()
     email = session.get("email") or session.get("user_email", "")
     name = session.get("name") or session.get("user_name", "")
     dept = session.get("acting_department") or session.get("department", "")
     role = session.get("acting_role") or session.get("role") or session.get("user_role", "")
+    org_id = session.get("org_id")
+    if not org_id:
+        org_id = resolve_user_org(email, dept)
+        session["org_id"] = org_id
+
     return {
         "id": session.get("user_id"),
         "name": name,
         "email": email,
         "role": role,
         "department": dept,
-        "org_id": session.get("org_id") or resolve_user_org(email, dept, live_db),
+        "org_id": org_id,
     }
 
 

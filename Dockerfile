@@ -33,5 +33,5 @@ USER appuser
 # Expose port
 EXPOSE 5000
 
-# Command to run the application using Gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "wsgi:application"]
+# Command to run the application using Gunicorn with multi-threaded workers
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "3", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "wsgi:application"]
