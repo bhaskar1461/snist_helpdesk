@@ -222,7 +222,51 @@
       color: #94a3b8;
       font-size: 0.88rem;
       text-align: center;
-      padding: 2.5rem 0;
+      padding: 3rem 0;
+    }
+
+    /* ── Metabase Full-Canvas Container ──────────────────────────────── */
+    .metabase-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+      margin-bottom: 24px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .metabase-header {
+      padding: 12px 20px;
+      border-bottom: 1px solid #f1f5f9;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .metabase-header h3 {
+      margin: 0;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--slate-900);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tab-segment-group {
+      display: flex;
+      align-items: center;
+      background: #f1f5f9;
+      padding: 3px;
+      border-radius: 8px;
+      gap: 2px;
     }
 
     .btn-nav-pill {
@@ -232,12 +276,85 @@
       font-size: 0.82rem;
       font-weight: 600;
       cursor: pointer;
+      background: transparent;
+      color: var(--slate-600);
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+    }
+
+    .btn-nav-pill.active {
+      background: #ffffff;
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    }
+
+    .btn-nav-pill.inactive:hover {
+      color: var(--slate-900);
+    }
+
+    .btn-expand {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--slate-700);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       transition: all 0.15s;
     }
 
-    .btn-nav-pill.active { background: var(--primary); color: #fff; }
-    .btn-nav-pill.inactive { background: #f1f5f9; color: var(--slate-700); }
-    .btn-nav-pill.inactive:hover { background: #e2e8f0; }
+    .btn-expand:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+      color: var(--slate-900);
+    }
+
+    #metabase-container {
+      width: 100%;
+      min-height: calc(100vh - 280px);
+      background: #ffffff;
+      position: relative;
+    }
+
+    #metabase-container iframe {
+      width: 100%;
+      height: calc(100vh - 280px);
+      min-height: 850px;
+      border: none;
+      display: block;
+    }
+
+    /* ── Fullscreen Overlay Mode ─────────────────────────────────────── */
+    .metabase-card.fullscreen-mode {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      z-index: 99999 !important;
+      border-radius: 0 !important;
+      margin: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+
+    .metabase-card.fullscreen-mode #metabase-container {
+      height: calc(100vh - 58px) !important;
+    }
+
+    .metabase-card.fullscreen-mode #metabase-container iframe {
+      height: 100% !important;
+      min-height: 100% !important;
+    }
   </style>
 </head>
 <body>
@@ -336,19 +453,24 @@
 
       {% if metabase_enabled %}
       <!-- Metabase Embedded Analytics -->
-      <section class="chart-card analytics-full" style="margin-bottom:24px;" id="metabase-section">
-        <div class="chart-card-header">
-          <div>
-            <h3>Metabase Advanced Dashboards</h3>
+      <section class="metabase-card analytics-full" id="metabase-section">
+        <div class="metabase-header">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <h3><i data-lucide="bar-chart-3" style="width:18px;height:18px; color:var(--primary);"></i> Metabase Advanced Dashboards</h3>
           </div>
-          <div id="metabase-nav-buttons" style="display:flex; gap:6px;">
-            <button onclick="loadMetabaseDashboard('overview', this)" class="btn-nav-pill active">Overview</button>
-            <button onclick="loadMetabaseDashboard('trends', this)" class="btn-nav-pill inactive">Trends</button>
-            <button onclick="loadMetabaseDashboard('ca_performance', this)" class="btn-nav-pill inactive">Assignee Metrics</button>
-            <a href="{{ metabase_url }}" target="_blank" class="btn-nav-pill inactive" style="text-decoration:none;">Open Portal ↗</a>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div id="metabase-nav-buttons" class="tab-segment-group">
+              <button onclick="loadMetabaseDashboard('overview', this)" class="btn-nav-pill active">Overview</button>
+              <button onclick="loadMetabaseDashboard('trends', this)" class="btn-nav-pill inactive">Trends</button>
+              <button onclick="loadMetabaseDashboard('ca_performance', this)" class="btn-nav-pill inactive">Assignee Metrics</button>
+              <a href="{{ metabase_url }}" target="_blank" class="btn-nav-pill inactive">Open Portal <i data-lucide="external-link" style="width:12px;height:12px;"></i></a>
+            </div>
+            <button onclick="toggleMetabaseFullscreen()" class="btn-expand" id="fs-toggle-btn" title="Toggle Fullscreen">
+              <i data-lucide="maximize" style="width:14px;height:14px;"></i> Expand
+            </button>
           </div>
         </div>
-        <div id="metabase-container" style="min-height:400px; padding:16px;">
+        <div id="metabase-container">
           <p class="loading-msg">Connecting to Metabase instance...</p>
         </div>
       </section>
@@ -360,7 +482,6 @@
           <div class="chart-card-header">
             <div>
               <h3>Tickets by Department</h3>
-              <p>Volume distribution across campus units.</p>
             </div>
           </div>
           <div class="chart-container"><canvas id="deptChart"></canvas></div>
@@ -371,7 +492,6 @@
           <div class="chart-card-header">
             <div>
               <h3>Tickets by Category</h3>
-              <p>Complaint frequency by problem category.</p>
             </div>
           </div>
           <div class="chart-container"><canvas id="catChart"></canvas></div>
@@ -382,7 +502,6 @@
           <div class="chart-card-header">
             <div>
               <h3>Resolution Velocity Trends</h3>
-              <p>Comparison of incoming tickets created vs resolved.</p>
             </div>
           </div>
           <div class="chart-container"><canvas id="trendChart"></canvas></div>
@@ -393,7 +512,6 @@
           <div class="chart-card-header">
             <div>
               <h3>Assignee Performance Leaderboard</h3>
-              <p>Workload, completed resolutions, and turnaround metrics per staff member.</p>
             </div>
           </div>
           <div style="overflow-x:auto;">
@@ -421,7 +539,6 @@
           <div class="chart-card-header">
             <div>
               <h3>Average Resolution Times</h3>
-              <p>Turnaround benchmark statistics per problem category.</p>
             </div>
           </div>
           <div style="overflow-x:auto;">
@@ -574,6 +691,19 @@
       if (section) section.style.display = 'none';
     }
 
+    function toggleMetabaseFullscreen() {
+      const card = document.getElementById('metabase-section');
+      if (!card) return;
+      card.classList.toggle('fullscreen-mode');
+      const btn = document.getElementById('fs-toggle-btn');
+      if (card.classList.contains('fullscreen-mode')) {
+        if (btn) btn.innerHTML = '<i data-lucide="minimize" style="width:14px;height:14px;"></i> Exit Fullscreen';
+      } else {
+        if (btn) btn.innerHTML = '<i data-lucide="maximize" style="width:14px;height:14px;"></i> Expand';
+      }
+      lucide.createIcons();
+    }
+
     async function loadMetabaseDashboard(key, btnElement) {
       if (btnElement) {
         const navContainer = document.getElementById('metabase-nav-buttons');
@@ -600,7 +730,8 @@
         }
         const iframe = document.createElement('iframe');
         iframe.src = data.embed_url;
-        iframe.style.cssText = 'width:100%;height:850px;border:none;border-radius:10px;';
+        iframe.setAttribute('allowfullscreen', 'true');
+        iframe.style.cssText = 'width:100%; height:100%; min-height:850px; border:none; display:block;';
 
         const timeout = setTimeout(() => {
           if (!iframe.dataset.loaded) {
