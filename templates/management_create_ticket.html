@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/smart_select.css') }}">
 </head>
 <body>
   <div class="admin-shell">
@@ -21,9 +22,8 @@
     <main class="admin-main">
       <header class="admin-topbar">
         <div>
-          <p class="kicker">New Complaint</p>
-          <h2>Create ticket as {{ role_title }}</h2>
-          <span>Org and department are included so the ticket can be filtered, assigned, and exported correctly.</span>
+          <p class="kicker">Ticket Management</p>
+          <h2>Create Ticket as {{ role_title }}</h2>
         </div>
         <div class="profile-pill">
           <div class="avatar">{{ role_title[0] }}</div>
@@ -48,8 +48,8 @@
         <form class="admin-form" method="post" action="{{ url_for(create_route) }}">
           <div class="form-grid">
             <label class="field">
-              <span>Org</span>
-              <select name="org" required>
+              <span>Organization</span>
+              <select name="org" class="searchable-select" required data-placeholder="Select Org...">
                 <option value="SNIST" {% if current_org == "SNIST" %}selected{% endif %}>SNIST</option>
                 <option value="SNU" {% if current_org == "SNU" %}selected{% endif %}>SNU</option>
               </select>
@@ -57,7 +57,7 @@
 
             <label class="field">
               <span>Department</span>
-              <select name="department" required>
+              <select name="department" class="searchable-select" required data-placeholder="Select Department...">
                 {% for department in departments %}
                   <option value="{{ department }}" {% if department == current_department %}selected{% endif %}>{{ department }}</option>
                 {% endfor %}
@@ -65,8 +65,8 @@
             </label>
 
             <label class="field">
-              <span>Complaint From Block</span>
-              <select name="block" required>
+              <span>Block / Building</span>
+              <select name="block" class="searchable-select" required data-placeholder="Select Block...">
                 <option>Academic Block 1</option>
                 <option>Academic Block 2</option>
                 <option>Admin Block</option>
@@ -80,8 +80,8 @@
             </label>
 
             <label class="field">
-              <span>Complaint Related</span>
-              <select name="complaint_related" required>
+              <span>Related Area</span>
+              <select name="complaint_related" class="searchable-select" required data-placeholder="Select Related Area...">
                 <option>ICT</option>
                 <option>Facilities</option>
                 <option>Maintenance</option>
@@ -90,7 +90,7 @@
 
             <label class="field">
               <span>Category</span>
-              <select name="category" required>
+              <select name="category" class="searchable-select" required data-placeholder="Select Category...">
                 {% for category in categories %}
                   <option value="{{ category }}">{{ category }}</option>
                 {% endfor %}
@@ -99,8 +99,8 @@
           </div>
 
           <label class="field field-large">
-            <span>Complaint Description (Optional)</span>
-            <textarea name="description" rows="8" placeholder="Describe the issue and any useful details..."></textarea>
+            <span>Ticket Description</span>
+            <textarea name="description" rows="8" placeholder="Describe the issue in detail..."></textarea>
           </label>
 
           <div class="form-actions">
@@ -113,6 +113,7 @@
   </div>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/smart_select.js') }}"></script>
   <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>

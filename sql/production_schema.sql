@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS helpdesk_users (
   password VARCHAR(255) NOT NULL,
   role ENUM('SUPER_ADMIN', 'ADMIN', 'HOD', 'ASSIGNEE', 'CA', 'FACULTY') NOT NULL,
   department VARCHAR(255) NOT NULL,
+  phone VARCHAR(32) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_helpdesk_users_email (email)

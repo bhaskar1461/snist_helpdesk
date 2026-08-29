@@ -58,9 +58,9 @@ def env_db_config() -> DbConfig | None:
 
     host = os.getenv("MYSQL_HOST", "").strip()
     if not host or host in ("seg-dev.sreenidhi.edu.in", "localhost"):
-        if os.getenv("MYSQL_ENABLE_REMOTE", "false").lower() == "true":
+        if os.getenv("MYSQL_ENABLE_REMOTE", "true").lower() == "true":
             host = "seg-dev.sreenidhi.edu.in"
-        elif is_host_reachable("127.0.0.1", 3306, timeout_sec=0.05):
+        elif is_host_reachable("127.0.0.1", 3306, timeout_sec=1.5):
             host = "127.0.0.1"
         else:
             return None
@@ -164,15 +164,15 @@ class BaseMySQLService:
     @property
     def enabled(self) -> bool:
         import sys
-        if "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true":
+        if "unittest" in sys.modules or "pytest" in sys.modules or os.getenv("TESTING", "false").lower() == "true":
             return self.config is not None
         if self.config is None:
             return False
         if getattr(self, "_last_fail_time", 0) and (time.time() - self._last_fail_time < 60.0):
             return False
-        if self.config.host == "seg-dev.sreenidhi.edu.in" and os.getenv("MYSQL_ENABLE_REMOTE", "false").lower() != "true":
+        if self.config.host == "seg-dev.sreenidhi.edu.in" and os.getenv("MYSQL_ENABLE_REMOTE", "true").lower() != "true":
             return False
-        return is_host_reachable(self.config.host, self.config.port, timeout_sec=0.05)
+        return is_host_reachable(self.config.host, self.config.port, timeout_sec=2.0)
 
 
 
@@ -367,7 +367,7 @@ class LiveDbService(BaseMySQLService):
             {"id": 3, "block": "Block 3", "floor": "2nd Floor", "room_no": "201", "name": "Seminar Room", "ORG_ID": "2000"},
         ]
 
-    def fetch_reference_users(self, search="", department=None, limit=100, org_id=None):
+    def fetch_reference_users(self, search="", department=None, limit=100, org_id=None, active_only=False):
         if not self.enabled:
             return []
         sql = """
@@ -384,9 +384,11 @@ class LiveDbService(BaseMySQLService):
                 b.HOD_ID
             FROM teacher_info t
             LEFT JOIN branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
-            WHERE COALESCE(t.ACTIVE, 1) = 1
+            WHERE t.EMAIL_ID IS NOT NULL AND TRIM(t.EMAIL_ID) != ''
         """
         params = []
+        if active_only:
+            sql += " AND COALESCE(t.ACTIVE, 1) = 1"
         if department:
             sql += " AND (b.BRANCH_CODE = %s OR b.BRANCH_NAME = %s OR t.COLLEGE LIKE %s)"
             params.extend([department, department, f"%{department}%"])
@@ -508,25 +510,44 @@ class LiveDbService(BaseMySQLService):
 
 class DemoDbService(BaseMySQLService):
     def get_user_phone(self, email):
-        """Query teacher_info for user's MOBILE_PHONE. Returns phone number or fallback."""
-        phone = None
-        if self.enabled and email:
-            sql = """
-                SELECT MOBILE_PHONE
-                FROM teacher_info
-                WHERE LOWER(COALESCE(EMAIL_ID, '')) = LOWER(%s)
-                  AND COALESCE(ACTIVE, 1) = 1
-                LIMIT 1
-            """
+        """Query helpdesk_users, teacher_info, and sys_administrators for user's phone. Returns phone number or fallback."""
+        test_number = os.getenv("SMS_TEST_NUMBER")
+        if not email:
+            return test_number
+
+        if self.enabled:
+            # 1. Check helpdesk_users.phone
             try:
-                with self.connection() as connection, connection.cursor() as cursor:
-                    cursor.execute(sql, (email,))
-                    row = cursor.fetchone()
-                    if row:
-                        phone = row.get("MOBILE_PHONE")
+                with self.connection() as conn, conn.cursor() as cur:
+                    cur.execute("SELECT phone FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1", (email,))
+                    row = cur.fetchone()
+                    if row and row.get("phone") and str(row.get("phone")).strip() not in ('', '0', 'None'):
+                        return str(row["phone"]).strip()
             except Exception:
                 pass
-        return phone if phone else os.getenv("SMS_TEST_NUMBER")
+
+            # 2. Check teacher_info.MOBILE_PHONE
+            try:
+                with self.connection() as conn, conn.cursor() as cur:
+                    cur.execute("SELECT MOBILE_PHONE FROM teacher_info WHERE LOWER(EMAIL_ID) = LOWER(%s) LIMIT 1", (email,))
+                    row = cur.fetchone()
+                    if row and row.get("MOBILE_PHONE") and str(row.get("MOBILE_PHONE")).strip() not in ('', '0', 'None'):
+                        return str(row["MOBILE_PHONE"]).strip()
+            except Exception:
+                pass
+
+            # 3. Check sys_administrators.MOBILE_NO
+            try:
+                with self.connection() as conn, conn.cursor() as cur:
+                    cur.execute("SELECT MOBILE_NO FROM sys_administrators WHERE LOWER(EMAIL_ID) = LOWER(%s) LIMIT 1", (email,))
+                    row = cur.fetchone()
+                    if row and row.get("MOBILE_NO") and str(row.get("MOBILE_NO")).strip() not in ('', '0', 'None'):
+                        val = row["MOBILE_NO"]
+                        return str(int(float(val))) if isinstance(val, (int, float)) or (isinstance(val, str) and val.replace('.', '', 1).isdigit()) else str(val).strip()
+            except Exception:
+                pass
+
+        return test_number if test_number else None
 
     def ensure_schema(self, schema_path: Path):
         if not self.enabled:
@@ -544,43 +565,55 @@ class DemoDbService(BaseMySQLService):
         if not self.enabled:
             return
         with self.connection() as connection, connection.cursor() as cursor:
+            # Ensure phone column exists in helpdesk_users table
+            try:
+                cursor.execute("ALTER TABLE helpdesk_users ADD COLUMN phone VARCHAR(32) NULL")
+            except Exception:
+                pass
+
             # Seed users individually if they do not exist
             for u in users:
                 cursor.execute("SELECT id FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1", (u["email"],))
-                if not cursor.fetchone():
+                existing = cursor.fetchone()
+                if not existing:
                     cursor.execute(
                         """
-                        INSERT INTO helpdesk_users (name, email, password, role, department)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO helpdesk_users (name, email, password, role, department, phone)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (u["name"], u["email"], generate_password_hash(u["password"]), u["role"], u["department"]),
+                        (u["name"], u["email"], generate_password_hash(u["password"]), u["role"], u["department"], u.get("phone")),
                     )
+                else:
+                    if u.get("phone"):
+                        cursor.execute("UPDATE helpdesk_users SET phone = %s WHERE id = %s", (u["phone"], existing["id"]))
 
             # Seed categories individually if they do not exist
             if categories:
                 for category in categories:
                     cursor.execute(
                         "SELECT id FROM helpdesk_categories WHERE LOWER(category_name) = LOWER(%s) AND department = %s LIMIT 1",
-                        (category["category_name"], category["department"])
+                        (category["category_name"], category["department"]),
                     )
                     if not cursor.fetchone():
-                        cursor.execute("SELECT id FROM helpdesk_users WHERE email = %s LIMIT 1", (category["authority_email"],))
-                        row = cursor.fetchone()
-                        if not row:
-                            continue
                         cursor.execute(
-                            """
-                            INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id)
-                            VALUES (%s, %s, %s)
-                            """,
-                            (category["category_name"], category["department"], row["id"]),
+                            "SELECT id FROM helpdesk_users WHERE department = %s AND role IN ('CA', 'ASSIGNEE') ORDER BY id ASC LIMIT 1",
+                            (category["department"],),
                         )
+                        row = cursor.fetchone()
+                        if row:
+                            cursor.execute(
+                                """
+                                INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id)
+                                VALUES (%s, %s, %s)
+                                """,
+                                (category["category_name"], category["department"], row["id"]),
+                            )
 
     def authenticate_user(self, email, password):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, name, email, password, role, department
+                SELECT id, name, email, password, role, department, phone
                 FROM helpdesk_users
                 WHERE LOWER(email) = LOWER(%s)
                 LIMIT 1
@@ -609,19 +642,19 @@ class DemoDbService(BaseMySQLService):
 
     def get_user(self, user_id):
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT id, name, email, role, department, created_at FROM helpdesk_users WHERE id = %s", (user_id,))
+            cursor.execute("SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE id = %s", (user_id,))
             return cursor.fetchone()
 
     def get_user_by_email(self, email):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT id, name, email, role, department, created_at FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
+                "SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
                 (email,),
             )
             return cursor.fetchone()
 
     def list_users(self, role=None, department=None, search="", org_id=None, limit=None, offset=None):
-        sql = "SELECT id, name, email, role, department, created_at FROM helpdesk_users WHERE 1=1"
+        sql = "SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE 1=1"
         params = []
         if role:
             if isinstance(role, (list, tuple)):
@@ -1176,7 +1209,7 @@ class DemoDbService(BaseMySQLService):
             and status == "REOPENED"
         )
         if not is_assigned_ca and not is_super_admin and not is_creator_reopening:
-            raise PermissionError("Only the assigned Concerned Authority can update this ticket.")
+            raise PermissionError("Only the assigned Assignee can update this ticket.")
 
         # Enforce valid status transitions
         current_status = ticket["status"]

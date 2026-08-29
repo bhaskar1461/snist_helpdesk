@@ -3,30 +3,226 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Location Management</title>
+  <title>Location Management — SNIST Helpdesk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
   <style>
-    .location-count { font-size:.85rem; color:#6b7280; margin-top:4px; }
-    .btn-group { display:flex; gap:6px; }
-    .edit-btn { background:#4f46e5; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
-    .edit-btn:hover { background:#4338ca; }
-    .delete-btn { background:#ef4444; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
-    .delete-btn:hover { background:#dc2626; }
-    .cancel-btn { background:#6b7280; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
-    .cancel-btn:hover { background:#4b5563; }
-    .save-btn { background:#10b981; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
-    .save-btn:hover { background:#059669; }
-    .edit-row td { background:#f8fafc !important; }
-    .edit-row input { width:100%; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:.82rem; }
-    .confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; align-items:center; justify-content:center; }
-    .confirm-overlay.active { display:flex; }
-    .confirm-box { background:#fff; border-radius:12px; padding:1.5rem 2rem; max-width:400px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.2); }
-    .confirm-box h3 { margin:0 0 .5rem; font-size:1.1rem; }
-    .confirm-box p { color:#6b7280; font-size:.9rem; margin-bottom:1rem; }
-    .confirm-box .btn-group { justify-content:center; }
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: var(--slate-800);
+    }
+
+    .loc-mgmt-grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 1080px) {
+      .loc-mgmt-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .mgmt-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .mgmt-card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #ffffff;
+    }
+
+    .mgmt-card-title h3 {
+      margin: 0;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--slate-900);
+    }
+
+    .mgmt-card-title p {
+      margin: 2px 0 0;
+      font-size: 0.8rem;
+      color: var(--slate-600);
+    }
+
+    .mgmt-form {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--slate-700);
+    }
+
+    .form-group input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 12px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      color: var(--slate-900);
+      background: #ffffff;
+      transition: all 0.15s;
+    }
+
+    .form-group input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+      outline: none;
+    }
+
+    .btn-create {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s;
+      margin-top: 6px;
+    }
+
+    .btn-create:hover {
+      background: var(--primary-hover);
+    }
+
+    .filter-bar-wrap {
+      padding: 14px 20px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .filter-search-input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.86rem;
+      color: var(--slate-800);
+      background: #ffffff;
+      outline: none;
+    }
+
+    .filter-search-input:focus {
+      border-color: var(--primary);
+    }
+
+    .btn-table-action {
+      border: none;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+
+    .btn-edit { background: #eef2ff; color: var(--primary); }
+    .btn-edit:hover { background: #e0e7ff; }
+
+    .btn-delete { background: #fee2e2; color: #dc2626; }
+    .btn-delete:hover { background: #fecaca; }
+
+    .btn-save { background: #10b981; color: #ffffff; }
+    .btn-save:hover { background: #059669; }
+
+    .btn-cancel { background: #f1f5f9; color: var(--slate-700); }
+    .btn-cancel:hover { background: #e2e8f0; }
+
+    .btn-group { display: flex; gap: 6px; }
+
+    .edit-row td {
+      background: #f8fafc !important;
+      padding: 8px 12px;
+    }
+
+    .edit-row input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 0.82rem;
+    }
+
+    .confirm-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .confirm-overlay.active { display: flex; }
+
+    .confirm-box {
+      background: #ffffff;
+      border-radius: var(--radius);
+      padding: 24px;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.2);
+    }
+
+    .confirm-box h3 { margin: 0 0 8px; font-size: 1.1rem; color: #dc2626; display: flex; align-items: center; gap: 8px; }
+    .confirm-box p { color: var(--slate-600); font-size: 0.88rem; margin: 0 0 16px; line-height: 1.45; }
   </style>
 </head>
 <body>
@@ -38,14 +234,13 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      {% set page_kicker = "location" %}
+      {% set page_kicker = "Campus Infrastructure" %}
       {% set page_heading = "Location Management" %}
-      {% set page_description = "Manage physical campus structure. Create new blocks, floors, and room/lab entries for routing tickets." %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-          <div class="flash-stack">
+          <div class="flash-stack" style="margin-bottom: 1.25rem;">
             {% for category, message in messages %}
               <div class="flash-message {{ category }}">{{ message }}</div>
             {% endfor %}
@@ -53,45 +248,81 @@
         {% endif %}
       {% endwith %}
 
-      <section class="admin-grid">
-        <section class="admin-card">
-          <div class="card-head"><div><p class="kicker">Create Location</p><h3>New Block / Room</h3></div></div>
-          <form method="post" action="{{ url_for('management.location_management') }}" class="admin-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-grid">
-              <label class="field"><span>Block Name</span><input type="text" name="block" placeholder="e.g. Block 1, Academic Block 2" required></label>
-              <label class="field"><span>Floor</span><input type="text" name="floor" placeholder="e.g. Ground Floor, 1st Floor" required></label>
-              <label class="field"><span>Room / Lab Number</span><input type="text" name="room_no" placeholder="e.g. 1101, 2203" required></label>
-              <label class="field"><span>Room / Lab Name (Optional)</span><input type="text" name="name" placeholder="e.g. CSE Lab 1, Seminar Hall"></label>
+      <div class="loc-mgmt-grid">
+        <!-- Left: Create Location Form -->
+        <section class="mgmt-card">
+          <div class="mgmt-card-header">
+            <div class="mgmt-card-title">
+              <h3>Create Location</h3>
             </div>
-            <div class="form-actions"><button type="submit" class="primary-btn">Create Location</button></div>
+          </div>
+          <form method="post" action="{{ url_for('management.location_management') }}" class="mgmt-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+              <label>Block / Building Name *</label>
+              <input type="text" name="block" placeholder="e.g. Block I, Admin Block" required>
+            </div>
+            <div class="form-group">
+              <label>Floor *</label>
+              <input type="text" name="floor" placeholder="e.g. Ground Floor, 2nd Floor" required>
+            </div>
+            <div class="form-group">
+              <label>Room / Lab Number *</label>
+              <input type="text" name="room_no" placeholder="e.g. 1101, Lab-4" required>
+            </div>
+            <div class="form-group">
+              <label>Room / Lab Title (Optional)</label>
+              <input type="text" name="name" placeholder="e.g. AI & ML Research Lab">
+            </div>
+            <button type="submit" class="btn-create">
+              <i data-lucide="plus-circle" style="width:15px;height:15px;"></i> Add Location
+            </button>
           </form>
         </section>
 
-        <section class="admin-card">
-          <div class="card-head"><div><p class="kicker">Existing Locations</p><h3>Campus Rooms</h3></div></div>
-          
-          <!-- Search locations -->
-          <form class="search-bar filter-grid" method="get" action="{{ url_for('management.location_management') }}" style="margin-bottom:1rem; display: flex; gap: 8px;">
-            <input type="text" name="q" value="{{ search or '' }}" placeholder="Search block, floor, room no..." style="flex: 1; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px;">
-            <button type="submit" class="primary-btn">Search</button>
+        <!-- Right: Locations Registry Table -->
+        <section class="mgmt-card">
+          <div class="mgmt-card-header">
+            <div class="mgmt-card-title" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+              <h3>Campus Registry</h3>
+              <span style="background:var(--primary-light); color:var(--primary); padding:2px 10px; border-radius:12px; font-size:0.78rem; font-weight:700;">{{ locations|length }} Total</span>
+            </div>
+          </div>
+
+          <!-- Search Filter -->
+          <form class="filter-bar-wrap" method="get" action="{{ url_for('management.location_management') }}">
+            <input type="text" name="q" value="{{ search or '' }}" class="filter-search-input" placeholder="Search by block, floor, room number or name...">
+            <button class="btn-table-action btn-create" style="margin-top:0; padding:8px 14px;" type="submit">
+              <i data-lucide="search" style="width:14px;height:14px;"></i> Search
+            </button>
           </form>
 
-          <p class="location-count">{{ locations|length }} location{{ 's' if locations|length != 1 else '' }} found</p>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Block</th><th>Floor</th><th>Room No</th><th>Room Name</th><th>Actions</th></tr></thead>
+          <div style="overflow-x:auto;">
+            <table class="modern-table" style="min-width:680px;">
+              <thead>
+                <tr>
+                  <th>Block</th>
+                  <th>Floor</th>
+                  <th>Room No</th>
+                  <th>Description / Name</th>
+                  <th style="text-align:right; width:120px;">Actions</th>
+                </tr>
+              </thead>
               <tbody>
                 {% for item in locations %}
                   <tr id="loc-view-{{ item.id }}">
-                    <td class="ticket-id-cell">{{ item.block }}</td>
-                    <td>{{ item.floor }}</td>
-                    <td>{{ item.room_no }}</td>
-                    <td>{{ item.name or '—' }}</td>
-                    <td class="actions-cell">
-                      <div class="btn-group">
-                        <button type="button" class="edit-btn" onclick="toggleLocationEdit({{ item.id }})">Edit</button>
-                        <button type="button" class="delete-btn" onclick="confirmLocationDelete({{ item.id }}, '{{ item.block|e }} - {{ item.room_no|e }}')">Delete</button>
+                    <td><strong>{{ item.block }}</strong></td>
+                    <td style="color:var(--slate-600);">{{ item.floor }}</td>
+                    <td><span style="font-family:'Space Grotesk',monospace; font-weight:700; background:#f1f5f9; padding:2px 8px; border-radius:6px;">{{ item.room_no }}</span></td>
+                    <td style="color:var(--slate-700);">{{ item.name or '—' }}</td>
+                    <td style="text-align:right;">
+                      <div class="btn-group" style="justify-content:flex-end;">
+                        <button type="button" class="btn-table-action btn-edit" onclick="toggleLocationEdit({{ item.id }})">
+                          <i data-lucide="edit-2" style="width:12px;height:12px;"></i> Edit
+                        </button>
+                        <button type="button" class="btn-table-action btn-delete" onclick="confirmLocationDelete({{ item.id }}, '{{ item.block|e }} — Room {{ item.room_no|e }}')">
+                          <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -102,36 +333,36 @@
                       <td><input type="text" name="floor" value="{{ item.floor }}" required></td>
                       <td><input type="text" name="room_no" value="{{ item.room_no }}" required></td>
                       <td><input type="text" name="name" value="{{ item.name or '' }}"></td>
-                      <td>
-                        <div class="btn-group">
-                          <button type="submit" class="save-btn">Save</button>
-                          <button type="button" class="cancel-btn" onclick="toggleLocationEdit({{ item.id }})">Cancel</button>
+                      <td style="text-align:right;">
+                        <div class="btn-group" style="justify-content:flex-end;">
+                          <button type="submit" class="btn-table-action btn-save">Save</button>
+                          <button type="button" class="btn-table-action btn-cancel" onclick="toggleLocationEdit({{ item.id }})">Cancel</button>
                         </div>
                       </td>
                     </form>
                   </tr>
                 {% else %}
-                  <tr><td colspan="5" class="empty-cell">No locations found.</td></tr>
+                  <tr><td colspan="5" style="text-align:center; padding:2.5rem; color:#94a3b8;">No campus locations match your search.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
         </section>
-      </section>
+      </div>
     </main>
   </div>
 
-  <!-- Delete confirmation dialog -->
+  <!-- Delete confirmation modal -->
   <div id="delete-overlay" class="confirm-overlay">
     <div class="confirm-box">
-      <h3>⚠️ Delete Location</h3>
-      <p>Are you sure you want to delete location <strong id="delete-loc-name"></strong>? Locations with existing tickets cannot be deleted.</p>
-      <div class="btn-group">
-        <form id="delete-form" method="post">
+      <h3><i data-lucide="alert-triangle" style="width:20px;height:20px;"></i> Confirm Deletion</h3>
+      <p>Are you sure you want to delete location <strong id="delete-loc-name" style="color:var(--slate-900);"></strong>? Locations associated with active tickets cannot be removed.</p>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn-table-action btn-cancel" style="padding:8px 14px;" onclick="closeLocationDelete()">Cancel</button>
+        <form id="delete-form" method="post" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="delete-btn">Yes, Delete</button>
+          <button type="submit" class="btn-table-action btn-delete" style="padding:8px 14px;">Delete Location</button>
         </form>
-        <button type="button" class="cancel-btn" onclick="closeLocationDelete()">Cancel</button>
       </div>
     </div>
   </div>
@@ -164,6 +395,10 @@
     function closeLocationDelete() {
       document.getElementById('delete-overlay').classList.remove('active');
     }
+
+    document.getElementById('delete-overlay').addEventListener('click', function(e) {
+      if (e.target === this) closeLocationDelete();
+    });
   </script>
   <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>

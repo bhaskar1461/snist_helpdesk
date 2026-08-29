@@ -3,19 +3,248 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Create Ticket</title>
+  <title>Create Ticket — SNIST Helpdesk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/smart_select.css') }}">
   <style>
-    .location-group { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
-    .location-group .field { margin:0; }
-    .location-hint { font-size:.75rem; color:#6b7280; margin-top:2px; font-style:italic; }
-    @media (max-width: 768px) { .location-group { grid-template-columns:1fr; } }
-    .dept-badge-hint { font-size:.75rem; color:#6b7280; margin-top:3px; }
-    #category-loading { display:none; font-size:.8rem; color:#6366f1; padding:6px 0; }
-    select:disabled { opacity:.6; cursor:not-allowed; }
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: var(--slate-800);
+    }
+
+    .ticket-create-container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    /* ── Main Form Card ───────────────────────────────────────────────── */
+    .ticket-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02);
+      overflow: hidden;
+    }
+
+    .form-section {
+      padding: 24px 28px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .form-section:last-of-type {
+      border-bottom: none;
+    }
+
+    /* ── Section Header ───────────────────────────────────────────────── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .section-step-badge {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--primary-light);
+      color: var(--primary);
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      font-size: 0.88rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .section-title-wrap h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--slate-900);
+      margin: 0 0 2px;
+    }
+
+    .section-title-wrap p {
+      font-size: 0.8rem;
+      color: var(--slate-600);
+      margin: 0;
+    }
+
+    /* ── Form Grids & Fields ─────────────────────────────────────────── */
+    .grid-2-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .grid-3-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .grid-2-cols, .grid-3-cols {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      .form-section {
+        padding: 18px 16px;
+      }
+    }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--slate-700);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .form-label-required::after {
+      content: " *";
+      color: #ef4444;
+    }
+
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 14px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      font-family: inherit;
+      color: var(--slate-900);
+      background: #ffffff;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    }
+
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
+      outline: none;
+    }
+
+    .form-select:disabled, .form-input:disabled {
+      background: #f1f5f9;
+      color: #94a3b8;
+      border-color: #e2e8f0;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .form-textarea {
+      resize: vertical;
+      min-height: 120px;
+      line-height: 1.5;
+    }
+
+    .field-hint {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    #category-loading {
+      display: none;
+      font-size: 0.8rem;
+      color: var(--primary);
+      font-weight: 500;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+    }
+
+    /* ── Form Actions Bar ─────────────────────────────────────────────── */
+    .form-actions-bar {
+      padding: 18px 28px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .btn-submit {
+      background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+      color: #ffffff;
+      border: none;
+      padding: 11px 24px;
+      border-radius: var(--radius);
+      font-size: 0.92rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
+    }
+
+    .btn-submit:hover {
+      background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);
+      box-shadow: 0 6px 16px rgba(79, 70, 229, 0.35);
+      transform: translateY(-1px);
+    }
+
+    .btn-submit:active {
+      transform: translateY(0);
+    }
+
+    .btn-back {
+      background: #ffffff;
+      color: var(--slate-700);
+      border: 1.5px solid #cbd5e1;
+      padding: 10px 18px;
+      border-radius: var(--radius);
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+
+    .btn-back:hover {
+      background: #f1f5f9;
+      color: var(--slate-900);
+      border-color: #94a3b8;
+    }
   </style>
 </head>
 <body>
@@ -27,115 +256,194 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      <header class="admin-topbar">
-        <div><p class="kicker">Ticket Creation</p><h2>Create a new ticket</h2></div>
-        <div class="profile-pill"><div class="avatar">{{ role_title[0] }}</div><div><strong>{{ user_name }}</strong><span>{{ role_email }}</span></div></div>
-      </header>
-
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          <div class="flash-stack">
-            {% for category, message in messages %}
-              <div class="flash-message {{ category }}">{{ message }}</div>
-            {% endfor %}
+      <div class="ticket-create-container">
+        <!-- Topbar Header -->
+        <header class="admin-topbar">
+          <div>
+            <p class="kicker">Ticket Management · New Request</p>
+            <h2>Create a Helpdesk Ticket</h2>
           </div>
-        {% endif %}
-      {% endwith %}
-
-      <section class="admin-card">
-        <form class="admin-form" method="post" action="{{ url_for('tickets.create_ticket_for_role') }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="submission_key" value="{{ submission_key }}">
-          <div class="form-grid">
-            <label class="field">
-              <span>Department</span>
-              {% if available_depts and available_depts|length > 1 %}
-                <select id="dept-select" name="department" onchange="onDeptChange(this.value)">
-                  {% for d in available_depts %}
-                    <option value="{{ d.code }}" {% if d.code == selected_dept %}selected{% endif %}>
-                      {{ d.name if d.name != d.code else d.code }}
-                    </option>
-                  {% endfor %}
-                </select>
-              {% else %}
-                {# Only one dept with active categories — keep it simple (read-only display) #}
-                <input type="hidden" name="department" value="{{ selected_dept or user_dept_code }}">
-                <input type="text" value="{{ user_dept_name or user_dept_code or current_user_dept }}" readonly
-                       style="background:rgba(241,245,249,0.6);opacity:.85;cursor:not-allowed;">
-              {% endif %}
-            </label>
-            <label class="field">
-              <span>Category</span>
-              <div id="category-loading">⏳ Loading categories…</div>
-              <select id="category-select" name="category_id" required>
-                <option value="">Select category</option>
-                {% for cat in categories %}
-                  <option value="{{ cat.id }}">{{ cat.category_name }}</option>
-                {% endfor %}
-              </select>
-            </label>
+          <div class="profile-pill">
+            <div class="avatar">{{ role_title[0] }}</div>
+            <div>
+              <strong>{{ user_name }}</strong>
+              <span>{{ role_email }}</span>
+            </div>
           </div>
+        </header>
 
-          <!-- Location: Block → Floor → Room cascading dropdowns -->
-          <div class="card-head" style="margin-top:1rem;"><div><p class="kicker">Location</p><h3>Block / Floor / Room</h3></div></div>
-          <div class="location-group">
-            <label class="field">
-              <span>Block</span>
-              <select id="block-select" onchange="updateFloors()">
-                <option value="">Select Block</option>
-              </select>
-              <span class="location-hint" id="block-count"></span>
-            </label>
-            <label class="field">
-              <span>Floor</span>
-              <select id="floor-select" onchange="updateRooms()" disabled>
-                <option value="">Select Floor</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Room / Lab</span>
-              <select id="room-select" name="location_id" disabled>
-                <option value="">Select Room</option>
-              </select>
-            </label>
-          </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="flash-stack" style="margin-bottom: 1.25rem;">
+              {% for category, message in messages %}
+                <div class="flash-message {{ category }}">{{ message }}</div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
 
-          <label class="field field-large">
-            <span>Description (Optional)</span>
-            <textarea name="description" rows="8" placeholder="Describe the complaint in detail..."></textarea>
-          </label>
-          <div class="form-actions">
-            <button type="submit" class="primary-btn">Submit Ticket</button>
-            {% if current_role == 'FACULTY' %}
-              <a href="{{ url_for('dashboards.my_tickets') }}" class="secondary-btn">My Tickets</a>
-            {% elif current_role == 'CA' %}
-              <a href="{{ url_for('tickets.authority_tickets') }}" class="secondary-btn">Back to Dashboard</a>
-            {% elif current_role == 'HOD' %}
-              <a href="{{ url_for('dashboards.hod_dashboard') }}" class="secondary-btn">Back to Dashboard</a>
-            {% elif current_role == 'ADMIN' %}
-              <a href="{{ url_for('dashboards.admin_dashboard') }}" class="secondary-btn">Back to Dashboard</a>
-            {% else %}
-              <a href="{{ url_for('dashboards.super_admin_dashboard') }}" class="secondary-btn">Back to Dashboard</a>
-            {% endif %}
-          </div>
-        </form>
-      </section>
+        <!-- Unified Step Card Form -->
+        <section class="ticket-card">
+          <form method="post" action="{{ url_for('tickets.create_ticket_for_role') }}" id="create-ticket-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="submission_key" value="{{ submission_key }}">
+
+            <!-- Step 1: Department & Problem Category -->
+            <div class="form-section">
+              <div class="section-header">
+                <span class="section-step-badge">1</span>
+                <div class="section-title-wrap">
+                  <h3>Issue Classification</h3>
+                </div>
+              </div>
+
+              <div class="grid-2-cols">
+                <!-- Department Field -->
+                <div class="form-field">
+                  <label class="form-label form-label-required" for="dept-select">
+                    <span>Department</span>
+                  </label>
+                  {% if available_depts and available_depts|length > 1 %}
+                    <select id="dept-select" name="department" class="form-select" onchange="onDeptChange(this.value)" required>
+                      {% for d in available_depts %}
+                        <option value="{{ d.code }}" {% if d.code == selected_dept %}selected{% endif %}>
+                          {{ d.name if d.name != d.code else d.code }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  {% else %}
+                    <input type="hidden" name="department" value="{{ selected_dept or user_dept_code }}">
+                    <input type="text" class="form-input" value="{{ user_dept_name or user_dept_code or current_user_dept }}" readonly>
+                  {% endif %}
+                </div>
+
+                <!-- Category Field -->
+                <div class="form-field">
+                  <label class="form-label form-label-required" for="category-select">
+                    <span>Problem Category</span>
+                    <span id="category-loading">
+                      <svg class="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="16"></circle></svg>
+                      Loading…
+                    </span>
+                  </label>
+                  <select id="category-select" name="category_id" class="form-select" required>
+                    <option value="">— Select Category —</option>
+                    {% for cat in categories %}
+                      <option value="{{ cat.id }}">{{ cat.category_name }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 2: Location Block / Floor / Room -->
+            <div class="form-section">
+              <div class="section-header">
+                <span class="section-step-badge">2</span>
+                <div class="section-title-wrap">
+                  <h3>Problem Location</h3>
+                </div>
+              </div>
+
+              <div class="grid-3-cols">
+                <!-- Block Selection -->
+                <div class="form-field">
+                  <label class="form-label" for="block-select">Block / Building</label>
+                  <select id="block-select" class="form-select" onchange="updateFloors()">
+                    <option value="">— Select Block —</option>
+                  </select>
+                </div>
+
+                <!-- Floor Selection -->
+                <div class="form-field">
+                  <label class="form-label" for="floor-select">Floor</label>
+                  <select id="floor-select" class="form-select" onchange="updateRooms()" disabled>
+                    <option value="">— Select Floor —</option>
+                  </select>
+                </div>
+
+                <!-- Room / Lab Selection -->
+                <div class="form-field">
+                  <label class="form-label" for="room-select">Room / Lab</label>
+                  <select id="room-select" name="location_id" class="form-select" disabled>
+                    <option value="">— Select Room / Lab —</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Step 3: Description & Additional Notes -->
+            <div class="form-section">
+              <div class="section-header">
+                <span class="section-step-badge">3</span>
+                <div class="section-title-wrap">
+                  <h3>Issue Description</h3>
+                </div>
+              </div>
+
+              <div class="form-field">
+                <label class="form-label form-label-required" for="description">
+                  <span>Description</span>
+                  <span id="char-count" style="font-weight: 500; font-size: 0.76rem; color: #94a3b8;">0 / 5000</span>
+                </label>
+                <textarea id="description" name="description" class="form-textarea" placeholder="Please describe the issue in detail (e.g., projector display flicker in Room 302, Wi-Fi connectivity drop, AC malfunction)..." required oninput="updateCharCount(this)"></textarea>
+              </div>
+            </div>
+
+            <!-- Form Actions Bar -->
+            <div class="form-actions-bar">
+              <div>
+                {% if current_role == 'FACULTY' %}
+                  <a href="{{ url_for('dashboards.my_tickets') }}" class="btn-back">
+                    <i data-lucide="arrow-left" style="width:16px;height:16px;"></i> My Tickets
+                  </a>
+                {% elif current_role == 'CA' %}
+                  <a href="{{ url_for('tickets.authority_tickets') }}" class="btn-back">
+                    <i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Dashboard
+                  </a>
+                {% elif current_role == 'HOD' %}
+                  <a href="{{ url_for('dashboards.hod_dashboard') }}" class="btn-back">
+                    <i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Dashboard
+                  </a>
+                {% elif current_role == 'ADMIN' %}
+                  <a href="{{ url_for('dashboards.admin_dashboard') }}" class="btn-back">
+                    <i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Dashboard
+                  </a>
+                {% else %}
+                  <a href="{{ url_for('dashboards.super_admin_dashboard') }}" class="btn-back">
+                    <i data-lucide="arrow-left" style="width:16px;height:16px;"></i> Dashboard
+                  </a>
+                {% endif %}
+              </div>
+              <button type="submit" class="btn-submit" id="submit-ticket-btn">
+                <i data-lucide="send" style="width:16px;height:16px;"></i> Submit Ticket
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
     </main>
   </div>
 
   <script>
-    // ── Department → Category dynamic reload ─────────────────────────
-    const CAT_API = '/api/categories';  // existing endpoint, no new routes
+    // ── Character Counter ────────────────────────────────────────────
+    function updateCharCount(el) {
+      const countEl = document.getElementById('char-count');
+      if (countEl) {
+        countEl.textContent = `${el.value.length} / 5000`;
+      }
+    }
+
+    // ── Department → Category Dynamic Reload ─────────────────────────
+    const CAT_API = '/api/categories';
 
     function onDeptChange(deptCode) {
       if (!deptCode) return;
       const catSelect = document.getElementById('category-select');
-      const loading   = document.getElementById('category-loading');
+      const loading = document.getElementById('category-loading');
 
-      // Show spinner, disable select while loading
-      catSelect.style.display = 'none';
-      loading.style.display   = 'block';
-      catSelect.disabled      = true;
+      if (loading) loading.style.display = 'inline-flex';
+      catSelect.disabled = true;
 
       fetch(`${CAT_API}?department=${encodeURIComponent(deptCode)}`, {
         credentials: 'same-origin',
@@ -144,64 +452,57 @@
       .then(r => r.json())
       .then(data => {
         const cats = data.categories || [];
-        catSelect.innerHTML = '<option value="">Select category</option>';
+        catSelect.innerHTML = '<option value="">— Select Category —</option>';
         cats.forEach(c => {
           const opt = document.createElement('option');
-          opt.value       = c.id;
+          opt.value = c.id;
           opt.textContent = c.category_name;
           catSelect.appendChild(opt);
         });
         if (cats.length === 0) {
           const opt = document.createElement('option');
-          opt.value       = '';
+          opt.value = '';
           opt.textContent = 'No active categories for this department';
-          opt.disabled    = true;
+          opt.disabled = true;
           catSelect.appendChild(opt);
         }
       })
       .catch(() => {
-        catSelect.innerHTML = '<option value="">Error loading — please refresh</option>';
+        catSelect.innerHTML = '<option value="">Error loading categories</option>';
       })
       .finally(() => {
-        loading.style.display   = 'none';
-        catSelect.style.display = '';
-        catSelect.disabled      = false;
+        if (loading) loading.style.display = 'none';
+        catSelect.disabled = false;
       });
     }
 
-    // ── Location cascading dropdowns ──────────────────────────────────
-
-    // Build location data from server-side locations list
+    // ── Location Cascading Dropdowns ──────────────────────────────────
     const ALL_LOCATIONS = {{ locations | tojson }};
-
-    // Group: block → floor → rooms
     const LOCATION_MAP = {};
+
     ALL_LOCATIONS.forEach(loc => {
-      const block = loc.block || 'Unknown';
-      const floor = loc.floor || 'Unknown';
+      const block = loc.block || 'General Block';
+      const floor = loc.floor || 'Ground Floor';
       if (!LOCATION_MAP[block]) LOCATION_MAP[block] = {};
       if (!LOCATION_MAP[block][floor]) LOCATION_MAP[block][floor] = [];
       LOCATION_MAP[block][floor].push({ id: loc.id, room_no: loc.room_no, name: loc.name });
     });
 
-    // Populate blocks
     const blockSelect = document.getElementById('block-select');
     const floorSelect = document.getElementById('floor-select');
-    const roomSelect  = document.getElementById('room-select');
-    const blockCount  = document.getElementById('block-count');
+    const roomSelect = document.getElementById('room-select');
 
     Object.keys(LOCATION_MAP).sort().forEach(block => {
       const opt = document.createElement('option');
-      opt.value       = block;
+      opt.value = block;
       opt.textContent = block;
       blockSelect.appendChild(opt);
     });
-    blockCount.textContent = Object.keys(LOCATION_MAP).length + ' blocks available';
 
     function updateFloors() {
       const block = blockSelect.value;
-      floorSelect.innerHTML = '<option value="">Select Floor</option>';
-      roomSelect.innerHTML = '<option value="">Select Room</option>';
+      floorSelect.innerHTML = '<option value="">— Select Floor —</option>';
+      roomSelect.innerHTML = '<option value="">— Select Room / Lab —</option>';
       floorSelect.disabled = true;
       roomSelect.disabled = true;
 
@@ -210,7 +511,7 @@
         floors.forEach(floor => {
           const opt = document.createElement('option');
           opt.value = floor;
-          opt.textContent = floor + ' (' + LOCATION_MAP[block][floor].length + ')';
+          opt.textContent = floor;
           floorSelect.appendChild(opt);
         });
         floorSelect.disabled = false;
@@ -220,14 +521,14 @@
     function updateRooms() {
       const block = blockSelect.value;
       const floor = floorSelect.value;
-      roomSelect.innerHTML = '<option value="">Select Room</option>';
+      roomSelect.innerHTML = '<option value="">— Select Room / Lab —</option>';
       roomSelect.disabled = true;
 
       if (block && floor && LOCATION_MAP[block] && LOCATION_MAP[block][floor]) {
         LOCATION_MAP[block][floor].forEach(room => {
           const opt = document.createElement('option');
           opt.value = room.id;
-          opt.textContent = room.room_no + ' — ' + room.name;
+          opt.textContent = room.name ? `${room.room_no} — ${room.name}` : `${room.room_no}`;
           roomSelect.appendChild(opt);
         });
         roomSelect.disabled = false;

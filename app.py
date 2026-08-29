@@ -748,10 +748,9 @@ def super_admin_dashboard():
         departments=live_departments(org_id),
         page_title=f"{org_label} Super Admin Dashboard",
         kicker="RBAC Control",
-        page_heading=f"{org_label} Super Admin overview",
-        page_description=f"Full control over users, roles, departments, and ticket visibility for {org_label}.",
-        highlight_title="HOD overview",
-        highlight_note="HOD rows below are powered by demo users and department-level ticket/category counts.",
+        page_heading=f"{org_label} Super Admin Overview",
+        highlight_title="HOD Overview",
+        highlight_note="",
         primary_cta=("user_management", "Manage Users"),
         secondary_cta=("super_admin_all_tickets", "View All Tickets"),
         **page_context("Super Admin"),
@@ -781,10 +780,9 @@ def admin_dashboard():
         departments=live_departments(user["org_id"]),
         page_title="Admin Dashboard",
         kicker="Administration",
-        page_heading="Admin panel",
-        page_description="Create, edit, and delete demo users. Assign departments and HOD roles safely on demo tables.",
-        highlight_title="Recent users",
-        highlight_note="Admins manage users and roles, but ticket assignment remains automatic via category-to-CA mapping.",
+        page_heading="Admin Panel",
+        highlight_title="Recent Users",
+        highlight_note="",
         primary_cta=("user_management", "Open User Management"),
         secondary_cta=("admin_all_tickets", "View Tickets"),
         **page_context("Admin"),
@@ -803,11 +801,10 @@ def hod_dashboard():
         highlights=highlights,
         page_title="HOD Dashboard",
         kicker="Department Control",
-        page_heading=f"{user['department']} HOD dashboard",
-        page_description="Manage CA mappings for your department and monitor department-specific tickets.",
-        highlight_title="Category to CA mapping",
-        highlight_note="HOD manages CAs by mapping categories to Concerned Authorities in demo_categories.",
-        primary_cta=("management_category", "Manage CA Mapping"),
+        page_heading=f"{user['department']} HOD Dashboard",
+        highlight_title="Category to Assignee Mapping",
+        highlight_note="",
+        primary_cta=("management_category", "Assignee Management"),
         secondary_cta=("hod_all_tickets", "View Department Tickets"),
         **page_context("HOD"),
     )
@@ -858,7 +855,7 @@ def authority_tickets():
         assigned_tickets=assigned_tickets,
         own_tickets=own_tickets,
         filters=filters,
-        **page_context("Concerned Authority"),
+        **page_context("Assignee"),
     )
 
 
@@ -1235,9 +1232,9 @@ def check_and_promote_ca(ca_id, target_dept, actor_id, org_id):
                     target_type="user", target_id=ca_id,
                     details={"promoted_name": ca_user["name"], "department": target_dept},
                 )
-                flash(f"Promoted {ca_user['name']} to Concerned Authority for {target_dept}.", "success")
+                flash(f"Promoted {ca_user['name']} to Assignee for {target_dept}.", "success")
             else:
-                flash(f"Updated Concerned Authority department mapping for {ca_user['name']}.", "success")
+                flash(f"Updated Assignee department mapping for {ca_user['name']}.", "success")
 
 
 def resolve_and_promote_ca(assigned_ca_id_str, target_dept, actor_id, org_id):
@@ -1265,7 +1262,7 @@ def resolve_and_promote_ca(assigned_ca_id_str, target_dept, actor_id, org_id):
             target_type="user", target_id=new_user_id,
             details={"promoted_name": teacher["name"], "department": target_dept},
         )
-        flash(f"Promoted reference user {teacher['name']} to Concerned Authority for {target_dept}.", "success")
+        flash(f"Promoted reference user {teacher['name']} to Assignee for {target_dept}.", "success")
         return new_user_id
     else:
         ca_id = safe_int(assigned_ca_id_str)

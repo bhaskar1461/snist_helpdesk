@@ -111,12 +111,13 @@ def current_user():
         return None
     from app import get_live_db
     live_db = get_live_db()
-    email = session.get("user_email", "")
+    email = session.get("email") or session.get("user_email", "")
+    name = session.get("name") or session.get("user_name", "")
     dept = session.get("acting_department") or session.get("department", "")
     role = session.get("acting_role") or session.get("role") or session.get("user_role", "")
     return {
         "id": session.get("user_id"),
-        "name": session.get("user_name", ""),
+        "name": name,
         "email": email,
         "role": role,
         "department": dept,
@@ -163,7 +164,8 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
             ("dashboards.super_admin_dashboard", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("dashboards.super_admin_all_tickets", "All Tickets", "ticket"),
-            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
+            ("management.category_assignments", "Assignee Management", "folder-open"),
+            ("management.user_management", "Users", "users"),
             ("management.location_management", "Locations", "map-pin"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
         ],
@@ -171,28 +173,28 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
             ("dashboards.admin_dashboard", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("dashboards.admin_all_tickets", "All Tickets", "ticket"),
-            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
+            ("management.category_assignments", "Assignee Management", "folder-open"),
+            ("management.user_management", "Users", "users"),
+            ("management.location_management", "Locations", "map-pin"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
         ],
         "HOD": [
             ("dashboards.hod_dashboard", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("dashboards.hod_all_tickets", "Dept. Tickets", "ticket"),
-            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
+            ("management.category_assignments", "Assignee Management", "folder-open"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
         ],
         "ASSIGNEE": [
             ("tickets.authority_tickets", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
-            ("tickets.authority_dept_tickets", "My Dept Tickets", "ticket"),
-            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
+            ("tickets.authority_dept_tickets", "Dept. Tickets", "ticket"),
             ("tickets.ca_report", "Reports", "bar-chart-3"),
         ],
         "CA": [
             ("tickets.authority_tickets", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
-            ("tickets.authority_dept_tickets", "My Dept Tickets", "ticket"),
-            ("management.category_assignments", "Category & Assignee Management", "folder-open"),
+            ("tickets.authority_dept_tickets", "Dept. Tickets", "ticket"),
             ("tickets.ca_report", "Reports", "bar-chart-3"),
         ],
         "FACULTY": [
@@ -232,6 +234,63 @@ def page_context(role_title: str) -> dict:
 # ── Department Helpers ──────────────────────────────────────────────
 _DEPT_CACHE: dict[str, list[dict]] = {}
 _DEPT_CACHE_TIME: float = 0.0
+
+BRANCH_ID_TO_DEPT = {
+    "1": "EEE", "2": "ME", "3": "ECE", "4": "CSE", "5": "IT", "6": "Bio-Tech",
+    "7": "S&H", "8": "MCA", "9": "ECM", "10": "S&H", "11": "MBA", "12": "S&H",
+    "13": "CDC", "14": "EPE", "15": "EPE", "16": "DSCE", "17": "VLSI", "18": "Administration",
+    "19": "Software Engineering", "20": "CAD/CAM", "21": "Bio-Tech", "22": "MCA",
+    "23": "Thermal Engineering", "24": "Computer Science", "25": "Administration",
+    "26": "Marketing", "27": "Administration", "28": "Administration", "29": "Administration",
+    "30": "Library", "31": "EDC", "32": "TDTC", "33": "Accounts", "34": "CDC",
+    "35": "Facilities", "36": "Administration", "37": "Nano Tech", "38": "CNIS",
+    "39": "ICT", "40": "Accounts", "41": "Exam", "42": "CSE", "43": "Health Center",
+    "44": "Electrical", "45": "HR", "46": "Estate", "47": "Stores", "48": "CDC",
+    "49": "Training", "50": "Marketing", "51": "Stores", "52": "1Sports", "53": "SAP",
+    "54": "Security", "55": "Administration", "56": "Administration", "57": "Electrical",
+    "58": "CSE-AIML", "59": "IOT", "60": "Cyber Security", "61": "Administration",
+    "62": "1Sports", "63": "Library", "64": "Training", "65": "Civil Engineering",
+    "66": "Civil Engineering", "67": "AIML", "68": "Data Science", "69": "Security",
+    "70": "Estate", "71": "Operations", "72": "1Sports", "73": "Admissions",
+    "74": "Physical Education", "75": "Administration", "700": "Facilities", "701": "SAP"
+}
+
+def normalize_dept_name(val: str, org_id: str = "2000") -> str:
+    if not val:
+        return ""
+    val_str = str(val).strip()
+    if val_str in BRANCH_ID_TO_DEPT:
+        return BRANCH_ID_TO_DEPT[val_str]
+    depts = live_departments(org_id)
+    for d in depts:
+        d_id = str(d.get("id", "")).strip()
+        d_code = str(d.get("code", "")).strip()
+        d_name = str(d.get("name", "")).strip()
+        if val_str == d_id or val_str.lower() == d_code.lower() or val_str.lower() == d_name.lower():
+            return d_code or d_name
+    return val_str
+
+def departments_match(dept1: str, dept2: str, org_id: str = "2000") -> bool:
+    if not dept1 or not dept2:
+        return False
+    d1_norm = normalize_dept_name(dept1, org_id).lower()
+    d2_norm = normalize_dept_name(dept2, org_id).lower()
+    if d1_norm == d2_norm:
+        return True
+    if d1_norm in d2_norm or d2_norm in d1_norm:
+        return True
+    aliases = [
+        {"facilities", "fecilities", "facilities & security", "f&s", "estate", "maintenance"},
+        {"ict", "information technology", "information and communication technology", "sap"},
+        {"cse", "computer science and engineering", "computer science", "cs"},
+        {"ece", "electronics and communication engineering"},
+        {"eee", "electrical and electronics engineering", "soee"},
+        {"s&h", "science and humanities", "s and h", "maths", "physics", "chemistry", "english"},
+    ]
+    for grp in aliases:
+        if d1_norm in grp and d2_norm in grp:
+            return True
+    return False
 
 def live_departments(org_id=None):
     global _DEPT_CACHE, _DEPT_CACHE_TIME

@@ -3,12 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SNIST Helpdesk — Login</title>
-  <meta name="description" content="SNIST Helpdesk Login Portal — Manage campus infrastructure complaints and service requests.">
+  <title>Sign In — SNIST Helpdesk</title>
+  <meta name="description" content="SNIST Helpdesk Portal — Submit and manage campus infrastructure requests and services.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+  </style>
 </head>
 <body>
   <main class="login-page">
@@ -19,8 +24,8 @@
         </div>
 
         <div class="header-copy">
-          <h1>Welcome To Helpdesk !!</h1>
-          <p>{% if emergency_mode|default(false) %}Emergency Admin Login{% else %}Login here...{% endif %}</p>
+          <h1>SNIST Campus Helpdesk</h1>
+          <p>{% if emergency_mode|default(false) %}Emergency Administrator Sign-in{% else %}Sign in to submit and track campus support requests{% endif %}</p>
         </div>
       </header>
 
@@ -28,7 +33,7 @@
         <div class="login-card">
           <div class="card-header">
             <h2>Sign In</h2>
-            <p>Access your helpdesk account.</p>
+            <p>Enter your institutional credentials to continue.</p>
           </div>
 
           {% with messages = get_flashed_messages(with_categories=true) %}
@@ -43,7 +48,7 @@
 
           {% if sso_enabled|default(false) and not emergency_mode|default(false) %}
           <!-- Google SSO Login -->
-          <a href="{{ url_for('auth.sso_login') }}" class="login-btn sso-btn" style="display: flex; align-items: center; justify-content: center; gap: 12px; text-decoration: none; margin-bottom: 16px; background: #ffffff; color: #1f2937; padding: 12px 24px; border-radius: 12px; font-weight: 600; font-size: 0.96rem; border: 1px solid #e5e7eb; box-shadow: 0 2px 6px rgba(0,0,0,0.06); cursor: pointer; transition: all 0.2s;">
+          <a href="{{ url_for('auth.sso_login') }}" class="login-btn sso-btn" style="display: flex; align-items: center; justify-content: center; gap: 12px; text-decoration: none; margin-bottom: 16px; background: #ffffff; color: #1e293b; padding: 12px 24px; border-radius: 10px; font-weight: 600; font-size: 0.92rem; border: 1.5px solid #e2e8f0; box-shadow: 0 1px 3px rgba(0,0,0,0.05); cursor: pointer; transition: all 0.2s;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -52,22 +57,26 @@
             </svg>
             Sign in with Google SSO
           </a>
-          <div style="text-align: center; margin: 14px 0; color: #9ca3af; font-size: .85rem;">or sign in with password</div>
+          <div style="text-align: center; margin: 14px 0; color: #94a3b8; font-size: .84rem; display: flex; align-items: center; gap: 8px;">
+            <span style="flex:1; height:1px; background:#e2e8f0;"></span>
+            <span>or email & password</span>
+            <span style="flex:1; height:1px; background:#e2e8f0;"></span>
+          </div>
           {% endif %}
 
           <form class="login-form" method="post" action="{% if emergency_mode|default(false) %}{{ url_for('auth.emergency_admin_login') }}{% else %}{{ url_for('auth.login') }}{% endif %}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="field">
-              <span>Email</span>
-              <input type="email" name="email" placeholder="Enter your email" required />
+              <span>Institutional Email</span>
+              <input type="email" name="email" placeholder="e.g. user@sreenidhi.edu.in" required />
             </label>
 
             <label class="field">
               <span>Password</span>
-              <input type="password" name="password" placeholder="Enter your password" required />
+              <input type="password" name="password" placeholder="••••••••" required />
             </label>
 
-            <button type="submit" class="login-btn">Login</button>
+            <button type="submit" class="login-btn">Sign In</button>
           </form>
         </div>
       </section>

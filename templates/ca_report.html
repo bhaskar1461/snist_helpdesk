@@ -3,36 +3,285 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Assignee Report – Resolved Tickets</title>
+  <title>Resolved Tickets Report — SNIST Helpdesk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
   <style>
-    .report-summary { display: flex; gap: 18px; margin-bottom: 18px; flex-wrap: wrap; }
-    .report-stat { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border-radius: 12px; padding: 18px 28px; min-width: 140px; text-align: center; }
-    .report-stat .stat-value { font-size: 2rem; font-weight: 700; line-height: 1; }
-    .report-stat .stat-label { font-size: .82rem; opacity: .85; margin-top: 4px; }
-    .time-badge { display: inline-block; background: #e0f2e9; color: #1b7a43; font-weight: 600; padding: 4px 10px; border-radius: 6px; font-size: .85rem; white-space: nowrap; }
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: var(--slate-800);
+    }
+
+    .report-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .report-stat-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      padding: 18px 22px;
+      box-shadow: 0 2px 4px rgba(15, 23, 42, 0.03);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .report-stat-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: #ecfdf5;
+      color: #059669;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .report-stat-card strong {
+      display: block;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: var(--slate-900);
+      line-height: 1.1;
+    }
+
+    .report-stat-card span {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--slate-600);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .filter-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+    }
+
+    .filter-form {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .filter-search-group {
+      position: relative;
+      flex: 1 1 260px;
+      min-width: 220px;
+    }
+
+    .filter-search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #94a3b8;
+      pointer-events: none;
+      width: 16px;
+      height: 16px;
+    }
+
+    .filter-search-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 12px 9px 36px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      color: var(--slate-800);
+      background: #ffffff;
+      transition: all 0.15s;
+    }
+
+    .filter-search-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+      outline: none;
+    }
+
+    .filter-date-input {
+      padding: 8px 10px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-family: inherit;
+      color: var(--slate-700);
+      background: #ffffff;
+      outline: none;
+      transition: all 0.15s;
+    }
+
+    .btn-filter-apply {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 9px 16px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .btn-filter-apply:hover {
+      background: var(--primary-hover);
+    }
+
+    .dashboard-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .dashboard-card-header {
+      padding: 16px 22px;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #ffffff;
+    }
+
+    .dashboard-card-title h3 {
+      margin: 0;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--slate-900);
+    }
+
+    .dashboard-card-title p {
+      margin: 2px 0 0;
+      font-size: 0.8rem;
+      color: var(--slate-600);
+    }
+
+    .dashboard-table-wrap {
+      overflow-x: auto;
+      width: 100%;
+    }
+
+    .modern-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.87rem;
+      min-width: 860px;
+    }
+
+    .modern-table th {
+      background: #f8fafc;
+      color: var(--slate-600);
+      font-weight: 600;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 12px 18px;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+
+    .modern-table td {
+      padding: 12px 18px;
+      border-bottom: 1px solid #f1f5f9;
+      color: var(--slate-800);
+      vertical-align: middle;
+    }
+
+    .modern-table tr:hover td {
+      background: #f8fafc;
+    }
+
+    .ticket-id-tag {
+      font-family: 'Space Grotesk', monospace;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+      background: #eef2ff;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      display: inline-block;
+    }
+
+    .time-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #ecfdf5;
+      color: #047857;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
+
+    .status-pill.resolved {
+      background: #d1fae5;
+      color: #047857;
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
   <div class="admin-shell">
-        <script>
+    <script>
       if (localStorage.getItem('sidebar-collapsed') === 'true') {
         document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
       }
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      {% set page_kicker = "Reports" %}
+      {% set page_kicker = "Performance & Metrics" %}
       {% set page_heading = "Resolved Tickets Report" %}
-      {% set page_description = "All tickets assigned to you that have been resolved, with time-to-resolution metrics." %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-          <div class="flash-stack">
+          <div class="flash-stack" style="margin-bottom: 1.25rem;">
             {% for category, message in messages %}
               <div class="flash-message {{ category }}">{{ message }}</div>
             {% endfor %}
@@ -40,34 +289,50 @@
         {% endif %}
       {% endwith %}
 
-      <!-- Summary Stats -->
-      <div class="report-summary">
-        <div class="report-stat">
-          <div class="stat-value">{{ resolved_tickets|length }}</div>
-          <div class="stat-label">Total Resolved</div>
+      <!-- Summary Stats Card -->
+      <div class="report-stat-grid">
+        <div class="report-stat-card">
+          <div class="report-stat-icon">
+            <i data-lucide="check-circle" style="width:24px;height:24px;"></i>
+          </div>
+          <div>
+            <strong>{{ resolved_tickets|length }}</strong>
+            <span>Total Resolved Tickets</span>
+          </div>
         </div>
       </div>
 
       <!-- Filters -->
-      <section class="admin-card">
-        <form class="search-bar filter-grid" method="get" action="{{ url_for('tickets.ca_report') }}">
-          <input type="text" name="q" value="{{ filters.q }}" placeholder="Search resolved tickets">
-          <input type="date" name="from_date" value="{{ filters.from_date }}">
-          <input type="date" name="to_date" value="{{ filters.to_date }}">
-          <button class="primary-btn" type="submit">Filter</button>
+      <section class="filter-card">
+        <form class="filter-form" method="get" action="{{ url_for('tickets.ca_report') }}">
+          <div class="filter-search-group">
+            <i data-lucide="search" class="filter-search-icon"></i>
+            <input type="text" name="q" value="{{ filters.q }}" class="filter-search-input" placeholder="Search resolved tickets...">
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="date" name="from_date" value="{{ filters.from_date }}" class="filter-date-input" title="From Date">
+            <span style="color:#94a3b8; font-size:0.8rem;">to</span>
+            <input type="date" name="to_date" value="{{ filters.to_date }}" class="filter-date-input" title="To Date">
+          </div>
+          <button class="btn-filter-apply" type="submit">
+            <i data-lucide="filter" style="width:14px;height:14px;"></i> Filter
+          </button>
         </form>
       </section>
 
       <!-- Resolved Tickets Table -->
-      <section class="admin-card">
-        <div class="card-head"><div><p class="kicker">Resolved</p><h3>Completed Tickets</h3></div></div>
-        <div class="table-wrap">
-          <table>
+      <section class="dashboard-card">
+        <div class="dashboard-card-header">
+          <div class="dashboard-card-title">
+            <h3>Completed Tickets</h3>
+          </div>
+        </div>
+        <div class="dashboard-table-wrap">
+          <table class="modern-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Title</th>
-                <th>Category</th>
+                <th style="width: 70px;">ID</th>
+                <th>Title & Category</th>
                 <th>Department</th>
                 <th>Status</th>
                 <th>Created</th>
@@ -77,18 +342,29 @@
             </thead>
             <tbody>
               {% for ticket in resolved_tickets %}
-                <tr class="ticket-row">
-                  <td class="ticket-id-cell"><a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
-                  <td>{{ ticket.title }}</td>
-                  <td>{{ ticket.category_name }}</td>
-                  <td>{{ ticket.department }}</td>
+                <tr>
+                  <td>
+                    <a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}" class="ticket-id-tag">
+                      #{{ ticket.id }}
+                    </a>
+                  </td>
+                  <td>
+                    <div style="font-weight:600; color:var(--slate-900);">{{ ticket.title }}</div>
+                    <div style="font-size:0.75rem; color:var(--primary); font-weight:600;">{{ ticket.category_name }}</div>
+                  </td>
+                  <td><span class="dept-badge">{{ ticket.department }}</span></td>
                   <td><span class="status-pill resolved">{{ ticket.status }}</span></td>
-                  <td>{{ ticket.created_at }}</td>
-                  <td>{{ ticket.updated_at }}</td>
-                  <td><span class="time-badge">{{ ticket.time_taken }}</span></td>
+                  <td style="white-space:nowrap; color:var(--slate-600); font-size:0.82rem;">{{ ticket.created_at }}</td>
+                  <td style="white-space:nowrap; color:var(--slate-600); font-size:0.82rem;">{{ ticket.updated_at }}</td>
+                  <td><span class="time-badge"><i data-lucide="clock" style="width:12px;height:12px;"></i> {{ ticket.time_taken or '—' }}</span></td>
                 </tr>
               {% else %}
-                <tr><td colspan="8" class="empty-cell">No resolved tickets found.</td></tr>
+                <tr>
+                  <td colspan="7" style="text-align:center; padding:3rem 1rem; color:#94a3b8;">
+                    <i data-lucide="inbox" style="width:36px;height:36px;opacity:0.6;margin-bottom:8px;"></i>
+                    <p style="margin:0; font-weight:500; color:var(--slate-700);">No resolved tickets found.</p>
+                  </td>
+                </tr>
               {% endfor %}
             </tbody>
           </table>

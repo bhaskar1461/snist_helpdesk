@@ -23,9 +23,8 @@
 
 <header class="admin-topbar">
   <div>
-    <p class="kicker">{{ page_kicker }}</p>
+    {% if page_kicker %}<p class="kicker">{{ page_kicker }}</p>{% endif %}
     <h2>{{ page_heading }}</h2>
-    <span>{{ page_description }}</span>
   </div>
   <div style="display: flex; align-items: center; gap: 18px; flex-shrink: 0;">
     {% if request.endpoint != 'tickets.create_ticket_for_role' %}

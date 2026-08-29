@@ -3,11 +3,323 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Tickets</title>
+  <title>My Tickets — SNIST Helpdesk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: var(--slate-800);
+    }
+
+    .filter-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+    }
+
+    .filter-form {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .filter-search-group {
+      position: relative;
+      flex: 1 1 260px;
+      min-width: 220px;
+    }
+
+    .filter-search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #94a3b8;
+      pointer-events: none;
+      width: 16px;
+      height: 16px;
+    }
+
+    .filter-search-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 12px 9px 36px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      color: var(--slate-800);
+      background: #ffffff;
+      transition: all 0.15s;
+    }
+
+    .filter-search-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+      outline: none;
+    }
+
+    .filter-select {
+      padding: 9px 12px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      color: var(--slate-800);
+      background: #ffffff;
+      outline: none;
+      min-width: 140px;
+      transition: all 0.15s;
+    }
+
+    .filter-select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+
+    .filter-date-input {
+      padding: 8px 10px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-family: inherit;
+      color: var(--slate-700);
+      background: #ffffff;
+      outline: none;
+      transition: all 0.15s;
+    }
+
+    .filter-date-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+
+    .btn-filter-apply {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 9px 16px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .btn-filter-apply:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-export {
+      background: #ffffff;
+      color: var(--slate-700);
+      border: 1.5px solid #cbd5e1;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-decoration: none;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    .btn-export:hover {
+      background: #f1f5f9;
+      color: var(--slate-900);
+      border-color: #94a3b8;
+    }
+
+    .tickets-table-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+      overflow: hidden;
+    }
+
+    .table-header-bar {
+      padding: 14px 20px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .table-header-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .table-header-title h3 {
+      margin: 0;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--slate-900);
+    }
+
+    .count-badge {
+      background: var(--primary-light);
+      color: var(--primary);
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      width: 100%;
+    }
+
+    .modern-ticket-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.87rem;
+      min-width: 860px;
+    }
+
+    .modern-ticket-table th {
+      background: #f8fafc;
+      color: var(--slate-600);
+      font-weight: 600;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+
+    .modern-ticket-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      color: var(--slate-800);
+      vertical-align: middle;
+    }
+
+    .modern-ticket-table tr:hover td {
+      background: #f8fafc;
+    }
+
+    .ticket-id-tag {
+      font-family: 'Space Grotesk', monospace;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+      background: #eef2ff;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      display: inline-block;
+    }
+
+    .ticket-title-wrap {
+      max-width: 320px;
+    }
+
+    .ticket-cat-label {
+      font-size: 0.74rem;
+      font-weight: 700;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .ticket-title-text {
+      font-weight: 600;
+      color: var(--slate-900);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      line-height: 1.35;
+    }
+
+    .loc-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #f1f5f9;
+      color: var(--slate-700);
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .status-pill.pending { background: #fef3c7; color: #b45309; }
+    .status-pill.in-progress { background: #dbeafe; color: #1d4ed8; }
+    .status-pill.on-hold { background: #f3e8ff; color: #7e22ce; }
+    .status-pill.resolved { background: #d1fae5; color: #047857; }
+    .status-pill.reopened { background: #fee2e2; color: #b91c1c; }
+
+    .btn-view-ticket {
+      color: var(--primary);
+      background: #eef2ff;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+
+    .btn-view-ticket:hover {
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+  </style>
 </head>
 <body>
   <div class="admin-shell">
@@ -18,66 +330,134 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      {% set page_kicker = "My Tickets" %}
-      {% set page_heading = "Only your complaints" %}
-      {% set page_description = "Users can view only tickets they created." %}
+      {% set page_kicker = "Helpdesk Registry" %}
+      {% set page_heading = "My Tickets" %}
       {% include 'topbar.html' %}
 
-      <section class="admin-card">
-        <form class="search-bar filter-grid" method="get" action="{{ url_for('dashboards.my_tickets') }}">
-          <input type="text" name="q" value="{{ filters.q }}" placeholder="Search your tickets">
-          <select name="status">
-            <option value="">Status</option>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack" style="margin-bottom: 1.25rem;">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <!-- Search & Filters -->
+      <section class="filter-card">
+        <form class="filter-form" method="get" action="{{ url_for('dashboards.my_tickets') }}">
+          <div class="filter-search-group">
+            <i data-lucide="search" class="filter-search-icon"></i>
+            <input type="text" name="q" value="{{ filters.q }}" class="filter-search-input" placeholder="Search my tickets by ID, title, or category...">
+          </div>
+
+          <select name="status" class="filter-select">
+            <option value="">All Statuses</option>
             {% for status in ['PENDING','IN_PROGRESS','ON_HOLD','RESOLVED','REOPENED'] %}
               <option value="{{ status }}" {% if filters.status == status %}selected{% endif %}>{{ status }}</option>
             {% endfor %}
           </select>
-          <input type="date" name="from_date" value="{{ filters.from_date }}">
-          <input type="date" name="to_date" value="{{ filters.to_date }}">
-          <button class="primary-btn" type="submit">Filter</button>
-          <a href="{{ url_for('tickets.export_tickets', scope='faculty_own', export_format='csv', q=filters.q, status=filters.status, from_date=filters.from_date, to_date=filters.to_date) }}" class="secondary-btn">Export CSV</a>
+
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="date" name="from_date" value="{{ filters.from_date }}" class="filter-date-input" title="From Date">
+            <span style="color:#94a3b8; font-size:0.8rem;">to</span>
+            <input type="date" name="to_date" value="{{ filters.to_date }}" class="filter-date-input" title="To Date">
+          </div>
+
+          <button class="btn-filter-apply" type="submit">
+            <i data-lucide="filter" style="width:14px;height:14px;"></i> Filter
+          </button>
+
+          <div style="margin-left: auto; display: flex; gap: 8px;">
+            <a href="{{ url_for('tickets.create_ticket_for_role') }}" class="btn-filter-apply" style="text-decoration:none;">
+              <i data-lucide="plus-circle" style="width:14px;height:14px;"></i> Create Ticket
+            </a>
+            <a href="{{ url_for('tickets.export_tickets', scope='faculty_own', export_format='csv', q=filters.q, status=filters.status, from_date=filters.from_date, to_date=filters.to_date) }}" class="btn-export">
+              <i data-lucide="download" style="width:14px;height:14px;"></i> Export CSV
+            </a>
+          </div>
         </form>
+      </section>
+
+      <!-- Tickets Table Card -->
+      <section class="tickets-table-card">
+        <div class="table-header-bar">
+          <div class="table-header-title">
+            <h3>Submitted Tickets</h3>
+            <span class="count-badge">{{ tickets|length }} Total</span>
+          </div>
+        </div>
 
         <div class="table-wrap">
-          <table>
+          <table class="modern-ticket-table">
             <thead>
               <tr>
-                <th>S.No</th>
-                <th>Ticket ID</th>
-                <th>Complaint Regarding</th>
-                <th>Block</th>
-                <th>Room/Lab</th>
+                <th style="width: 70px;">ID</th>
+                <th>Complaint & Category</th>
+                <th>Location</th>
                 <th>Status</th>
-                <th>Complaint Date&nbsp;Time</th>
-                <th>Allocated To</th>
-                <th>Allocated Date&nbsp;Time</th>
-                <th>Closed Date&nbsp;Time</th>
-                <th>Action</th>
+                <th>Assigned To</th>
+                <th>Logged Date</th>
+                <th>Last Update</th>
+                <th style="text-align: right; width: 90px;">Action</th>
               </tr>
             </thead>
             <tbody>
               {% for ticket in tickets %}
-                <tr class="ticket-row">
-                  <td>{{ loop.index }}</td>
-                  <td class="ticket-id-cell"><a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
-                  <td><strong>{{ ticket.category_name }}</strong> – {{ ticket.title }}</td>
-                  <td>{{ ticket.location_block or '—' }}</td>
-                  <td>{{ ticket.location_room_no or '—' }}</td>
-                  <td><span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">{{ ticket.status }}</span></td>
-                  <td style="white-space:nowrap;">{{ ticket.created_at }}</td>
-                  <td>{{ ticket.assigned_to_name }}</td>
-                  <td style="white-space:nowrap;">{{ ticket.updated_at if ticket.status != 'PENDING' else '—' }}</td>
-                  <td style="white-space:nowrap;">{{ ticket.updated_at if ticket.status == 'RESOLVED' else '—' }}</td>
+                <tr>
                   <td>
-                    {% if ticket.status == 'RESOLVED' %}
-                      <a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}" class="status-pill reopened" style="text-decoration:none;">Re-open</a>
+                    <a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}" class="ticket-id-tag">
+                      #{{ ticket.id }}
+                    </a>
+                  </td>
+                  <td>
+                    <div class="ticket-title-wrap">
+                      <span class="ticket-cat-label">{{ ticket.category_name }}</span>
+                      <span class="ticket-title-text">{{ ticket.title or ticket.description }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    {% if ticket.location_block or ticket.location_room_no %}
+                      <span class="loc-badge">
+                        {{ ticket.location_block or 'Campus' }}{% if ticket.location_room_no %} · {{ ticket.location_room_no }}{% endif %}
+                      </span>
                     {% else %}
-                      <span class="muted-cell">—</span>
+                      <span style="color:#94a3b8; font-size:0.8rem;">—</span>
                     {% endif %}
+                  </td>
+                  <td>
+                    <span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">
+                      {{ ticket.status|replace('_', ' ') }}
+                    </span>
+                  </td>
+                  <td>
+                    {% if ticket.assigned_to_name %}
+                      <strong style="color:var(--slate-800); font-size:0.84rem;">{{ ticket.assigned_to_name }}</strong>
+                    {% else %}
+                      <span style="color:#94a3b8; font-size:0.8rem; font-style:italic;">Auto-routing</span>
+                    {% endif %}
+                  </td>
+                  <td style="white-space:nowrap; color:var(--slate-600); font-size:0.82rem;">
+                    {{ ticket.created_at }}
+                  </td>
+                  <td style="white-space:nowrap; color:var(--slate-600); font-size:0.82rem;">
+                    {{ ticket.updated_at if ticket.updated_at else '—' }}
+                  </td>
+                  <td style="text-align: right;">
+                    <a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}" class="btn-view-ticket">
+                      View <i data-lucide="arrow-right" style="width:13px;height:13px;"></i>
+                    </a>
                   </td>
                 </tr>
               {% else %}
-                <tr><td colspan="11" class="empty-cell">No tickets found.</td></tr>
+                <tr>
+                  <td colspan="8" style="text-align: center; padding: 3.5rem 1rem; color: #94a3b8;">
+                    <i data-lucide="inbox" style="width: 36px; height: 36px; stroke-width: 1.5; margin-bottom: 8px; opacity: 0.6;"></i>
+                    <p style="margin: 0; font-size: 0.95rem; font-weight: 500; color: var(--slate-700);">No tickets match the current filter.</p>
+                    <p style="margin: 4px 0 0; font-size: 0.82rem;">Create a new ticket or clear your filter criteria.</p>
+                  </td>
+                </tr>
               {% endfor %}
             </tbody>
           </table>

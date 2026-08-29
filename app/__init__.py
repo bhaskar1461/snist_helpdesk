@@ -61,9 +61,7 @@ def create_app(testing=False):
     import sys
     is_testing_env = testing or app.config.get("TESTING") or "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true"
     port = int(os.getenv("MYSQL_PORT", "3306"))
-    db_config = None
-    if not is_testing_env and all([host, user, password, database]):
-        db_config = DbConfig(host=host, port=port, user=user, password=password, database=database)
+    db_config = DbConfig(host=host, port=port, user=user, password=password, database=database) if all([host, user, password, database]) else None
 
 
     _live_db = LiveDbService(db_config)
@@ -211,6 +209,38 @@ def _init_database_schema(demo_db):
                         cursor.execute(stmt)
                     except Exception:
                         pass  # Table rename procedure may already have run
+
+        # ── Ensure phone column exists in helpdesk_users ───────────────
+        try:
+            cursor.execute("ALTER TABLE helpdesk_users ADD COLUMN phone VARCHAR(32) NULL")
+        except Exception:
+            pass
+
+        # ── Normalize Legacy Department IDs to Standard Codes ───────
+        try:
+            branch_map = {
+                "1": "EEE", "2": "ME", "3": "ECE", "4": "CSE", "5": "IT", "6": "Bio-Tech",
+                "7": "S&H", "8": "MCA", "9": "ECM", "10": "S&H", "11": "MBA", "12": "S&H",
+                "13": "CDC", "14": "EPE", "15": "EPE", "16": "DSCE", "17": "VLSI", "18": "Administration",
+                "19": "Software Engineering", "20": "CAD/CAM", "21": "Bio-Tech", "22": "MCA",
+                "23": "Thermal Engineering", "24": "Computer Science", "25": "Administration",
+                "26": "Marketing", "27": "Administration", "28": "Administration", "29": "Administration",
+                "30": "Library", "31": "EDC", "32": "TDTC", "33": "Accounts", "34": "CDC",
+                "35": "Facilities", "36": "Administration", "37": "Nano Tech", "38": "CNIS",
+                "39": "ICT", "40": "Accounts", "41": "Exam", "42": "CSE", "43": "Health Center",
+                "44": "Electrical", "45": "HR", "46": "Estate", "47": "Stores", "48": "CDC",
+                "49": "Training", "50": "Marketing", "51": "Stores", "52": "1Sports", "53": "SAP",
+                "54": "Security", "55": "Administration", "56": "Administration", "57": "Electrical",
+                "58": "CSE-AIML", "59": "IOT", "60": "Cyber Security", "61": "Administration",
+                "62": "1Sports", "63": "Library", "64": "Training", "65": "Civil Engineering",
+                "66": "Civil Engineering", "67": "AIML", "68": "Data Science", "69": "Security",
+                "70": "Estate", "71": "Operations", "72": "1Sports", "73": "Admissions",
+                "74": "Physical Education", "75": "Administration", "700": "Facilities", "701": "SAP"
+            }
+            for bid, dcode in branch_map.items():
+                cursor.execute("UPDATE helpdesk_users SET department = %s WHERE department = %s", (dcode, bid))
+        except Exception:
+            pass
 
         # ── CA Assignments Table ────────────────────────────────────
         cursor.execute("""

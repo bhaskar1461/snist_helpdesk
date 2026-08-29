@@ -3,66 +3,285 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>User Management</title>
+  <title>User Management — SNIST Helpdesk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/smart_select.css') }}">
   <style>
-    .role-badge { display:inline-block; padding:2px 10px; border-radius:20px; font-size:.75rem; font-weight:600; text-transform:uppercase; }
-    .role-badge.hod { background:#e0e7ff; color:#3730a3; }
-    .role-badge.super_admin { background:#fce7f3; color:#9d174d; }
-    .role-badge.admin { background:#dbeafe; color:#1d4ed8; }
-    .role-badge.ca { background:#d1fae5; color:#065f46; }
-    .role-badge.faculty { background:#f3f4f6; color:#374151; }
-    .btn-group { display:flex; gap:6px; }
-    .edit-btn { background:#4f46e5; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
-    .edit-btn:hover { background:#4338ca; }
-    .delete-btn { background:#ef4444; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
-    .delete-btn:hover { background:#dc2626; }
-    .cancel-btn { background:#6b7280; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
-    .cancel-btn:hover { background:#4b5563; }
-    .save-btn { background:#10b981; color:#fff; border:none; padding:5px 12px; border-radius:6px; font-size:.78rem; cursor:pointer; }
-    .save-btn:hover { background:#059669; }
-    .edit-row td { background:#f8fafc !important; }
-    .edit-row input, .edit-row select { width:100%; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:.82rem; }
-    .confirm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; align-items:center; justify-content:center; }
-    .confirm-overlay.active { display:flex; }
-    .confirm-box { background:#fff; border-radius:12px; padding:1.5rem 2rem; max-width:400px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.2); }
-    .confirm-box h3 { margin:0 0 .5rem; font-size:1.1rem; }
-    .confirm-box p { color:#6b7280; font-size:.9rem; margin-bottom:1rem; }
-    .confirm-box .btn-group { justify-content:center; }
-    .user-count { font-size:.85rem; color:#6b7280; margin-top:4px; }
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: var(--slate-800);
+    }
+
+    .user-mgmt-grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (max-width: 1080px) {
+      .user-mgmt-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .mgmt-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .mgmt-card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #ffffff;
+    }
+
+    .mgmt-card-title h3 {
+      margin: 0;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--slate-900);
+    }
+
+    .mgmt-card-title p {
+      margin: 2px 0 0;
+      font-size: 0.8rem;
+      color: var(--slate-600);
+    }
+
+    .mgmt-form {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group label {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--slate-700);
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 12px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-family: inherit;
+      color: var(--slate-900);
+      background: #ffffff;
+      transition: all 0.15s;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+      outline: none;
+    }
+
+    .btn-create {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s;
+      margin-top: 6px;
+    }
+
+    .btn-create:hover {
+      background: var(--primary-hover);
+    }
+
+    /* ── Directory Table & Filters ────────────────────────────────────── */
+    .filter-bar-wrap {
+      padding: 14px 20px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .filter-search-input {
+      flex: 1 1 200px;
+      padding: 8px 12px;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.86rem;
+      color: var(--slate-800);
+      background: #ffffff;
+      outline: none;
+    }
+
+    .filter-search-input:focus {
+      border-color: var(--primary);
+    }
+
+    .role-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    .role-badge.super_admin { background: #fce7f3; color: #9d174d; }
+    .role-badge.admin { background: #dbeafe; color: #1d4ed8; }
+    .role-badge.hod { background: #e0e7ff; color: #3730a3; }
+    .role-badge.ca, .role-badge.assignee { background: #d1fae5; color: #065f46; }
+    .role-badge.faculty, .role-badge.user { background: #f1f5f9; color: #334155; }
+
+    .dept-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #e0f2fe;
+      color: #0369a1;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .btn-group { display: flex; gap: 6px; }
+
+    .btn-table-action {
+      border: none;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+
+    .btn-edit { background: #eef2ff; color: var(--primary); }
+    .btn-edit:hover { background: #e0e7ff; }
+
+    .btn-delete { background: #fee2e2; color: #dc2626; }
+    .btn-delete:hover { background: #fecaca; }
+
+    .btn-save { background: #10b981; color: #ffffff; }
+    .btn-save:hover { background: #059669; }
+
+    .btn-cancel { background: #f1f5f9; color: var(--slate-700); }
+    .btn-cancel:hover { background: #e2e8f0; }
+
+    .edit-row td {
+      background: #f8fafc !important;
+      padding: 8px 12px;
+    }
+
+    .edit-row input, .edit-row select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 0.82rem;
+    }
+
+    .confirm-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .confirm-overlay.active { display: flex; }
+
+    .confirm-box {
+      background: #ffffff;
+      border-radius: var(--radius);
+      padding: 24px;
+      max-width: 420px;
+      width: 90%;
+      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.2);
+    }
+
+    .confirm-box h3 { margin: 0 0 8px; font-size: 1.1rem; color: #dc2626; display: flex; align-items: center; gap: 8px; }
+    .confirm-box p { color: var(--slate-600); font-size: 0.88rem; margin: 0 0 16px; line-height: 1.45; }
 
     /* Multi-role checkbox dropdown */
-    .multi-select { position:relative; display:inline-block; min-width:160px; }
-    .multi-select-btn { width:100%; padding:8px 12px; border:1px solid #d1d5db; border-radius:6px; background:#fff; cursor:pointer;
-      font-size:.88rem; text-align:left; display:flex; justify-content:space-between; align-items:center; }
-    .multi-select-btn::after { content:'▾'; font-size:.7rem; color:#6b7280; margin-left:8px; }
-    .multi-select-dropdown { display:none; position:absolute; top:calc(100% + 4px); left:0; right:0; background:#fff;
-      border:1px solid #d1d5db; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.12); z-index:50; padding:6px 0; max-height:220px; overflow-y:auto; }
-    .multi-select-dropdown.open { display:block; }
-    .multi-select-dropdown label { display:flex; align-items:center; gap:8px; padding:6px 12px; cursor:pointer; font-size:.85rem; transition:background .15s; }
-    .multi-select-dropdown label:hover { background:#f3f4f6; }
-    .multi-select-dropdown input[type="checkbox"] { accent-color:#4f46e5; width:16px; height:16px; }
+    .multi-select { position: relative; display: inline-block; min-width: 140px; }
+    .multi-select-btn {
+      width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; background: #fff; cursor: pointer;
+      font-size: 0.86rem; text-align: left; display: flex; justify-content: space-between; align-items: center;
+    }
+    .multi-select-btn::after { content: '▾'; font-size: 0.7rem; color: #64748b; }
+    .multi-select-dropdown {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff;
+      border: 1.5px solid #cbd5e1; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 50; padding: 6px 0; max-height: 220px; overflow-y: auto;
+    }
+    .multi-select-dropdown.open { display: block; }
+    .multi-select-dropdown label { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; font-size: 0.82rem; }
+    .multi-select-dropdown label:hover { background: #f1f5f9; }
 
-    .dept-hint { font-size:.72rem; color:#6b7280; margin-top:2px; font-style:italic; }
-
-    /* Compact dept multi-select (CA role) */
-    .dept-multi-select { position:relative; display:inline-block; width:100%; }
-    .dept-multi-btn { width:100%; padding:4px 8px; border:1px solid #d1d5db; border-radius:4px; background:#fff; cursor:pointer;
-      font-size:.82rem; text-align:left; display:flex; justify-content:space-between; align-items:center; min-height:30px;
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; gap:4px; }
-    .dept-multi-btn .dept-label-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; color:#374151; }
-    .dept-multi-btn .dept-arrow { flex-shrink:0; font-size:.65rem; color:#6b7280; }
-    .dept-multi-panel { display:none; position:absolute; top:calc(100% + 2px); left:0; min-width:180px; width:max-content; max-width:260px;
-      background:#fff; border:1px solid #d1d5db; border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.15);
-      z-index:60; padding:4px 0; max-height:200px; overflow-y:auto; }
-    .dept-multi-panel.open { display:block; }
-    .dept-multi-panel label { display:flex; align-items:center; gap:6px; padding:5px 10px; cursor:pointer; font-size:.8rem;
-      transition:background .15s; white-space:nowrap; margin:0; font-weight:normal; }
-    .dept-multi-panel label:hover { background:#f3f4f6; }
-    .dept-multi-panel input[type="checkbox"] { accent-color:#4f46e5; width:14px; height:14px; flex-shrink:0; }
+    .dept-multi-select { position: relative; display: inline-block; width: 100%; }
+    .dept-multi-btn {
+      width: 100%; padding: 7px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; background: #fff; cursor: pointer;
+      font-size: 0.84rem; text-align: left; display: flex; justify-content: space-between; align-items: center;
+    }
+    .dept-multi-panel {
+      display: none; position: absolute; top: calc(100% + 2px); left: 0; min-width: 200px; max-width: 280px;
+      background: #fff; border: 1.5px solid #cbd5e1; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.15);
+      z-index: 60; padding: 6px 0; max-height: 200px; overflow-y: auto;
+    }
+    .dept-multi-panel.open { display: block; }
+    .dept-multi-panel label { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; font-size: 0.8rem; margin: 0; }
+    .dept-multi-panel label:hover { background: #f1f5f9; }
   </style>
 </head>
 <body>
@@ -74,14 +293,13 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      {% set page_kicker = "demo_users" %}
+      {% set page_kicker = "Institutional Directory" %}
       {% set page_heading = "User Management" %}
-      {% set page_description = "Create, edit, or remove demo users. Admins control roles, departments, and HOD assignment through the role field." %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-          <div class="flash-stack">
+          <div class="flash-stack" style="margin-bottom: 1.25rem;">
             {% for category, message in messages %}
               <div class="flash-message {{ category }}">{{ message }}</div>
             {% endfor %}
@@ -89,60 +307,79 @@
         {% endif %}
       {% endwith %}
 
-      <section class="admin-grid">
-        <section class="admin-card">
-          <div class="card-head"><div><p class="kicker">Create User</p><h3>New demo user</h3></div></div>
-          <form method="post" action="" class="admin-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-grid">
-              <label class="field"><span>Name</span><input type="text" name="name" required></label>
-              <label class="field"><span>Email</span><input type="email" name="email" required></label>
-              <label class="field"><span>Password</span><input type="text" name="password" value="123" required></label>
-              <label class="field">
-                <span>Role</span>
-                <select name="role" id="create-role" required onchange="filterDepartments('create')">
-                  <option value="">Select Role</option>
-                  {% for role in roles %}
-                    <option value="{{ role }}">{{ 'USER' if role == 'FACULTY' else role }}</option>
-                  {% endfor %}
-                </select>
-              </label>
-              <label class="field" style="align-items: flex-start;">
-                <span style="margin-top: 8px;">Department</span>
-                <div style="flex:1;">
-                  <select name="department" id="create-department" required style="width: 100%;">
-                    <option value="">Select Department</option>
-                    {% for department in departments %}
-                      <option value="{{ department.code }}" data-all="true">{{ department.code }}</option>
-                    {% endfor %}
-                  </select>
-                  <div id="create-department-multi" class="dept-multi-select" style="display:none;">
-                    <button type="button" class="dept-multi-btn" onclick="toggleDeptPanel('create')">
-                      <span class="dept-label-text" id="create-dept-label">Select departments</span>
-                      <span class="dept-arrow">▾</span>
-                    </button>
-                    <div class="dept-multi-panel" id="create-dept-panel">
-                      {% for department in departments %}
-                        <label data-all="true" {% if session.get('role') == 'HOD' and department.code == session.get('department') %}style="font-weight: bold;"{% endif %}>
-                          <input type="checkbox" name="department" value="{{ department.code }}"
-                            {% if session.get('role') == 'HOD' and department.code == session.get('department') %}checked onclick="return false;"{% endif %}
-                            onchange="updateDeptLabel('create')"> {{ department.code }}
-                        </label>
-                      {% endfor %}
-                    </div>
-                  </div>
-                  <span class="dept-hint" id="create-dept-hint"></span>
-                </div>
-              </label>
+      <div class="user-mgmt-grid">
+        <!-- Left: Create User Form Card -->
+        <section class="mgmt-card">
+          <div class="mgmt-card-header">
+            <div class="mgmt-card-title">
+              <h3>Create User</h3>
             </div>
-            <div class="form-actions"><button type="submit" class="primary-btn">Create User</button></div>
+          </div>
+          <form method="post" action="" class="mgmt-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+              <label>Full Name *</label>
+              <input type="text" name="name" placeholder="e.g. Dr. Ramesh Rao" required>
+            </div>
+            <div class="form-group">
+              <label>Email Address *</label>
+              <input type="email" name="email" placeholder="e.g. ramesh.rao@sreenidhi.edu.in" required>
+            </div>
+            <div class="form-group">
+              <label>Initial Password *</label>
+              <input type="text" name="password" value="123" required>
+            </div>
+            <div class="form-group">
+              <label>System Role *</label>
+              <select name="role" id="create-role" required onchange="filterDepartments('create')">
+                <option value="">Select Role</option>
+                {% for role in roles %}
+                  <option value="{{ role }}">{{ 'USER' if role == 'FACULTY' else role }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Department *</label>
+              <select name="department" id="create-department" required>
+                <option value="">Select Department</option>
+                {% for department in departments %}
+                  <option value="{{ department.code }}" data-all="true">{{ department.code }}</option>
+                {% endfor %}
+              </select>
+              <div id="create-department-multi" class="dept-multi-select" style="display:none;">
+                <button type="button" class="dept-multi-btn" onclick="toggleDeptPanel('create')">
+                  <span class="dept-label-text" id="create-dept-label">Select departments</span>
+                  <span>▾</span>
+                </button>
+                <div class="dept-multi-panel" id="create-dept-panel">
+                  {% for department in departments %}
+                    <label data-all="true">
+                      <input type="checkbox" name="department" value="{{ department.code }}" onchange="updateDeptLabel('create')"> {{ department.code }}
+                    </label>
+                  {% endfor %}
+                </div>
+              </div>
+              <span id="create-dept-hint" style="font-size:0.75rem; color:#64748b;"></span>
+            </div>
+            <button type="submit" class="btn-create">
+              <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create User
+            </button>
           </form>
         </section>
 
-        <section class="admin-card">
-          <form class="search-bar filter-grid" method="get" action="" id="filter-form">
-            <input type="text" name="q" value="{{ filters.q }}" placeholder="Search users">
-            <!-- Multi-role checkbox dropdown -->
+        <!-- Right: User Directory Table Card -->
+        <section class="mgmt-card">
+          <div class="mgmt-card-header">
+            <div class="mgmt-card-title" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+              <h3>User Directory</h3>
+              <span style="background:var(--primary-light); color:var(--primary); padding:2px 10px; border-radius:12px; font-size:0.78rem; font-weight:700;">{{ users|length }} Users</span>
+            </div>
+          </div>
+
+          <!-- Filter Toolbar -->
+          <form class="filter-bar-wrap" method="get" action="" id="filter-form">
+            <input type="text" name="q" value="{{ filters.q }}" class="filter-search-input" placeholder="Search by name, email, department...">
+            
             <div class="multi-select" id="role-multi-select">
               <button type="button" class="multi-select-btn" onclick="toggleRoleDropdown()">
                 <span id="role-btn-label">All Roles</span>
@@ -156,30 +393,46 @@
                 {% endfor %}
               </div>
             </div>
-            <select name="department">
+
+            <select name="department" style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; outline:none;">
               <option value="">All Departments</option>
               {% for department in departments %}
                 <option value="{{ department.code }}" {% if filters.department == department.code %}selected{% endif %}>{{ department.code }}</option>
               {% endfor %}
             </select>
-            <button class="primary-btn" type="submit">Filter</button>
+
+            <button class="btn-table-action btn-create" style="margin-top:0; padding:8px 14px;" type="submit">
+              <i data-lucide="filter" style="width:14px;height:14px;"></i> Filter
+            </button>
           </form>
-          <p class="user-count">{{ users|length }} user{{ 's' if users|length != 1 else '' }} found</p>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Actions</th></tr></thead>
+
+          <div style="overflow-x:auto;">
+            <table class="modern-table" style="min-width:720px;">
+              <thead>
+                <tr>
+                  <th>User / Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Department</th>
+                  <th style="text-align:right; width:120px;">Actions</th>
+                </tr>
+              </thead>
               <tbody>
                 {% for item in users %}
                   <tr id="user-view-{{ item.id }}">
-                    <td class="ticket-id-cell">{{ item.name }}</td>
-                    <td>{{ item.email }}</td>
+                    <td><strong>{{ item.name }}</strong></td>
+                    <td style="color:var(--slate-600); font-size:0.84rem;">{{ item.email }}</td>
                     <td><span class="role-badge {{ item.role|lower }}">{{ 'USER' if item.role == 'FACULTY' else item.role }}</span></td>
-                    <td>{{ item.department }}</td>
-                    <td>
-                      <div class="btn-group">
+                    <td><span class="dept-badge">{{ item.department }}</span></td>
+                    <td style="text-align:right;">
+                      <div class="btn-group" style="justify-content:flex-end;">
                         {% if session.get('role') == 'SUPER_ADMIN' or item.role != 'SUPER_ADMIN' %}
-                          <button type="button" class="edit-btn" onclick="toggleEdit({{ item.id }})">Edit</button>
-                          <button type="button" class="delete-btn" onclick="confirmDelete({{ item.id }}, '{{ item.name|e }}')">Delete</button>
+                          <button type="button" class="btn-table-action btn-edit" onclick="toggleEdit({{ item.id }})">
+                            <i data-lucide="edit-2" style="width:12px;height:12px;"></i> Edit
+                          </button>
+                          <button type="button" class="btn-table-action btn-delete" onclick="confirmDelete({{ item.id }}, '{{ item.name|e }}')">
+                            <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+                          </button>
                         {% endif %}
                       </div>
                     </td>
@@ -198,74 +451,51 @@
                         </select>
                       </td>
                       <td>
-                        <select name="department" id="edit-{{ item.id }}-department" required style="width: 100%;">
+                        <select name="department" id="edit-{{ item.id }}-department" required>
                           {% set item_depts = item.department.split(',') | map('trim') | list %}
                           {% for department in departments %}
-                            <option value="{{ department.code }}" data-all="true" 
-                              {% if department.code in item_depts %}selected{% endif %}
-                              {% if session.get('role') == 'HOD' and department.code != session.get('department') %}style="display:none;" disabled{% endif %}>
+                            <option value="{{ department.code }}" data-all="true" {% if department.code in item_depts %}selected{% endif %}>
                               {{ department.code }}
                             </option>
                           {% endfor %}
                         </select>
-                        <div id="edit-{{ item.id }}-department-multi" class="dept-multi-select" style="display:none;">
-                          <button type="button" class="dept-multi-btn" onclick="toggleDeptPanel('edit-{{ item.id }}')">
-                            <span class="dept-label-text" id="edit-{{ item.id }}-dept-label">Select departments</span>
-                            <span class="dept-arrow">▾</span>
-                          </button>
-                          <div class="dept-multi-panel" id="edit-{{ item.id }}-dept-panel">
-                            {% set item_depts = item.department.split(',') | map('trim') | list %}
-                            {% for department in departments %}
-                              <label data-all="true" {% if session.get('role') == 'HOD' and department.code == session.get('department') %}style="font-weight: bold;"{% endif %}>
-                                <input type="checkbox" name="department" value="{{ department.code }}" 
-                                  {% if department.code in item_depts or (session.get('role') == 'HOD' and department.code == session.get('department')) %}checked{% endif %}
-                                  {% if session.get('role') == 'HOD' and department.code == session.get('department') %}onclick="return false;"{% endif %}
-                                  onchange="updateDeptLabel('edit-{{ item.id }}')"> {{ department.code }}
-                              </label>
-                            {% endfor %}
-                          </div>
-                        </div>
                       </td>
-                      <td>
-                        <div class="btn-group">
-                          <button type="submit" class="save-btn">Save</button>
-                          <button type="button" class="cancel-btn" onclick="toggleEdit({{ item.id }})">Cancel</button>
+                      <td style="text-align:right;">
+                        <div class="btn-group" style="justify-content:flex-end;">
+                          <button type="submit" class="btn-table-action btn-save">Save</button>
+                          <button type="button" class="btn-table-action btn-cancel" onclick="toggleEdit({{ item.id }})">Cancel</button>
                         </div>
                       </td>
                     </form>
                   </tr>
                   {% endif %}
                 {% else %}
-                  <tr><td colspan="5" class="empty-cell">No users found.</td></tr>
+                  <tr><td colspan="5" style="text-align:center; padding:2.5rem; color:#94a3b8;">No users found matching your filters.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
           </div>
         </section>
-      </section>
+      </div>
     </main>
   </div>
 
-  <!-- Delete confirmation dialog -->
+  <!-- Delete confirmation modal -->
   <div id="delete-overlay" class="confirm-overlay">
     <div class="confirm-box">
-      <h3>⚠️ Delete User</h3>
-      <p>Are you sure you want to delete <strong id="delete-user-name"></strong>? This cannot be undone. Users referenced by tickets or categories cannot be deleted.</p>
-      <div class="btn-group">
-        <form id="delete-form" method="post">
+      <h3><i data-lucide="alert-triangle" style="width:20px;height:20px;"></i> Confirm Deletion</h3>
+      <p>Are you sure you want to delete user <strong id="delete-user-name" style="color:var(--slate-900);"></strong>? This action cannot be undone.</p>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button type="button" class="btn-table-action btn-cancel" style="padding:8px 14px;" onclick="closeDelete()">Cancel</button>
+        <form id="delete-form" method="post" style="display:inline;">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="delete-btn">Yes, Delete</button>
+          <button type="submit" class="btn-table-action btn-delete" style="padding:8px 14px;">Delete User</button>
         </form>
-        <button type="button" class="cancel-btn" onclick="closeDelete()">Cancel</button>
       </div>
     </div>
   </div>
 
   <script>
-    /* ── Role → Department mapping ──
-       SUPER_ADMIN & ADMIN  → Administration only
-       HOD, CA, FACULTY     → All academic/operational departments (excludes Administration)
-    */
     const isHodUser = {{ (session.get('role') == 'HOD') | tojson }};
     const hodDept = {{ session.get('department') | tojson }};
 
@@ -285,7 +515,6 @@
         deptSelect = document.getElementById('create-department');
         hintEl = document.getElementById('create-dept-hint');
       } else {
-        // For inline edit rows: prefix is "edit-{userId}"
         const editRow = document.getElementById('user-' + prefix);
         if (!editRow) return;
         roleSelect = editRow.querySelector('select[name="role"]');
@@ -296,7 +525,6 @@
       const selectedRole = roleSelect.value;
       const allowedDepts = ROLE_DEPARTMENTS[selectedRole] || [];
       const options = deptSelect.querySelectorAll('option[data-all]');
-      const currentVals = Array.from(deptSelect.selectedOptions).map(opt => opt.value);
       let firstVisible = '';
 
       const isCA = selectedRole === 'CA';
@@ -338,12 +566,10 @@
         updateDeptLabel(prefix);
       }
 
-      // Auto-select if current value is now hidden
       if (!isCA && allowedDepts.length > 0 && !allowedDepts.includes(deptSelect.value)) {
         deptSelect.value = firstVisible;
       }
 
-      // Show hint
       if (hintEl) {
         if (selectedRole === 'SUPER_ADMIN' || selectedRole === 'ADMIN') {
           hintEl.textContent = 'Admin roles → Administration department';
@@ -355,14 +581,11 @@
       }
     }
 
-    /* ── Multi-role filter dropdown ── */
     function toggleRoleDropdown() {
       document.getElementById('role-dropdown').classList.toggle('open');
     }
 
-    /* ── Dept multi-select dropdown ── */
     function toggleDeptPanel(prefix) {
-      // Close all other dept panels first
       document.querySelectorAll('.dept-multi-panel.open').forEach(p => {
         if (p.id !== prefix + '-dept-panel') p.classList.remove('open');
       });
@@ -384,19 +607,16 @@
       }
     }
 
-    // Close dropdowns when clicking outside
     document.addEventListener('click', function(e) {
       const ms = document.getElementById('role-multi-select');
       if (ms && !ms.contains(e.target)) {
         document.getElementById('role-dropdown').classList.remove('open');
       }
-      // Close all dept panels if click is outside any dept-multi-select
       if (!e.target.closest('.dept-multi-select')) {
         document.querySelectorAll('.dept-multi-panel.open').forEach(p => p.classList.remove('open'));
       }
     });
 
-    // Update button label when checkboxes change
     document.querySelectorAll('#role-dropdown input[type="checkbox"]').forEach(cb => {
       cb.addEventListener('change', updateRoleLabel);
     });
@@ -415,14 +635,12 @@
     }
     updateRoleLabel();
 
-    /* ── Edit / Delete ── */
     function toggleEdit(userId) {
       const viewRow = document.getElementById('user-view-' + userId);
       const editRow = document.getElementById('user-edit-' + userId);
       if (editRow.style.display === 'none') {
         viewRow.style.display = 'none';
         editRow.style.display = '';
-        // Trigger department filter for this edit row
         filterDepartments('edit-' + userId);
       } else {
         viewRow.style.display = '';

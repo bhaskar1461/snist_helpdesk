@@ -1,3 +1,6 @@
+import os
+os.environ["TESTING"] = "true"
+
 import unittest
 from unittest.mock import patch, MagicMock
 import re

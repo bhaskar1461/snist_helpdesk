@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
 
@@ -10,6 +11,7 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from app.helpers import (
     current_user, is_valid_email, live_departments, page_context,
     role_required, route_for_role, safe_int, resolve_user_org,
+    departments_match, normalize_dept_name,
 )
 
 log = logging.getLogger(__name__)
@@ -23,10 +25,10 @@ def check_and_promote_ca(demo_db, ca_id, target_dept, actor_id, org_id):
     ca_user = demo_db.get_user(ca_id)
     if ca_user:
         user_dept = (ca_user.get("department") or "").strip()
-        user_depts = [d.strip().lower() for d in user_dept.split(",") if d.strip()]
-        target_dept_lower = target_dept.strip().lower()
-        if user_dept and target_dept_lower not in user_depts:
-            raise ValueError(f"User '{ca_user['name']}' belongs to department '{user_dept}', which does not match target department '{target_dept}'. Cross-department Assignee assignment is not allowed.")
+        user_dept_display = normalize_dept_name(user_dept, org_id) or user_dept
+        target_dept_display = normalize_dept_name(target_dept, org_id) or target_dept
+        if user_dept and not departments_match(user_dept, target_dept, org_id):
+            raise ValueError(f"User '{ca_user['name']}' belongs to department '{user_dept_display}', which does not match target department '{target_dept_display}'. Cross-department Assignee assignment is not allowed.")
 
         if ca_user["role"] == "FACULTY":
             new_role = "CA"
@@ -41,7 +43,7 @@ def check_and_promote_ca(demo_db, ca_id, target_dept, actor_id, org_id):
                 target_type="user", target_id=ca_id,
                 details={"promoted_name": ca_user["name"], "department": target_dept},
             )
-            flash(f"Promoted {ca_user['name']} to Assignee for {target_dept}.", "success")
+            flash(f"Promoted {ca_user['name']} to Assignee for {target_dept_display}.", "success")
 
 
 def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, actor_id, org_id):
@@ -54,8 +56,10 @@ def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, ac
             raise ValueError("Selected authority not found in reference directory.")
 
         teacher_dept = (teacher.get("department_code") or teacher.get("department_name") or "").strip()
-        if teacher_dept and teacher_dept.lower() != target_dept.lower():
-            raise ValueError(f"Reference user '{teacher.get('TEACHER_NAME', 'Teacher')}' belongs to department '{teacher_dept}', not '{target_dept}'.")
+        teacher_dept_display = normalize_dept_name(teacher_dept, org_id) or teacher_dept
+        target_dept_display = normalize_dept_name(target_dept, org_id) or target_dept
+        if teacher_dept and not departments_match(teacher_dept, target_dept, org_id):
+            raise ValueError(f"Reference user '{teacher.get('TEACHER_NAME', 'Teacher')}' belongs to department '{teacher_dept_display}', not '{target_dept_display}'.")
 
         sap_id = str(teacher.get("sap_id", "123")).strip()
         existing = demo_db.get_user_by_email(teacher["email"])
@@ -452,16 +456,28 @@ def category_assignments():
 
     # Fetch promoteable Assignees and Faculty strictly for the target department (only active users)
     if dept_filter:
-        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE", "FACULTY", "ADMIN", "HOD", "SUPER_ADMIN"], department=dept_filter, org_id=user["org_id"])
+        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE", "FACULTY"], department=dept_filter, org_id=user["org_id"])
     else:
-        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE", "FACULTY", "ADMIN", "HOD", "SUPER_ADMIN"], org_id=user["org_id"])
+        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE", "FACULTY"], org_id=user["org_id"])
 
     promoteable_users = []
     seen_emails = set()
 
     depts = live_departments(user["org_id"])
-    dept_map = {str(d["id"]): d.get("code") or d.get("name") for d in depts if d.get("id")}
-    dept_map.update({str(d.get("code")): d.get("code") for d in depts if d.get("code")})
+    dept_map = {}
+    for d in depts:
+        code = (d.get("code") or "").strip()
+        name = (d.get("name") or "").strip()
+        if d.get("id"):
+            dept_map[str(d["id"])] = code or name
+        if code:
+            dept_map[code] = code
+            dept_map[code.upper()] = code
+            dept_map[code.lower()] = code
+        if name:
+            dept_map[name] = code or name
+            dept_map[name.upper()] = code or name
+            dept_map[name.lower()] = code or name
 
     for u in candidate_users:
         if u.get("is_active", 1) == 0:
@@ -484,8 +500,8 @@ def category_assignments():
             "department": dept_name or "General",
         })
 
-    if live_db.enabled and dept_filter:
-        ref_users = live_db.fetch_reference_users(department=dept_filter, org_id=user["org_id"], limit=1000)
+    if live_db.enabled:
+        ref_users = live_db.fetch_reference_users(department=dept_filter, org_id=user["org_id"], limit=5000)
         for r in ref_users:
             email_lower = (r.get("EMAIL_ID") or "").lower().strip()
             if email_lower and email_lower not in seen_emails:
@@ -529,10 +545,37 @@ def category_assignments():
         "ca_id": ca_filter or "",
     }
 
+    # Prepare clean, JSON-safe datasets for instant smart search
+    categories_json_safe = []
+    for c in categories:
+        categories_json_safe.append({
+            "id": c.get("id"),
+            "category_name": c.get("category_name", ""),
+            "department": c.get("department", ""),
+            "assigned_ca_id": c.get("assigned_ca_id"),
+            "assigned_ca_name": c.get("assigned_ca_name", ""),
+            "assigned_ca_email": c.get("assigned_ca_email", ""),
+            "is_active": c.get("is_active", 1),
+            "active_tickets": c.get("ticket_count", 0),
+            "mapped_blocks": c.get("block_mappings", []),
+        })
+
+    users_json_safe = []
+    for u in promoteable_users:
+        users_json_safe.append({
+            "id": u.get("id"),
+            "name": u.get("name", ""),
+            "email": u.get("email", ""),
+            "role": u.get("role", ""),
+            "department": u.get("department", ""),
+        })
+
     return render_template(
         "category_ca_management.html",
         categories=categories,
         users=promoteable_users,
+        categories_json_str=json.dumps(categories_json_safe),
+        users_json_str=json.dumps(users_json_safe),
         departments=live_departments(user["org_id"]),
         blocks=blocks,
         filters=filters,

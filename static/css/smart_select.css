@@ -1,0 +1,364 @@
+/* ==========================================================================
+   SNIST Helpdesk — Smart Searchable Select (Intelligent Dropdowns)
+   Zero-dependency, high-performance searchable select with rich user cards
+   ========================================================================== */
+
+.smart-select-container {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  user-select: none;
+}
+
+/* ── Trigger Box ────────────────────────────────────────────────────────── */
+.smart-select-trigger {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.smart-select-trigger:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.smart-select-container.is-open {
+  z-index: 10000;
+}
+
+.smart-select-container.is-open .smart-select-trigger {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  background: #ffffff;
+}
+
+.smart-select-container.is-disabled .smart-select-trigger {
+  background: #f1f5f9;
+  cursor: not-allowed;
+  opacity: 0.65;
+  border-color: #e2e8f0;
+}
+
+.smart-select-label-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smart-select-placeholder {
+  color: #94a3b8;
+  font-size: 0.88rem;
+}
+
+.smart-select-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.smart-select-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.smart-select-clear:hover {
+  background: #cbd5e1;
+  color: #1e293b;
+}
+
+.smart-select-arrow {
+  color: #64748b;
+  font-size: 0.75rem;
+  transition: transform 0.2s ease;
+}
+
+.smart-select-container.is-open .smart-select-arrow {
+  transform: rotate(180deg);
+  color: #4f46e5;
+}
+
+/* ── Dropdown Panel ─────────────────────────────────────────────────────── */
+.smart-select-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(15, 23, 42, 0.08);
+  z-index: 99999;
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  animation: smartSelectFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  min-width: 260px;
+}
+
+.smart-select-container.is-open .smart-select-dropdown {
+  display: flex;
+}
+
+.smart-select-container.opens-up .smart-select-dropdown {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+@keyframes smartSelectFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Search Input Header ────────────────────────────────────────────────── */
+.smart-select-search-header {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.smart-select-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.smart-select-search-icon {
+  position: absolute;
+  left: 10px;
+  color: #94a3b8;
+  pointer-events: none;
+  font-size: 0.85rem;
+}
+
+.smart-select-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px 8px 32px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: #ffffff;
+  outline: none;
+  color: #1e293b;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.smart-select-search-input:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+}
+
+.smart-select-stats-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+  color: #64748b;
+  padding: 2px 4px 0;
+}
+
+/* ── Options List ───────────────────────────────────────────────────────── */
+.smart-select-options-list {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  margin: 0;
+  list-style: none;
+  overscroll-behavior: contain;
+}
+
+/* Scrollbar */
+.smart-select-options-list::-webkit-scrollbar {
+  width: 6px;
+}
+.smart-select-options-list::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+.smart-select-options-list::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.smart-select-option {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  transition: background 0.12s, color 0.12s;
+  font-size: 0.86rem;
+  color: #1e293b;
+  margin-bottom: 2px;
+}
+
+.smart-select-option:hover,
+.smart-select-option.is-focused {
+  background: #eef2ff;
+  color: #312e81;
+}
+
+.smart-select-option.is-selected {
+  background: #e0e7ff;
+  color: #3730a3;
+  font-weight: 600;
+}
+
+.smart-select-option.is-hidden {
+  display: none !important;
+}
+
+.smart-select-option-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Avatar / Initial Circle */
+.ss-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e0e7ff;
+  color: #4f46e5;
+  font-weight: 700;
+  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ss-avatar.role-ca { background: #d1fae5; color: #065f46; }
+.ss-avatar.role-admin { background: #dbeafe; color: #1d4ed8; }
+.ss-avatar.role-super-admin { background: #fce7f3; color: #9d174d; }
+.ss-avatar.role-hod { background: #ede9fe; color: #5b21b6; }
+.ss-avatar.role-faculty { background: #f1f5f9; color: #475569; }
+
+.ss-text-group {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.ss-main-text {
+  font-weight: 500;
+  color: #1e293b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ss-sub-text {
+  font-size: 0.74rem;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+/* Role Pills */
+.ss-role-tag {
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  display: inline-block;
+  vertical-align: middle;
+}
+.ss-role-tag.role-ca { background: #d1fae5; color: #065f46; }
+.ss-role-tag.role-admin { background: #dbeafe; color: #1d4ed8; }
+.ss-role-tag.role-super-admin { background: #fce7f3; color: #9d174d; }
+.ss-role-tag.role-hod { background: #ede9fe; color: #5b21b6; }
+.ss-role-tag.role-faculty { background: #f1f5f9; color: #475569; }
+
+/* Department Badge */
+.ss-dept-tag {
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 500;
+}
+
+/* Search Highlight */
+.ss-highlight {
+  background: #fef08a;
+  color: #854d0e;
+  font-weight: 700;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Checkmark */
+.ss-check-icon {
+  font-size: 0.85rem;
+  color: #4f46e5;
+  font-weight: bold;
+  flex-shrink: 0;
+  display: none;
+}
+.smart-select-option.is-selected .ss-check-icon {
+  display: inline-block;
+}
+
+/* Empty State */
+.smart-select-empty-state {
+  padding: 24px 16px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+.smart-select-empty-state svg {
+  display: block;
+  margin: 0 auto 6px;
+  color: #cbd5e1;
+}

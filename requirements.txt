@@ -3,4 +3,5 @@ Flask-WTF==1.2.2
 PyMySQL==1.1.2
 python-dotenv==1.1.0
 gunicorn==21.2.0
+granian>=1.7.0
 PyJWT==2.10.1

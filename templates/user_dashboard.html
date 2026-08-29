@@ -3,11 +3,314 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>User Dashboard</title>
+  <title>User Dashboard — SNIST Helpdesk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+      color: var(--slate-800);
+    }
+
+    .dashboard-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 1100px) {
+      .dashboard-metrics-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .dashboard-metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .metric-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      padding: 16px 18px;
+      box-shadow: 0 2px 4px rgba(15, 23, 42, 0.03);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(15, 23, 42, 0.06);
+    }
+
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+    }
+
+    .metric-card.m-total::before { background: #4f46e5; }
+    .metric-card.m-pending::before { background: #f59e0b; }
+    .metric-card.m-inprogress::before { background: #2563eb; }
+    .metric-card.m-onhold::before { background: #8b5cf6; }
+    .metric-card.m-resolved::before { background: #10b981; }
+    .metric-card.m-reopened::before { background: #ef4444; }
+
+    .metric-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .metric-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--slate-600);
+    }
+
+    .metric-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .m-total .metric-icon { background: #eef2ff; color: #4f46e5; }
+    .m-pending .metric-icon { background: #fef3c7; color: #d97706; }
+    .m-inprogress .metric-icon { background: #dbeafe; color: #2563eb; }
+    .m-onhold .metric-icon { background: #f3e8ff; color: #7c3aed; }
+    .m-resolved .metric-icon { background: #ecfdf5; color: #059669; }
+    .m-reopened .metric-icon { background: #fee2e2; color: #dc2626; }
+
+    .metric-value {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: var(--slate-900);
+      line-height: 1.1;
+    }
+
+    .dashboard-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .dashboard-card-header {
+      padding: 16px 22px;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #ffffff;
+    }
+
+    .dashboard-card-title h3 {
+      margin: 0;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--slate-900);
+    }
+
+    .dashboard-card-title p {
+      margin: 2px 0 0;
+      font-size: 0.8rem;
+      color: var(--slate-600);
+    }
+
+    .dashboard-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-action-primary {
+      background: var(--primary);
+      color: #ffffff;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .btn-action-primary:hover {
+      background: var(--primary-hover);
+      color: #ffffff;
+    }
+
+    .btn-action-secondary {
+      background: #f1f5f9;
+      color: var(--slate-700);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .btn-action-secondary:hover {
+      background: #e2e8f0;
+      color: var(--slate-900);
+    }
+
+    .dashboard-table-wrap {
+      overflow-x: auto;
+      width: 100%;
+    }
+
+    .modern-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.88rem;
+      min-width: 860px;
+    }
+
+    .modern-table th {
+      background: #f8fafc;
+      color: var(--slate-600);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 12px 18px;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+
+    .modern-table td {
+      padding: 12px 18px;
+      border-bottom: 1px solid #f1f5f9;
+      color: var(--slate-800);
+      vertical-align: middle;
+    }
+
+    .modern-table tr:hover td {
+      background: #f8fafc;
+    }
+
+    .ticket-id-tag {
+      font-family: 'Space Grotesk', monospace;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+      background: #eef2ff;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      display: inline-block;
+    }
+
+    .ticket-cat-label {
+      font-size: 0.74rem;
+      font-weight: 700;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .ticket-title-text {
+      font-weight: 600;
+      color: var(--slate-900);
+    }
+
+    .loc-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #f1f5f9;
+      color: var(--slate-700);
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+
+    .status-pill.pending { background: #fef3c7; color: #b45309; }
+    .status-pill.in-progress { background: #dbeafe; color: #1d4ed8; }
+    .status-pill.on-hold { background: #f3e8ff; color: #7e22ce; }
+    .status-pill.resolved { background: #d1fae5; color: #047857; }
+    .status-pill.reopened { background: #fee2e2; color: #b91c1c; }
+
+    .btn-view-ticket {
+      color: var(--primary);
+      background: #eef2ff;
+      border: none;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+
+    .btn-view-ticket:hover {
+      background: #e0e7ff;
+      color: #3730a3;
+    }
+  </style>
 </head>
 <body>
   <div class="admin-shell">
@@ -20,14 +323,13 @@
     {% include 'sidebar.html' %}
     
     <main class="admin-main">
-      {% set page_kicker = "User Dashboard" %}
+      {% set page_kicker = "Helpdesk Portal" %}
       {% set page_heading = "Welcome, " ~ user_name %}
-      {% set page_description = "Create tickets and track only your own complaints. Category selection will auto-assign the mapped Assignee." %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-          <div class="flash-stack">
+          <div class="flash-stack" style="margin-bottom: 1.25rem;">
             {% for category, message in messages %}
               <div class="flash-message {{ category }}">{{ message }}</div>
             {% endfor %}
@@ -35,63 +337,136 @@
         {% endif %}
       {% endwith %}
 
-      <section class="summary-strip summary-strip-management">
-        <div class="summary-box"><span>Total</span><strong>{{ summary.total or 0 }}</strong></div>
-        <div class="summary-box"><span>Pending</span><strong>{{ summary.pending or 0 }}</strong></div>
-        <div class="summary-box"><span>In Progress</span><strong>{{ summary.in_progress or 0 }}</strong></div>
-        <div class="summary-box"><span>On Hold</span><strong>{{ summary.on_hold or 0 }}</strong></div>
-        <div class="summary-box"><span>Resolved</span><strong>{{ summary.resolved or 0 }}</strong></div>
-        <div class="summary-box"><span>Reopened</span><strong>{{ summary.reopened or 0 }}</strong></div>
+      <!-- Metrics Summary Strip -->
+      <section class="dashboard-metrics-grid">
+        <div class="metric-card m-total">
+          <div class="metric-header">
+            <span class="metric-label">My Tickets</span>
+            <div class="metric-icon"><i data-lucide="layers" style="width:14px;height:14px;"></i></div>
+          </div>
+          <div class="metric-value">{{ summary.total or 0 }}</div>
+        </div>
+
+        <div class="metric-card m-pending">
+          <div class="metric-header">
+            <span class="metric-label">Pending</span>
+            <div class="metric-icon"><i data-lucide="clock" style="width:14px;height:14px;"></i></div>
+          </div>
+          <div class="metric-value">{{ summary.pending or 0 }}</div>
+        </div>
+
+        <div class="metric-card m-inprogress">
+          <div class="metric-header">
+            <span class="metric-label">In Progress</span>
+            <div class="metric-icon"><i data-lucide="play-circle" style="width:14px;height:14px;"></i></div>
+          </div>
+          <div class="metric-value">{{ summary.in_progress or 0 }}</div>
+        </div>
+
+        <div class="metric-card m-onhold">
+          <div class="metric-header">
+            <span class="metric-label">On Hold</span>
+            <div class="metric-icon"><i data-lucide="pause-circle" style="width:14px;height:14px;"></i></div>
+          </div>
+          <div class="metric-value">{{ summary.on_hold or 0 }}</div>
+        </div>
+
+        <div class="metric-card m-resolved">
+          <div class="metric-header">
+            <span class="metric-label">Resolved</span>
+            <div class="metric-icon"><i data-lucide="check-circle-2" style="width:14px;height:14px;"></i></div>
+          </div>
+          <div class="metric-value">{{ summary.resolved or 0 }}</div>
+        </div>
+
+        <div class="metric-card m-reopened">
+          <div class="metric-header">
+            <span class="metric-label">Reopened</span>
+            <div class="metric-icon"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i></div>
+          </div>
+          <div class="metric-value">{{ summary.reopened or 0 }}</div>
+        </div>
       </section>
 
-      <section class="admin-card">
-        <div class="card-head">
-          <div><p class="kicker">Recent Tickets</p><h3>Your latest complaints</h3></div>
-          <div class="action-row">
-            <a href="{{ url_for('tickets.create_ticket_for_role') }}" class="primary-btn">Create Ticket</a>
-            <a href="{{ url_for('dashboards.my_tickets') }}" class="secondary-btn">View All</a>
+      <!-- Recent Tickets Table Card -->
+      <section class="dashboard-card">
+        <div class="dashboard-card-header">
+          <div class="dashboard-card-title">
+            <h3>Recent Tickets</h3>
+          </div>
+          <div class="dashboard-actions">
+            <a href="{{ url_for('tickets.create_ticket_for_role') }}" class="btn-action-primary">
+              <i data-lucide="plus-circle" style="width:15px;height:15px;"></i> Create Ticket
+            </a>
+            <a href="{{ url_for('dashboards.my_tickets') }}" class="btn-action-secondary">
+              <i data-lucide="list" style="width:15px;height:15px;"></i> View All
+            </a>
           </div>
         </div>
-        <div class="table-wrap">
-          <table>
+
+        <div class="dashboard-table-wrap">
+          <table class="modern-table">
             <thead>
               <tr>
-                <th>S.No</th>
-                <th>Ticket ID</th>
-                <th>Complaint Regarding</th>
-                <th>Block</th>
-                <th>Room/Lab</th>
+                <th style="width: 70px;">ID</th>
+                <th>Complaint & Category</th>
+                <th>Location</th>
                 <th>Status</th>
-                <th>Complaint Date&nbsp;Time</th>
-                <th>Allocated To</th>
-                <th>Allocated Date&nbsp;Time</th>
-                <th>Closed Date&nbsp;Time</th>
-                <th>Action</th>
+                <th>Assigned To</th>
+                <th>Logged Date</th>
+                <th style="text-align: right; width: 100px;">Action</th>
               </tr>
             </thead>
             <tbody>
               {% for ticket in tickets %}
-                <tr class="ticket-row">
-                  <td>{{ loop.index }}</td>
-                  <td class="ticket-id-cell"><a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}">#{{ ticket.id }}</a></td>
-                  <td><strong>{{ ticket.category_name }}</strong> – {{ ticket.title }}</td>
-                  <td>{{ ticket.location_block or '—' }}</td>
-                  <td>{{ ticket.location_room_no or '—' }}</td>
-                  <td><span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">{{ ticket.status }}</span></td>
-                  <td style="white-space:nowrap;">{{ ticket.created_at }}</td>
-                  <td>{{ ticket.assigned_to_name }}</td>
-                  <td style="white-space:nowrap;">{{ ticket.updated_at if ticket.status != 'PENDING' else '—' }}</td>
-                  <td style="white-space:nowrap;">{{ ticket.updated_at if ticket.status == 'RESOLVED' else '—' }}</td>
+                <tr>
                   <td>
-                    {% if ticket.status == 'RESOLVED' %}
-                      <a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}" class="status-pill reopened" style="text-decoration:none;">Re-open</a>
+                    <a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}" class="ticket-id-tag">
+                      #{{ ticket.id }}
+                    </a>
+                  </td>
+                  <td>
+                    <span class="ticket-cat-label">{{ ticket.category_name }}</span>
+                    <span class="ticket-title-text">{{ ticket.title or ticket.description }}</span>
+                  </td>
+                  <td>
+                    {% if ticket.location_block or ticket.location_room_no %}
+                      <span class="loc-badge">
+                        {{ ticket.location_block or 'Campus' }}{% if ticket.location_room_no %} · {{ ticket.location_room_no }}{% endif %}
+                      </span>
                     {% else %}
-                      <span class="muted-cell">—</span>
+                      <span style="color:#94a3b8; font-size:0.8rem;">—</span>
                     {% endif %}
+                  </td>
+                  <td>
+                    <span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">
+                      {{ ticket.status|replace('_', ' ') }}
+                    </span>
+                  </td>
+                  <td>
+                    {% if ticket.assigned_to_name %}
+                      <strong style="color:var(--slate-800); font-size:0.84rem;">{{ ticket.assigned_to_name }}</strong>
+                    {% else %}
+                      <span style="color:#94a3b8; font-size:0.8rem; font-style:italic;">Auto-routing</span>
+                    {% endif %}
+                  </td>
+                  <td style="white-space:nowrap; color:var(--slate-600); font-size:0.82rem;">
+                    {{ ticket.created_at }}
+                  </td>
+                  <td style="text-align: right;">
+                    <a href="{{ url_for('tickets.ticket_detail', ticket_id=ticket.id) }}" class="btn-view-ticket">
+                      View <i data-lucide="arrow-right" style="width:13px;height:13px;"></i>
+                    </a>
                   </td>
                 </tr>
               {% else %}
-                <tr><td colspan="11" class="empty-cell">No tickets yet.</td></tr>
+                <tr>
+                  <td colspan="7" style="text-align:center; padding:3rem 1rem; color:#94a3b8;">
+                    <i data-lucide="inbox" style="width:36px;height:36px;opacity:0.6;margin-bottom:8px;"></i>
+                    <p style="margin:0; font-weight:500; color:var(--slate-700);">No tickets submitted yet.</p>
+                    <p style="margin:4px 0 0; font-size:0.82rem;">Create your first ticket to request assistance from campus support.</p>
+                  </td>
+                </tr>
               {% endfor %}
             </tbody>
           </table>

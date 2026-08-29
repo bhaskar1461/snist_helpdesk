@@ -18,3 +18,7 @@ New Project*.sql
 *.dump.sql
 *_dump_*.sql
 sreenidhi_*.sql.gz
+
+# Sample / test files
+mrs_soni_kumari.*
+pic.jpeg

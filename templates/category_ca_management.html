@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/smart_select.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/smart_search.css') }}">
   <style>
     :root {
       --primary: #4f46e5;
@@ -178,7 +180,8 @@
       border: 1px solid var(--slate-200);
       border-radius: 12px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-      overflow: hidden;
+      overflow: visible;
+      position: relative;
     }
     .filter-bar {
       display: flex;
@@ -189,6 +192,9 @@
       padding: 14px 18px;
       background: #ffffff;
       border-bottom: 1px solid var(--slate-200);
+      border-radius: 12px 12px 0 0;
+      position: relative;
+      z-index: 1000;
     }
     .filter-inputs {
       display: flex;
@@ -451,7 +457,6 @@
     <main class="admin-main">
       {% set page_kicker = "Management" %}
       {% set page_heading = "Category & Assignee Management" %}
-      {% set page_description = "Configure department categories, assign ticket resolution assignees, and set problem routing." %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -524,14 +529,10 @@
             </label>
             <label class="field">
               <span>Assigned To (Optional)</span>
-              <select id="create-cat-ca" name="assigned_ca_id" class="input-style">
+              <select id="create-cat-ca" name="assigned_ca_id" class="input-style searchable-select user-select" data-placeholder="Choose an Assignee (Optional)...">
                 <option value="">Leave Unassigned</option>
-                {% for dept, dept_users in users|groupby('department') %}
-                  <optgroup label="Department: {{ dept if dept else 'General' }}">
-                    {% for u in dept_users %}
-                      <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
-                    {% endfor %}
-                  </optgroup>
+                {% for u in users %}
+                  <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
                 {% endfor %}
               </select>
             </label>
@@ -589,7 +590,39 @@
           <!-- Filter Bar -->
           <div class="filter-bar">
             <div class="filter-inputs">
-              <input type="text" name="q" id="filter-search" value="{{ filters.q }}" placeholder="Search category or assignee..." class="input-style search-input" onkeyup="if(event.key==='Enter') submitFilters()">
+              <!-- Smart Search Autocomplete Wrapper (Searches Categories & People instantly) -->
+              <div class="smart-search-wrapper">
+                <div class="smart-search-box">
+                  <span class="smart-search-icon">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="11" cy="11" r="8"></circle>
+                      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                  </span>
+                  <input type="text" name="q" id="filter-search" value="{{ filters.q }}" placeholder="Search categories or people..." class="input-style smart-search-input" autocomplete="off" onkeyup="if(event.key==='Enter'&&(!window.SmartSearch||document.getElementById('smart-search-popup').style.display==='none')) submitFilters()">
+                  <span id="clear-smart-search" class="smart-search-clear" style="display:none;" title="Clear search">&times;</span>
+                </div>
+
+                <!-- Instant Smart Search Popup (there itself) -->
+                <div id="smart-search-popup" class="smart-search-popup" style="display:none;">
+                  <div class="smart-popup-header">
+                    <div class="smart-popup-tabs">
+                      <button type="button" class="smart-tab active" data-tab="all" onclick="window.SmartSearch.setTab('all')">All <span class="tab-badge" id="tab-count-all">0</span></button>
+                      <button type="button" class="smart-tab" data-tab="categories" onclick="window.SmartSearch.setTab('categories')">Categories <span class="tab-badge" id="tab-count-categories">0</span></button>
+                      <button type="button" class="smart-tab" data-tab="people" onclick="window.SmartSearch.setTab('people')">People <span class="tab-badge" id="tab-count-people">0</span></button>
+                    </div>
+                    <div class="smart-popup-hint">
+                      <span><kbd>↑</kbd><kbd>↓</kbd></span>
+                      <span><kbd>↵</kbd> select</span>
+                      <span><kbd>esc</kbd></span>
+                    </div>
+                  </div>
+                  <div id="smart-popup-results" class="smart-popup-results">
+                    <!-- Dynamic Instant Results Injected Here -->
+                  </div>
+                </div>
+              </div>
+
               {% if current_role in ['SUPER_ADMIN', 'ADMIN'] %}
                 <select name="department" id="filter-department" class="input-style" onchange="submitFilters()">
                   <option value="">All Departments</option>
@@ -619,14 +652,10 @@
               <option value="bulk_disable">Disable Selected</option>
               <option value="bulk_unassign">Remove Assignee Assignment</option>
             </select>
-            <select name="bulk_ca_id" class="input-style" style="padding:4px 8px; font-size:0.82rem;">
+            <select name="bulk_ca_id" class="input-style searchable-select user-select" style="padding:4px 8px; font-size:0.82rem;" data-placeholder="Choose Assignee...">
               <option value="">Choose Assignee...</option>
-              {% for dept, dept_users in users|groupby('department') %}
-                <optgroup label="Department: {{ dept if dept else 'General' }}">
-                  {% for u in dept_users %}
-                    <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
-                  {% endfor %}
-                </optgroup>
+              {% for u in users %}
+                <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
               {% endfor %}
             </select>
 
@@ -649,7 +678,7 @@
             </thead>
             <tbody>
               {% for item in categories %}
-                <tr id="row-{{ item.id }}" {% if item.is_active == 0 %}class="inactive-row"{% endif %}>
+                <tr id="row-{{ item.id }}" data-category-id="{{ item.id }}" {% if item.is_active == 0 %}class="inactive-row"{% endif %}>
                   {% if not read_only %}
                   <td><input type="checkbox" name="selected_categories" value="{{ item.id }}" class="cat-checkbox" onclick="updateBulkToolbar()"></td>
                   {% endif %}
@@ -659,12 +688,10 @@
                     {% if not read_only %}
                       <select class="quick-select-ca" onchange="quickAssignCA({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}', this.value)">
                         <option value="none" {% if not item.assigned_ca_id %}selected{% endif %}>Unassigned</option>
-                        {% for dept, dept_users in users|groupby('department') %}
-                          <optgroup label="Department: {{ dept if dept else 'General' }}">
-                            {% for u in dept_users %}
-                              <option value="{{ u.id }}" {% if item.assigned_ca_id == u.id %}selected{% endif %}>{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
-                            {% endfor %}
-                          </optgroup>
+                        {% for u in users %}
+                          {% if not item.department or u.department|lower == item.department|lower or (item.assigned_ca_id and item.assigned_ca_id == u.id) or (u.department and item.department and (u.department|lower in item.department|lower or item.department|lower in u.department|lower)) %}
+                            <option value="{{ u.id }}" {% if item.assigned_ca_id == u.id %}selected{% endif %}>{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+                          {% endif %}
                         {% endfor %}
                       </select>
 
@@ -739,7 +766,7 @@
         {% if current_role in ['SUPER_ADMIN', 'ADMIN'] %}
         <label class="field" style="margin-bottom: 12px; display: block;">
           <span>Department</span>
-          <select id="edit-cat-dept" name="department" class="input-style" style="width:100%;" required>
+          <select id="edit-cat-dept" name="department" class="input-style" style="width:100%;" onchange="filterAssigneesByDept('edit-cat-dept', 'edit-cat-ca')" required>
             {% for d in departments %}
               <option value="{{ d.code }}">{{ d.code }}</option>
             {% endfor %}
@@ -751,14 +778,10 @@
 
         <label class="field" style="margin-bottom: 12px; display: block;">
           <span>Assigned To</span>
-          <select id="edit-cat-ca" name="assigned_ca_id" class="input-style" style="width:100%;">
+          <select id="edit-cat-ca" name="assigned_ca_id" class="input-style searchable-select user-select" style="width:100%;" data-placeholder="Choose an Assignee...">
             <option value="none">Unassigned</option>
-            {% for dept, dept_users in users|groupby('department') %}
-              <optgroup label="Department: {{ dept if dept else 'General' }}">
-                {% for u in dept_users %}
-                  <option value="{{ u.id }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
-                {% endfor %}
-              </optgroup>
+            {% for u in users %}
+              <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
             {% endfor %}
           </select>
         </label>
@@ -828,34 +851,29 @@
 
   <!-- Assign to Person Modal -->
   <div id="assign-person-overlay" class="modal-overlay">
-    <div class="modal-card" style="max-width: 620px; max-height: 90vh; display: flex; flex-direction: column;">
+    <div class="modal-card" style="max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; overflow: visible;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
         <h3 style="margin: 0;">Assign Multiple Categories to a Person</h3>
         <button type="button" class="close-panel-btn" onclick="closeAssignPersonModal()" style="font-size: 1.4rem;">&times;</button>
       </div>
-      <p style="color: var(--slate-600); font-size: 0.85rem; margin: 0 0 1rem;">Select a person and choose all the categories you want to assign to them at once.</p>
 
-      <form method="post" action="{{ url_for('management.category_assignments') }}" style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+      <form method="post" action="{{ url_for('management.category_assignments') }}" style="display: flex; flex-direction: column; flex: 1; overflow: visible;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="assign_ca">
 
         <!-- Step 1: Pick person -->
-        <label class="field" style="margin-bottom: 14px; display: block;">
-          <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+        <div class="field" style="margin-bottom: 14px; display: block; position: relative; z-index: 50;">
+          <label style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
             <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">1</span>
             Choose Person
-          </span>
-          <select name="faculty_id" id="assign-person-select" class="input-style" style="width: 100%;" required onchange="filterAssignPersonCategories()">
+          </label>
+          <select name="faculty_id" id="assign-person-select" class="input-style searchable-select user-select" style="width: 100%;" required onchange="filterAssignPersonCategories()" data-placeholder="— Search person by name or email —">
             <option value="">— Select a person —</option>
-            {% for dept, dept_users in users|groupby('department') %}
-              <optgroup label="Department: {{ dept if dept else 'General' }}">
-                {% for u in dept_users %}
-                  <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
-                {% endfor %}
-              </optgroup>
+            {% for u in users %}
+              <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
             {% endfor %}
           </select>
-        </label>
+        </div>
 
         <!-- Step 2: Pick categories -->
         <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; margin-bottom: 14px;">
@@ -1094,8 +1112,15 @@
       document.getElementById('edit-cat-id').value = id;
       document.getElementById('edit-cat-name').value = name;
       const deptEl = document.getElementById('edit-cat-dept');
-      if (deptEl) deptEl.value = dept;
-      document.getElementById('edit-cat-ca').value = caId || 'none';
+      if (deptEl) {
+        deptEl.value = dept;
+        filterAssigneesByDept('edit-cat-dept', 'edit-cat-ca');
+      }
+      const caSelect = document.getElementById('edit-cat-ca');
+      if (caSelect) {
+        caSelect.value = caId || 'none';
+        if (caSelect._smartSelect) caSelect._smartSelect.sync();
+      }
       setSelectedBlocks('edit-block-select', mappedBlocks || []);
       document.getElementById('edit-overlay').classList.add('active');
     }
@@ -1133,9 +1158,20 @@
     function openAssignPersonModal() {
       document.getElementById('assign-person-overlay').classList.add('active');
       // Reset state
-      document.getElementById('assign-person-select').value = '';
+      const apSelect = document.getElementById('assign-person-select');
+      if (apSelect) {
+        apSelect.value = '';
+        if (!apSelect._smartSelect && typeof SmartSelect !== 'undefined') {
+          SmartSelect.enhance(apSelect);
+        }
+        if (apSelect._smartSelect) {
+          apSelect._smartSelect.close();
+          apSelect._smartSelect.sync();
+        }
+      }
       apClearAll();
-      document.getElementById('ap-category-search').value = '';
+      const sInput = document.getElementById('ap-category-search');
+      if (sInput) sInput.value = '';
       filterApCategories();
       updateApCount();
     }
@@ -1149,24 +1185,59 @@
       const caSelect = document.getElementById(caSelectId);
       if (!deptSelect || !caSelect) return;
       const selectedDept = (deptSelect.value || '').toLowerCase().trim();
+      const selectedDeptText = deptSelect.selectedOptions && deptSelect.selectedOptions[0] ? (deptSelect.selectedOptions[0].text || '').toLowerCase().trim() : '';
 
       let hasValidSelection = false;
-      Array.from(caSelect.options).forEach(opt => {
-        if (!opt.value || opt.value === 'none') {
-          opt.style.display = '';
-          return;
-        }
-        const optDept = (opt.getAttribute('data-dept') || '').toLowerCase().trim();
-        if (!selectedDept || !optDept || optDept === selectedDept) {
-          opt.style.display = '';
-          if (opt.selected) hasValidSelection = true;
-        } else {
-          opt.style.display = 'none';
-          if (opt.selected) opt.selected = false;
-        }
-      });
-      if (!hasValidSelection) {
+      const optgroups = caSelect.querySelectorAll('optgroup');
+      if (optgroups.length > 0) {
+        optgroups.forEach(grp => {
+          let hasVisibleChild = false;
+          grp.querySelectorAll('option').forEach(opt => {
+            if (!opt.value || opt.value === 'none') {
+              opt.style.display = '';
+              hasVisibleChild = true;
+              return;
+            }
+            const optDept = (opt.getAttribute('data-dept') || '').toLowerCase().trim();
+            const matches = !selectedDept || !optDept || optDept === selectedDept ||
+                            optDept.includes(selectedDept) || selectedDept.includes(optDept) ||
+                            (selectedDeptText && (selectedDeptText.includes(optDept) || optDept.includes(selectedDeptText)));
+            if (matches) {
+              opt.style.display = '';
+              hasVisibleChild = true;
+              if (opt.selected) hasValidSelection = true;
+            } else {
+              opt.style.display = 'none';
+              if (opt.selected) opt.selected = false;
+            }
+          });
+          grp.style.display = hasVisibleChild ? '' : 'none';
+        });
+      } else {
+        Array.from(caSelect.options).forEach(opt => {
+          if (!opt.value || opt.value === 'none') {
+            opt.style.display = '';
+            return;
+          }
+          const optDept = (opt.getAttribute('data-dept') || '').toLowerCase().trim();
+          const matches = !selectedDept || !optDept || optDept === selectedDept ||
+                          optDept.includes(selectedDept) || selectedDept.includes(optDept) ||
+                          (selectedDeptText && (selectedDeptText.includes(optDept) || optDept.includes(selectedDeptText)));
+          if (matches) {
+            opt.style.display = '';
+            if (opt.selected) hasValidSelection = true;
+          } else {
+            opt.style.display = 'none';
+            if (opt.selected) opt.selected = false;
+          }
+        });
+      }
+
+      if (!hasValidSelection && caSelect.value !== 'none') {
         caSelect.value = '';
+      }
+      if (caSelect._smartSelect) {
+        caSelect._smartSelect.sync();
       }
     }
 
@@ -1243,8 +1314,17 @@
     });
 
   </script>
+  <script id="smart-search-categories-data" type="application/json">
+    {{ categories_json_str | safe }}
+  </script>
+  <script id="smart-search-users-data" type="application/json">
+    {{ users_json_str | safe }}
+  </script>
+
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/smart_select.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/smart_search.js') }}"></script>
   <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>
