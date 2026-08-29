@@ -33,5 +33,5 @@ USER appuser
 # Expose port
 EXPOSE 5000
 
-# Command to run the application using Gunicorn with multi-threaded workers
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "3", "--threads", "4", "--worker-class", "gthread", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "wsgi:application"]
+# Command to run the application using Granian (Rust-based ultra-fast WSGI server)
+CMD ["granian", "--interface", "wsgi", "--host", "0.0.0.0", "--port", "5000", "--workers", "2", "--blocking-threads", "4", "--respawn-failed-workers", "--access-log", "wsgi:application"]
