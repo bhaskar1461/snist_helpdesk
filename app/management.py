@@ -414,13 +414,69 @@ def category_assignments():
                 return redirect(url_for("management.category_assignments"))
             return delete_category(category_id)
 
-        # Action 6: Toggle Category Status
-        elif action == "toggle_category":
+        # Action 7: Assign CA to single category with blocks (Multi-CA support)
+        elif action == "assign_ca_to_category":
             category_id = safe_int(request.form.get("category_id", "0"))
-            if not category_id:
-                flash("Category ID is required.", "error")
+            faculty_id_str = request.form.get("faculty_id", "").strip()
+            cat = demo_db.get_category(category_id)
+            if not cat or not faculty_id_str:
+                flash("Category and Assignee selection are required.", "error")
                 return redirect(url_for("management.category_assignments"))
-            return toggle_category(category_id)
+
+            if user["role"] == "HOD" and cat["department"] != user["department"]:
+                flash("You can only modify categories in your department.", "error")
+                return redirect(url_for("management.category_assignments"))
+
+            blocks = request.form.getlist("blocks") or request.form.getlist("block")
+            try:
+                ca_id = resolve_and_promote_ca(demo_db, live_db, faculty_id_str, cat["department"], user["id"], user["org_id"])
+                res = demo_db.assign_ca_to_category_blocks(category_id, ca_id, blocks)
+                ca_user = demo_db.get_user(ca_id)
+                ca_name = ca_user["name"] if ca_user else "Assignee"
+                demo_db.log_audit_event(
+                    "CA_ASSIGNED_TO_CATEGORY", user["id"], user["org_id"],
+                    target_type="category", target_id=category_id,
+                    details={"ca_id": ca_id, "ca_name": ca_name, "blocks": blocks},
+                )
+                block_desc = ", ".join(blocks) if blocks else "All Blocks"
+                flash(f"Successfully assigned {ca_name} to category '{cat['category_name']}' for {block_desc}.", "success")
+            except Exception as e:
+                flash(f"Failed to assign Assignee: {e}", "error")
+            return redirect(url_for("management.category_assignments"))
+
+        # Action 8: Remove Assignee from category
+        elif action == "remove_category_assignee":
+            category_id = safe_int(request.form.get("category_id", "0"))
+            ca_id = safe_int(request.form.get("ca_id", "0"))
+            if not category_id or not ca_id:
+                flash("Category ID and Assignee ID are required.", "error")
+                return redirect(url_for("management.category_assignments"))
+
+            cat = demo_db.get_category(category_id)
+            if user["role"] == "HOD" and cat and cat["department"] != user["department"]:
+                flash("You can only modify categories in your department.", "error")
+                return redirect(url_for("management.category_assignments"))
+
+            demo_db.remove_ca_from_category(category_id, ca_id)
+            demo_db.log_audit_event(
+                "CA_REMOVED_FROM_CATEGORY", user["id"], user["org_id"],
+                target_type="category", target_id=category_id,
+                details={"removed_ca_id": ca_id},
+            )
+            flash("Assignee removed from category successfully.", "success")
+            return redirect(url_for("management.category_assignments"))
+
+        # Action 9: Delete individual block mapping
+        elif action == "delete_mapping":
+            mapping_id = safe_int(request.form.get("mapping_id", "0"))
+            if mapping_id > 0:
+                demo_db.delete_ca_assignment(mapping_id)
+                demo_db.log_audit_event(
+                    "CA_MAPPING_DELETED", user["id"], user["org_id"],
+                    target_type="ca_assignment", target_id=mapping_id,
+                )
+                flash("Block mapping removed.", "success")
+            return redirect(url_for("management.category_assignments"))
 
     # ── GET: Category & CA Management View ──────────────────────────────
     dept_filter = None
@@ -449,10 +505,11 @@ def category_assignments():
     if status_filter == "inactive":
         categories = [c for c in categories if c.get("is_active") == 0]
 
-    # Enrich categories with ticket counts & block mappings
+    # Enrich categories with ticket counts, block mappings & structured assignees
     for cat in categories:
         cat["ticket_count"] = demo_db.count_tickets_by_category(cat["id"]) if hasattr(demo_db, 'count_tickets_by_category') else 0
         cat["block_mappings"] = demo_db.get_category_block_mappings(cat["id"]) if hasattr(demo_db, 'get_category_block_mappings') else []
+        cat["assignees"] = demo_db.get_category_assignees(cat["id"]) if hasattr(demo_db, 'get_category_assignees') else []
 
     # Fetch promoteable Assignees and Faculty strictly for the target department (only active users)
     if dept_filter:

@@ -309,6 +309,95 @@
     }
     .block-tag button { background: none; border: none; cursor: pointer; color: #ef4444; font-weight: bold; padding: 0 2px; }
 
+    /* Multi-Assignee Pills & Group Styling */
+    .assignees-group-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    .assignee-card-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px;
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+      transition: all 0.15s ease;
+    }
+    .assignee-card-pill:hover {
+      border-color: #cbd5e1;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+    }
+    .assignee-pill-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .assignee-pill-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .assignee-pill-name {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--slate-800);
+    }
+    .assignee-pill-blocks {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 3px;
+    }
+    .block-sub-badge {
+      display: inline-block;
+      padding: 1px 5px;
+      background: #f1f5f9;
+      color: var(--slate-700);
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    .block-sub-badge.all {
+      background: #eef2ff;
+      color: var(--primary);
+    }
+    .btn-remove-assignee {
+      border: none;
+      background: none;
+      color: #94a3b8;
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 2px;
+      border-radius: 4px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .btn-remove-assignee:hover {
+      color: #ef4444;
+      background: #fee2e2;
+    }
+    .btn-add-assignee-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border: 1px dashed #cbd5e1;
+      background: #f8fafc;
+      color: var(--primary);
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-add-assignee-chip:hover {
+      border-color: var(--primary);
+      background: #eef2ff;
+    }
+
     /* Quick Action Dropdown in Row */
     .quick-select-ca {
       padding: 4px 8px;
@@ -669,11 +758,10 @@
                 {% if not read_only %}<th style="width: 32px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>{% endif %}
                 <th>Category Name</th>
                 <th>Dept</th>
-                <th>Assigned To</th>
-                <th>Location Block Mappings</th>
-                <th>Active Tickets</th>
-                <th>Status</th>
-                {% if not read_only %}<th style="text-align: right;">Actions</th>{% endif %}
+                <th>Assigned Assignee(s) &amp; Location Mappings</th>
+                <th style="text-align:center; width: 100px;">Active Tickets</th>
+                <th style="width: 90px;">Status</th>
+                {% if not read_only %}<th style="text-align: right; width: 150px;">Actions</th>{% endif %}
               </tr>
             </thead>
             <tbody>
@@ -685,40 +773,41 @@
                   <td><strong>{{ item.category_name }}</strong></td>
                   <td><span class="dept-badge">{{ item.department }}</span></td>
                   <td>
-                    {% if not read_only %}
-                      <select class="quick-select-ca" onchange="quickAssignCA({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}', this.value)">
-                        <option value="none" {% if not item.assigned_ca_id %}selected{% endif %}>Unassigned</option>
-                        {% for u in users %}
-                          {% if not item.department or u.department|lower == item.department|lower or (item.assigned_ca_id and item.assigned_ca_id == u.id) or (u.department and item.department and (u.department|lower in item.department|lower or item.department|lower in u.department|lower)) %}
-                            <option value="{{ u.id }}" {% if item.assigned_ca_id == u.id %}selected{% endif %}>{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
-                          {% endif %}
+                    <div class="assignees-group-wrap">
+                      {% if item.assignees %}
+                        {% for a in item.assignees %}
+                          <div class="assignee-card-pill">
+                            <div class="assignee-pill-info">
+                              <span class="ca-avatar">{{ ((a.ca_name or 'A')[:1]).upper() }}</span>
+                              <div class="assignee-pill-text">
+                                <span class="assignee-pill-name">{{ a.ca_name or 'Assignee' }}</span>
+                                <div class="assignee-pill-blocks">
+                                  {% if a.blocks and 'All Blocks' not in a.blocks %}
+                                    {% for b in a.blocks %}
+                                      <span class="block-sub-badge">{{ b }}</span>
+                                    {% endfor %}
+                                  {% else %}
+                                    <span class="block-sub-badge all">All Blocks</span>
+                                  {% endif %}
+                                </div>
+                              </div>
+                            </div>
+                            {% if not read_only %}
+                              <button type="button" class="btn-remove-assignee" title="Remove {{ a.ca_name or 'Assignee' }} from this category" onclick="removeAssigneeFromCat({{ item.id }}, {{ a.ca_id }}, '{{ (a.ca_name or 'Assignee')|e }}')">&times;</button>
+                            {% endif %}
+                          </div>
                         {% endfor %}
-                      </select>
-
-                    {% else %}
-                      {% if item.assigned_ca_name %}
-                        <div class="ca-badge-row">
-                          <span class="ca-avatar">{{ item.assigned_ca_name[:1].upper() }}</span>
-                          <span>{{ item.assigned_ca_name }}</span>
-                        </div>
                       {% else %}
                         <span class="unassigned-text">Unassigned</span>
                       {% endif %}
-                    {% endif %}
+                      {% if not read_only %}
+                        <button type="button" class="btn-add-assignee-chip" onclick="openAssignToCatModal({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}')">
+                          <i data-lucide="plus" style="width:12px;height:12px;"></i> Add Assignee
+                        </button>
+                      {% endif %}
+                    </div>
                   </td>
-                  <td>
-                    {% if item.block_mappings %}
-                      {% for m in item.block_mappings %}
-                        <span class="block-tag">
-                          {{ m.block }}: {{ m.ca_name }}
-                          {% if not read_only %}<button type="button" onclick="deleteMapping({{ m.id }})">&times;</button>{% endif %}
-                        </span>
-                      {% endfor %}
-                    {% else %}
-                      <span style="color:#94a3b8; font-size:0.8rem;">All Blocks</span>
-                    {% endif %}
-                  </td>
-                  <td><strong>{{ item.ticket_count }}</strong></td>
+                  <td style="text-align:center;"><strong>{{ item.ticket_count }}</strong></td>
                   <td>
                     {% if item.is_active == 0 %}
                       <span class="status-dot inactive">Inactive</span>
@@ -740,7 +829,7 @@
                   {% endif %}
                 </tr>
               {% else %}
-                <tr><td colspan="{% if not read_only %}8{% else %}6{% endif %}" style="text-align: center; color: #94a3b8; padding: 2rem;">No categories found matching filters.</td></tr>
+                <tr><td colspan="{% if not read_only %}7{% else %}5{% endif %}" style="text-align: center; color: #94a3b8; padding: 2rem;">No categories found matching filters.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -922,6 +1011,84 @@
     </div>
   </div>
 
+  <!-- Assign to Category Modal (Multi-CA) -->
+  <div id="assign-to-cat-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width: 540px; overflow: visible;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; border-bottom: 1px solid var(--slate-100); padding-bottom: 10px;">
+        <h3 style="margin: 0; font-size: 1.15rem;">Assign Person to Category</h3>
+        <button type="button" class="close-panel-btn" onclick="closeAssignToCatModal()" style="font-size: 1.4rem;">&times;</button>
+      </div>
+
+      <form method="post" action="{{ url_for('management.category_assignments') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="assign_ca_to_category">
+        <input type="hidden" id="atc-cat-id" name="category_id">
+
+        <div style="background: var(--slate-50); border: 1px solid var(--slate-200); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;">
+          <div style="font-size: 0.75rem; font-weight: 600; color: var(--slate-500); text-transform: uppercase;">Target Category</div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 3px;">
+            <strong id="atc-cat-name" style="font-size: 1rem; color: var(--slate-900);"></strong>
+            <span id="atc-cat-dept" class="dept-badge"></span>
+          </div>
+        </div>
+
+        <label class="field" style="margin-bottom: 14px; display: block;">
+          <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); margin-bottom: 4px; display: block;">Select Assignee / Faculty</span>
+          <select id="atc-person-select" name="faculty_id" class="input-style searchable-select user-select" style="width:100%;" required data-placeholder="— Choose person to assign —">
+            <option value="">— Choose person to assign —</option>
+            {% for u in users %}
+              <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <div class="field" style="margin-bottom: 16px; display: block;">
+          <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); margin-bottom: 4px; display: block;">Assigned Problem Location Blocks</span>
+          <div class="block-multi-select-container" id="atc-block-select">
+            <div class="multi-select-display" onclick="toggleMultiSelectDropdown('atc-block-select')">
+              <div class="selected-chips-wrap">
+                <span class="placeholder-text">All Blocks (Default)</span>
+              </div>
+              <div class="display-controls">
+                <span class="selection-count-badge" style="display:none;">0 selected</span>
+                <span class="dropdown-chevron">&#9662;</span>
+              </div>
+            </div>
+            <div class="multi-select-dropdown" onclick="event.stopPropagation()">
+              <div class="dropdown-header-tools">
+                <div class="search-wrap">
+                  <input type="text" class="block-search-input input-style" style="width:100%; box-sizing:border-box;" placeholder="Search location blocks..." onkeyup="filterMultiSelectOptions('atc-block-select', this.value)">
+                </div>
+                <div class="bulk-actions-wrap">
+                  <button type="button" class="btn-bulk-select-all" onclick="selectAllMultiSelect('atc-block-select')">Select All</button>
+                  <button type="button" class="btn-bulk-clear-all" onclick="clearAllMultiSelect('atc-block-select')">Clear All</button>
+                </div>
+              </div>
+              <div class="options-scroll-list">
+                {% for b in blocks %}
+                  <label class="option-item" data-value="{{ b }}">
+                    <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('atc-block-select')">
+                    <span class="option-label-text">{{ b }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+              <div class="dropdown-footer-summary">
+                <span class="footer-count">0 of {{ blocks|length }} selected (Leave empty for All Blocks)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.25rem;">
+          <button type="button" class="btn-secondary-action" onclick="closeAssignToCatModal()">Cancel</button>
+          <button type="submit" class="btn-primary-action">
+            <i data-lucide="check" style="width:14px;height:14px;"></i> Assign to Category
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Single Action Helper Form -->
   <form id="single-action-form" method="post" action="{{ url_for('management.category_assignments') }}" style="display:none;">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -929,7 +1096,7 @@
     <input type="hidden" id="sa-cat-id" name="category_id">
     <input type="hidden" id="sa-cat-name" name="category_name">
     <input type="hidden" id="sa-dept" name="department">
-    <input type="hidden" id="sa-ca-id" name="assigned_ca_id">
+    <input type="hidden" id="sa-ca-id" name="ca_id">
   </form>
 
   <script>
@@ -1303,14 +1470,67 @@
       if (submitBtn) submitBtn.disabled = (checked === 0 || !personSelected);
     }
 
+    // ── Assign to Category Modal (Multi-CA) ──────────────────────────
+    function openAssignToCatModal(catId, catName, catDept) {
+      document.getElementById('atc-cat-id').value = catId;
+      document.getElementById('atc-cat-name').textContent = catName;
+      document.getElementById('atc-cat-dept').textContent = catDept;
+
+      const personSelect = document.getElementById('atc-person-select');
+      if (personSelect) {
+        personSelect.value = '';
+        const selectedDept = (catDept || '').toLowerCase().trim();
+        Array.from(personSelect.options).forEach(opt => {
+          if (!opt.value) {
+            opt.style.display = '';
+            return;
+          }
+          const optDept = (opt.getAttribute('data-dept') || '').toLowerCase().trim();
+          const matches = !selectedDept || !optDept || optDept === selectedDept ||
+                          optDept.includes(selectedDept) || selectedDept.includes(optDept);
+          opt.style.display = matches ? '' : 'none';
+        });
+        if (personSelect._smartSelect) {
+          personSelect._smartSelect.sync();
+        }
+      }
+
+      clearAllMultiSelect('atc-block-select');
+      document.getElementById('assign-to-cat-overlay').classList.add('active');
+    }
+
+    function closeAssignToCatModal() {
+      document.getElementById('assign-to-cat-overlay').classList.remove('active');
+    }
+
+    function removeAssigneeFromCat(catId, caId, caName) {
+      if (!confirm('Are you sure you want to remove ' + (caName || 'this Assignee') + ' from this category?')) {
+        return;
+      }
+      const form = document.getElementById('single-action-form');
+      document.getElementById('sa-action').value = 'remove_category_assignee';
+      document.getElementById('sa-cat-id').value = catId;
+      document.getElementById('sa-ca-id').value = caId;
+      form.submit();
+    }
+
     // Keep submit button state updated when person changes
     document.addEventListener('DOMContentLoaded', function() {
       const personSelect = document.getElementById('assign-person-select');
       if (personSelect) personSelect.addEventListener('change', updateApCount);
       // Close modal on overlay backdrop click
-      document.getElementById('assign-person-overlay').addEventListener('click', function(e) {
-        if (e.target === this) closeAssignPersonModal();
-      });
+      const apOverlay = document.getElementById('assign-person-overlay');
+      if (apOverlay) {
+        apOverlay.addEventListener('click', function(e) {
+          if (e.target === this) closeAssignPersonModal();
+        });
+      }
+      const atcOverlay = document.getElementById('assign-to-cat-overlay');
+      if (atcOverlay) {
+        atcOverlay.addEventListener('click', function(e) {
+          if (e.target === this) closeAssignToCatModal();
+        });
+      }
     });
 
   </script>

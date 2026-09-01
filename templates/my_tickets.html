@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Tickets — SNIST Helpdesk</title>
+  <title>{{ role_title if role_title else 'My' }} Tickets — {{ org_label }} Helpdesk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -267,6 +267,7 @@
       color: var(--slate-900);
       display: -webkit-box;
       -webkit-line-clamp: 2;
+      line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
       line-height: 1.35;
@@ -346,7 +347,7 @@
 
       <!-- Search & Filters -->
       <section class="filter-card">
-        <form class="filter-form" method="get" action="{{ url_for('dashboards.my_tickets') }}">
+        <form class="filter-form" method="get" action="{{ url_for(form_action if form_action is defined and form_action else request.endpoint) }}">
           <div class="filter-search-group">
             <i data-lucide="search" class="filter-search-icon"></i>
             <input type="text" name="q" value="{{ filters.q }}" class="filter-search-input" placeholder="Search my tickets by ID, title, or category...">
@@ -373,7 +374,7 @@
             <a href="{{ url_for('tickets.create_ticket_for_role') }}" class="btn-filter-apply" style="text-decoration:none;">
               <i data-lucide="plus-circle" style="width:14px;height:14px;"></i> Create Ticket
             </a>
-            <a href="{{ url_for('tickets.export_tickets', scope='faculty_own', export_format='csv', q=filters.q, status=filters.status, from_date=filters.from_date, to_date=filters.to_date) }}" class="btn-export">
+            <a href="{{ url_for('tickets.export_tickets', scope=(export_scope if export_scope is defined and export_scope else 'my_tickets'), export_format='csv', q=filters.q, status=filters.status, from_date=filters.from_date, to_date=filters.to_date) }}" class="btn-export">
               <i data-lucide="download" style="width:14px;height:14px;"></i> Export CSV
             </a>
           </div>

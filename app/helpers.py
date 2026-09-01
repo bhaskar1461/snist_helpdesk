@@ -172,7 +172,8 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
         "SUPER_ADMIN": [
             ("dashboards.super_admin_dashboard", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
-            ("dashboards.super_admin_all_tickets", "All Tickets", "ticket"),
+            ("dashboards.super_admin_my_tickets", "My Tickets", "ticket"),
+            ("dashboards.super_admin_all_tickets", "All Tickets", "clipboard-list"),
             ("management.category_assignments", "Assignee Management", "folder-open"),
             ("management.user_management", "Users", "users"),
             ("management.location_management", "Locations", "map-pin"),
@@ -181,7 +182,8 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
         "ADMIN": [
             ("dashboards.admin_dashboard", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
-            ("dashboards.admin_all_tickets", "All Tickets", "ticket"),
+            ("dashboards.admin_my_tickets", "My Tickets", "ticket"),
+            ("dashboards.admin_all_tickets", "All Tickets", "clipboard-list"),
             ("management.category_assignments", "Assignee Management", "folder-open"),
             ("management.user_management", "Users", "users"),
             ("management.location_management", "Locations", "map-pin"),
@@ -190,20 +192,23 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
         "HOD": [
             ("dashboards.hod_dashboard", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
-            ("dashboards.hod_all_tickets", "Dept. Tickets", "ticket"),
+            ("dashboards.hod_my_tickets", "My Tickets", "ticket"),
+            ("dashboards.hod_all_tickets", "All Tickets", "clipboard-list"),
             ("management.category_assignments", "Assignee Management", "folder-open"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
         ],
         "ASSIGNEE": [
             ("tickets.authority_tickets", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
-            ("tickets.authority_dept_tickets", "Dept. Tickets", "ticket"),
+            ("tickets.authority_my_tickets", "My Tickets", "ticket"),
+            ("tickets.authority_dept_tickets", "Assigned Tickets", "clipboard-list"),
             ("tickets.ca_report", "Reports", "bar-chart-3"),
         ],
         "CA": [
             ("tickets.authority_tickets", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
-            ("tickets.authority_dept_tickets", "Dept. Tickets", "ticket"),
+            ("tickets.authority_my_tickets", "My Tickets", "ticket"),
+            ("tickets.authority_dept_tickets", "Assigned Tickets", "clipboard-list"),
             ("tickets.ca_report", "Reports", "bar-chart-3"),
         ],
         "FACULTY": [

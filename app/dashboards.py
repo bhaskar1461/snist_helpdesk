@@ -113,15 +113,44 @@ def user_dashboard():
                            **page_context("User"))
 
 
-@dashboards_bp.route("/user/my-tickets")
-@role_required("FACULTY")
-def my_tickets():
+def render_my_tickets(role_title, endpoint_name, export_scope="my_tickets"):
     from app import get_demo_db
     demo_db = get_demo_db()
     user = current_user()
-    tickets = demo_db.list_tickets(user, scope="own", filters=filters_from_request())
-    return render_template("my_tickets.html", tickets=tickets, filters=filters_from_request(),
-                           **page_context("My Tickets"))
+    filters = filters_from_request()
+    tickets = demo_db.list_tickets(user, scope="own", filters=filters)
+    return render_template(
+        "my_tickets.html",
+        tickets=tickets,
+        filters=filters,
+        form_action=endpoint_name,
+        export_scope=export_scope,
+        **page_context(role_title),
+    )
+
+
+@dashboards_bp.route("/super-admin/my-tickets")
+@role_required("SUPER_ADMIN")
+def super_admin_my_tickets():
+    return render_my_tickets("Super Admin", "dashboards.super_admin_my_tickets", "super_admin_own")
+
+
+@dashboards_bp.route("/admin/my-tickets")
+@role_required("ADMIN")
+def admin_my_tickets():
+    return render_my_tickets("Admin", "dashboards.admin_my_tickets", "admin_own")
+
+
+@dashboards_bp.route("/hod/my-tickets")
+@role_required("HOD")
+def hod_my_tickets():
+    return render_my_tickets("HOD", "dashboards.hod_my_tickets", "hod_own")
+
+
+@dashboards_bp.route("/user/my-tickets")
+@role_required("FACULTY")
+def my_tickets():
+    return render_my_tickets("User", "dashboards.my_tickets", "faculty_own")
 
 
 # ── All Tickets Views ───────────────────────────────────────────────

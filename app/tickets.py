@@ -147,13 +147,26 @@ def ticket_detail(ticket_id):
         return redirect(url_for("dashboards.user_dashboard" if user["role"] == "FACULTY" else "tickets.authority_tickets"))
 
     activity = demo_db.list_ticket_activity(ticket_id)
+    assigned_email = ticket.get("assigned_to_email") or ""
+    created_email = ticket.get("created_by_email") or ""
+    user_email = user.get("email") or ""
     next_statuses = list(demo_db.ALLOWED_TRANSITIONS.get(ticket.get("status", ""), set()))
-    can_update = user["role"] == "SUPER_ADMIN" or (
-        user["role"] == "CA" and assigned_email and assigned_email == user_email
+    
+    can_update = user.get("role") in ["SUPER_ADMIN", "ADMIN"] or (
+        user.get("role") in ["CA", "ASSIGNEE"] and (
+            (assigned_email and user_email and assigned_email.lower() == user_email.lower())
+            or (ticket.get("assigned_to") and ticket.get("assigned_to") == user.get("id"))
+        )
+    ) or (
+        user.get("role") == "HOD" and user.get("department") == ticket.get("department")
     )
+    
     can_reopen = (
         ticket.get("status") == "RESOLVED"
-        and created_email and created_email == user_email
+        and (
+            (created_email and user_email and created_email.lower() == user_email.lower())
+            or (ticket.get("created_by") and ticket.get("created_by") == user.get("id"))
+        )
     )
 
 
@@ -173,7 +186,7 @@ def ticket_detail(ticket_id):
 
 
 @tickets_bp.route("/authority/update-status/<int:ticket_id>", methods=["POST"])
-@role_required("ASSIGNEE", "CA", "SUPER_ADMIN")
+@role_required("ASSIGNEE", "CA", "SUPER_ADMIN", "ADMIN", "HOD")
 def authority_update_status(ticket_id):
     from app import get_demo_db
     demo_db = get_demo_db()
@@ -282,26 +295,44 @@ def authority_tickets():
     )
 
 
-@tickets_bp.route("/authority/dept-tickets")
+@tickets_bp.route("/authority/my-tickets")
 @role_required("ASSIGNEE", "CA")
-def authority_dept_tickets():
+def authority_my_tickets():
     from app import get_demo_db
     demo_db = get_demo_db()
     user = current_user()
     filters = filters_from_request()
-    assigned_tickets = demo_db.list_tickets(user, scope="assigned", filters=filters)
-    own_tickets = demo_db.list_tickets(user, scope="own", filters=filters)
-    dept_tickets = demo_db.list_tickets(user, scope="department", filters=filters)
-
-    summary = demo_db.dashboard_summary(user)
+    tickets = demo_db.list_tickets(user, scope="own", filters=filters)
     return render_template(
-        "authority_tickets.html",
-        assigned_tickets=assigned_tickets,
-        own_tickets=own_tickets,
-        dept_tickets=dept_tickets,
+        "my_tickets.html",
+        tickets=tickets,
         filters=filters,
-        summary=summary,
-        show_dept_first=True,
+        form_action="tickets.authority_my_tickets",
+        export_scope="authority_own",
+        **page_context("Assignee"),
+    )
+
+
+@tickets_bp.route("/authority/dept-tickets")
+@tickets_bp.route("/authority/all-tickets")
+@role_required("ASSIGNEE", "CA")
+def authority_dept_tickets():
+    from app import get_demo_db, get_live_db
+    demo_db = get_demo_db()
+    live_db = get_live_db()
+    user = current_user()
+    filters = filters_from_request()
+    dept_tickets = demo_db.list_tickets(user, scope="department", filters=filters)
+    departments = live_departments(user.get("org_id"))
+    locations = live_db.fetch_locations() if live_db.enabled else []
+    return render_template(
+        "management_all_tickets.html",
+        tickets=dept_tickets,
+        filters=filters,
+        departments=departments,
+        locations=locations,
+        export_scope="authority_dept",
+        page_title="Assignee Department Tickets",
         **page_context("Assignee"),
     )
 
@@ -343,7 +374,7 @@ def ca_report():
 
 
 @tickets_bp.route("/tickets/export/<scope>.<export_format>")
-@role_required("SUPER_ADMIN", "ADMIN", "HOD", "CA", "FACULTY")
+@role_required("SUPER_ADMIN", "ADMIN", "HOD", "CA", "ASSIGNEE", "FACULTY")
 def export_tickets(scope, export_format):
     from app import get_demo_db
     demo_db = get_demo_db()
@@ -354,13 +385,13 @@ def export_tickets(scope, export_format):
         return redirect(url_for(route_for_role(user["role"])))
 
     role = user["role"]
-    if role == "FACULTY":
+    if scope in ("authority_own", "faculty_own", "super_admin_own", "admin_own", "hod_own", "my_tickets", "own") or role == "FACULTY":
         tickets = demo_db.list_tickets(user, scope="own", filters=filters)
-    elif role == "CA":
-        if scope == "authority_own":
-            tickets = demo_db.list_tickets(user, scope="own", filters=filters)
-        else:
-            tickets = demo_db.list_tickets(user, scope="assigned", filters=filters)
+    elif scope in ("authority_assigned", "assigned"):
+        tickets = demo_db.list_tickets(user, scope="assigned", filters=filters)
+    elif scope in ("authority_dept", "dept", "department"):
+        tickets = demo_db.list_tickets(user, scope="department", filters=filters)
     else:
         tickets = demo_db.list_tickets(user, scope="all", filters=filters)
+
     return export_response(tickets, export_format, f"{scope}-{datetime.now().strftime('%Y%m%d')}")

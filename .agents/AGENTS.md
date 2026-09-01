@@ -15,7 +15,7 @@
 ## Database Tables & Schema
 - `helpdesk_users`: User ID, name, email, password hash, role (`SUPER_ADMIN`, `ADMIN`, `HOD`, `CA` / `ASSIGNEE`, `FACULTY`), department, phone, org_id.
 - `helpdesk_tickets`: Ticket ID, title, description, category_id, created_by, assigned_to, status (`PENDING`, `IN_PROGRESS`, `ON_HOLD`, `RESOLVED`, `REOPENED`), org_id, location_id.
-- `helpdesk_categories`: Category ID, category_name, department, org_id, is_active.
+- `helpdesk_categories`: Category ID, category_name, department, assigned_ca_id (fallback/default CA), org_id, is_active.
 - `helpdesk_ca_assignments`: Assignment ID, ca_id, category_id, block, org_id.
 - `helpdesk_audit_events` & `helpdesk_ticket_activity`: Action logs and activity history.
 - `branch_detail` & `location`: Organizational metadata, departments, and room/block mappings.
@@ -34,6 +34,12 @@
 ## Business Logic & UI Invariants
 - **Ticket Creation**: Users can select any department that has active categories. Backend must validate category active status (`is_active == 1`) and category department matching.
 - **Assignee Selection**: Assignee dropdowns and category assignments must strictly filter users by the category's department. Cross-department assignee mapping is strictly prohibited on both frontend and backend.
+- **Assignee Ticket Mutations**: All permission checks for updating ticket status (`can_update` in frontend and `update_ticket_status` in backend) must check `role in ["CA", "ASSIGNEE"]` and compare `ticket.assigned_to == user.id` OR `ticket.assigned_to_email.lower() == user.email.lower()`, with administrative override for `SUPER_ADMIN`, `ADMIN`, and departmental `HOD`.
+- **Multi-CA Allocation & Least-Loaded Auto-Routing**: Multiple CAs can be mapped to a single category for specific blocks or "All Blocks". When routing new tickets (`resolve_assigned_ca`), the engine first matches exact location block mappings (`LOWER(block) = LOWER(input) OR block IN ('All Blocks', 'all', 'campus')`). If multiple CAs match, auto-routing dynamically selects the CA with the least number of open tickets (`PENDING`, `IN_PROGRESS`, `REOPENED`).
+- **Role-Based Navigation & Ticket Scoping**:
+  - Super Admin, Admin, HOD: Segregated "My Tickets" (`scope="own"`) and "All Tickets" (`scope="all"` or department tickets).
+  - Assignees (CA / ASSIGNEE): "Dashboard", "Create Ticket", "My Tickets", "Assigned Tickets", and "Reports".
+  - Faculty: Restricted strictly to "My Tickets" (no access to All Tickets).
 - **Terminology**: Use "Assignee" instead of "Concerned Authority / CA" across UI labels, page titles, navigation links, and flash messages.
 - **Department Normalization**: When filtering or mapping departments (e.g. in `filterAssigneesByDept` or `dept_map`), match both the short `BRANCH_CODE` (e.g. `Facilities`, `CSE`, `ECE`) and full `BRANCH_NAME` (e.g. `Facilities & Estates`, `Computer Science & Engineering`) to prevent dropdown options from being hidden by strict string comparisons.
 

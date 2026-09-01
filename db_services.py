@@ -922,6 +922,103 @@ class DemoDbService(BaseMySQLService):
             )
             return cursor.fetchall()
 
+    def get_category_assignees(self, category_id):
+        """Return structured list of distinct assignees for a category with their mapped blocks."""
+        mappings = self.get_category_block_mappings(category_id)
+        category = self.get_category(category_id)
+        default_ca_id = category.get("assigned_ca_id") if category else None
+
+        ca_dict = {}
+        for m in mappings:
+            cid = m.get("ca_id")
+            if not cid:
+                continue
+            if cid not in ca_dict:
+                ca_dict[cid] = {
+                    "ca_id": cid,
+                    "ca_name": m.get("ca_name") or "Assignee",
+                    "ca_email": m.get("ca_email") or "",
+                    "blocks": [],
+                    "mapping_ids": [],
+                    "is_default": (cid == default_ca_id),
+                }
+            if m.get("block") and m["block"] not in ca_dict[cid]["blocks"]:
+                ca_dict[cid]["blocks"].append(m["block"])
+            if m.get("id"):
+                ca_dict[cid]["mapping_ids"].append(m["id"])
+
+        # If there is a default assigned CA on the category not in mappings yet, include them as 'All Blocks'
+        if default_ca_id and default_ca_id not in ca_dict:
+            ca_user = self.get_user(default_ca_id)
+            if ca_user:
+                ca_dict[default_ca_id] = {
+                    "ca_id": default_ca_id,
+                    "ca_name": ca_user.get("name") or "Assignee",
+                    "ca_email": ca_user.get("email") or "",
+                    "blocks": ["All Blocks"],
+                    "mapping_ids": [],
+                    "is_default": True,
+                }
+        return list(ca_dict.values())
+
+    def assign_ca_to_category_blocks(self, category_id, ca_id, blocks=None):
+        """Assign a CA to a category for specific blocks or All Blocks without removing other CAs."""
+        category = self.get_category(category_id)
+        if not category:
+            raise ValueError("Category not found.")
+
+        blocks = blocks or []
+        created_count = 0
+        skipped_count = 0
+
+        # If no specific blocks given or 'all' selected, map as 'All Blocks'
+        has_all = any(str(b).strip().lower() in ("all", "all blocks", "campus") for b in blocks)
+        if not blocks or has_all:
+            try:
+                self.create_ca_assignment(category_id, ca_id, "All Blocks")
+                created_count += 1
+            except ValueError:
+                skipped_count += 1
+        else:
+            for b in blocks:
+                b_clean = str(b).strip()
+                if not b_clean:
+                    continue
+                try:
+                    self.create_ca_assignment(category_id, ca_id, b_clean)
+                    created_count += 1
+                except ValueError:
+                    skipped_count += 1
+
+        # If category has no default assigned_ca_id, set this CA as primary default
+        if not category.get("assigned_ca_id"):
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute("UPDATE helpdesk_categories SET assigned_ca_id = %s WHERE id = %s", (ca_id, category_id))
+
+        return {"created": created_count, "skipped": skipped_count}
+
+    def remove_ca_from_category(self, category_id, ca_id):
+        """Remove a CA and all their block mappings from a category."""
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM helpdesk_ca_assignments WHERE category_id = %s AND ca_id = %s",
+                (category_id, ca_id),
+            )
+            # If this CA was category.assigned_ca_id, elect another assigned CA or NULL
+            cursor.execute("SELECT assigned_ca_id FROM helpdesk_categories WHERE id = %s", (category_id,))
+            cat = cursor.fetchone()
+            if cat and cat.get("assigned_ca_id") == ca_id:
+                cursor.execute(
+                    "SELECT ca_id FROM helpdesk_ca_assignments WHERE category_id = %s LIMIT 1",
+                    (category_id,),
+                )
+                other = cursor.fetchone()
+                new_ca_id = other["ca_id"] if other else None
+                cursor.execute(
+                    "UPDATE helpdesk_categories SET assigned_ca_id = %s WHERE id = %s",
+                    (new_ca_id, category_id),
+                )
+
     def bulk_assign_ca(self, category_ids, ca_id):
         if not category_ids or not ca_id:
             return 0
@@ -1193,23 +1290,24 @@ class DemoDbService(BaseMySQLService):
         # - SUPER_ADMIN can update any ticket
         # - Ticket creator can REOPEN a RESOLVED ticket
         is_assigned_ca = (
-            actor.get("role") == "CA"
+            actor.get("role") in ["CA", "ASSIGNEE"]
             and (
                 (ticket.get("assigned_to_email") and actor.get("email") and ticket["assigned_to_email"].lower() == actor["email"].lower())
-                or (ticket.get("assigned_to") == actor.get("id"))
+                or (ticket.get("assigned_to") and ticket.get("assigned_to") == actor.get("id"))
             )
         )
-        is_super_admin = actor.get("role") == "SUPER_ADMIN"
+        is_super_admin = actor.get("role") in ["SUPER_ADMIN", "ADMIN"]
+        is_hod = actor.get("role") == "HOD" and actor.get("department") == ticket.get("department")
         is_creator_reopening = (
             (
                 (ticket.get("created_by_email") and actor.get("email") and ticket["created_by_email"].lower() == actor["email"].lower())
-                or (ticket.get("created_by") == actor.get("id"))
+                or (ticket.get("created_by") and ticket.get("created_by") == actor.get("id"))
             )
             and ticket.get("status") == "RESOLVED"
             and status == "REOPENED"
         )
-        if not is_assigned_ca and not is_super_admin and not is_creator_reopening:
-            raise PermissionError("Only the assigned Assignee can update this ticket.")
+        if not is_assigned_ca and not is_super_admin and not is_hod and not is_creator_reopening:
+            raise PermissionError("Only the assigned Assignee or Department Head can update this ticket.")
 
         # Enforce valid status transitions
         current_status = ticket["status"]
@@ -1331,7 +1429,7 @@ class DemoDbService(BaseMySQLService):
         if viewer["role"] == "FACULTY":
             sql += " AND t.created_by = %s"
             params.append(viewer["id"])
-        elif viewer["role"] == "CA":
+        elif viewer["role"] in ["CA", "ASSIGNEE"]:
             sql += " AND t.assigned_to = %s"
             params.append(viewer["id"])
         elif viewer["role"] == "HOD":
@@ -1460,10 +1558,10 @@ class DemoDbService(BaseMySQLService):
     def resolve_assigned_ca(self, category_id, block):
         """
         Resolve who to assign the ticket to.
-        Multi-CA routing engine (Feature 6):
-        1. Find all CAs assigned to this category+block via helpdesk_ca_assignments.
-        2. If block match found, select least-loaded CA among matches.
-        3. If no block match, find ALL CAs for this category (any block) as secondary pool.
+        Multi-CA routing engine:
+        1. Find all CAs assigned to this category+block via helpdesk_ca_assignments (exact block or 'All Blocks').
+        2. If match found, select least-loaded CA among matches.
+        3. If no exact block match, find ALL CAs for this category (any block) as secondary pool and select least-loaded.
         4. Fall back to category's default assigned_ca_id.
         """
         category = self.get_category(category_id)
@@ -1471,29 +1569,32 @@ class DemoDbService(BaseMySQLService):
             return None
 
         with self.connection() as connection, connection.cursor() as cursor:
-            # Step 1: Exact block match
+            # Step 1: Exact block match or 'All Blocks'
             if block:
                 cursor.execute(
-                    "SELECT ca_id FROM helpdesk_ca_assignments WHERE category_id = %s AND LOWER(block) = LOWER(%s)",
+                    """
+                    SELECT ca_id FROM helpdesk_ca_assignments 
+                    WHERE category_id = %s AND (LOWER(block) = LOWER(%s) OR LOWER(block) IN ('all blocks', 'all', 'campus'))
+                    """,
                     (category_id, block),
                 )
                 rows = cursor.fetchall()
                 if rows:
-                    ca_ids = [r["ca_id"] for r in rows]
+                    ca_ids = list(dict.fromkeys([r["ca_id"] for r in rows]))
                     return self._select_least_loaded_ca(cursor, ca_ids)
 
-            # Step 2: Any block for this category
+            # Step 2: Any block / all assigned CAs for this category
             cursor.execute(
                 "SELECT DISTINCT ca_id FROM helpdesk_ca_assignments WHERE category_id = %s",
                 (category_id,),
             )
             rows = cursor.fetchall()
             if rows:
-                ca_ids = [r["ca_id"] for r in rows]
+                ca_ids = list(dict.fromkeys([r["ca_id"] for r in rows]))
                 return self._select_least_loaded_ca(cursor, ca_ids)
 
             # Step 3: Fallback to category's default assigned CA
-            return category["assigned_ca_id"]
+            return category.get("assigned_ca_id")
 
     resolve_assigned_to = resolve_assigned_ca
 
