@@ -1,142 +1,110 @@
 # SNIST Helpdesk System
 
-A production-grade, secure ticketing and support routing platform developed for the Sreenidhi Institute of Science and Technology (SNIST). This platform partitions user domains, automates ticket distribution to Concerned Authorities (CAs) based on categories and blocks, schedules async email/SMS notifications, and passive SLA overdue warnings.
+A production-grade, secure enterprise ticketing and campus service platform developed for the **Sreenidhi Institute of Science and Technology (SNIST)**. The platform provides automated multi-tier ticket routing, department-isolated Concerned Authority (CA / Assignee) allocations, selective ticket reassignment for absent authorities, multi-channel messaging (SMS & WhatsApp), and Metabase visual analytics.
 
 ---
 
-## Features
+## Key Features
 
-- **Dynamic Ticket Routing**: Automatic ticket allocation to block-level Concerned Authorities (CAs).
-- **Embedded Metabase Analytics**: Full-fledged visual analytics with JWT dashboard embedding (Overview, Trends, CA Performance) and automatic Metabase provisioning.
-- **Legacy Sreenidhi Migration**: Built-in migration pipeline to convert legacy MySQL dumps (`sys_administrators` & `sys_complaint`) into unified helpdesk records.
-- **Multi-Tenant Partitioning**: Organization-level isolation separating distinct college databases (e.g. SNIST, SNU).
-- **Grouped CA Mapping UI**: Interactive admin screen displaying CA assignments with collapsible multiselect dropdowns.
-- **SLA Passive Alerts**: Automatic escalation flags on open tickets exceeding a 24-hour response window.
-- **File Signatures Validation**: Advanced security check examining file headers to block malicious script masquerading.
-- **CSRF & Rate Lockouts**: Built-in protection against brute-force logins and cross-site scripting exploits.
-- **Async Notification Dispatches**: Asynchronous background workers offloading email and SMS dispatch threads.
+- **Least-Loaded Dynamic Ticket Auto-Routing**:
+  - Maps multiple Concerned Authorities (CAs) to problem categories for specific campus blocks or all campus facilities.
+  - Automatically routes newly submitted tickets to the least-loaded matching Assignee with fallback protection to department HOD and Administrators.
+- **HOD Selective Ticket Reassignment (`/hod/ticket-management`)**:
+  - Enables Department Heads (HODs) to view open tickets assigned to absent or unavailable CAs, selectively check specific tickets, and transfer them atomically to another active CA within the department with audit logging.
+- **Role-Based Governance & Security Architecture**:
+  - **Super Admin**: Institution-wide governance across all 20+ departments, user account management, campus hierarchy (blocks/floors/rooms), global category management, audit log access, and read-only ticket supervision.
+  - **HOD (Head of Department)**: Departmental ticket oversight, category CA assignment, and selective ticket reassignment.
+  - **Concerned Authority (CA / Assignee)**: Operational status transitions (`PENDING` $\rightarrow$ `IN_PROGRESS` $\rightarrow$ `ON_HOLD` $\rightarrow$ `RESOLVED`), resolution remarks, time tracking, attachments, and internal staff notes.
+  - **Faculty**: Ticket submission with multi-level location cascades, live tracking of submitted tickets, and ticket reopening within SLA windows.
+- **Context-Aware Contact Phone Scoping**:
+  - CAs directly see the faculty submitter's verified mobile number for rapid field communication.
+  - Faculty see only the assigned CA's direct phone number for call assistance.
+- **High-Performance Server-Side Pagination**:
+  - Instantaneous load times (< 50ms) across 2,300+ institutional faculty and staff directory records with backend search and multi-role filtering.
+- **Embedded Metabase Analytics**:
+  - JWT-signed Metabase dashboards (Overview, Departmental Trends, CA Performance, SLA Breaches) with automatic containerized bootstrapping and Chart.js fallback.
+- **Multi-Channel Notification Gateway**:
+  - Asynchronous dispatch queues supporting BulkSMS HTTP API (`SNISTA`) and Unified Messaging Platform WhatsApp templates (`1773697`).
+- **Enterprise Security Hardening**:
+  - Magic-byte file signature validation blocking executable masquerading.
+  - Anti-duplication UUID `submission_key` idempotency constraints.
+  - CSRF protection, rate limiting, and session security.
 
 ---
 
-## Tech Stack
+## Technology Stack
 
-- **Framework**: Python 3.11, Flask 3.1.0, Flask-WTF
-- **Database**: MySQL 8.x / PyMySQL Connection Pool
+- **Backend**: Python 3.11, Flask 3.1.0, Flask-WTF, PyMySQL Connection Pooling
+- **WSGI / App Server**: Granian (Rust-based WSGI engine) / Gunicorn
+- **Database**: MySQL 8.x (`seg_demo` database schema)
 - **Analytics & BI**: Metabase 0.49+ (Docker containerized with JWT static embedding)
-- **Aesthetics & UI**: Modern HTML5, Vanilla CSS (Outfit & Space Grotesk fonts), Lucide Icons, Chart.js fallback
-- **Deployment**: Docker, Docker Compose, Gunicorn
+- **Frontend & UI**: Google Fonts (`Inter`, `Outfit`, `Space Grotesk`), Vanilla CSS Design System, Lucide Icons, Smart-Select Components
+- **Containerization**: Docker, Docker Compose
 
 ---
 
-## Architecture
+## User Roles & Permission Matrix
 
-Detailed architecture blueprints can be found in [docs/architecture.md](docs/architecture.md).
+| Capability | Super Admin | HOD | Assignee (CA) | Faculty |
+| :--- | :---: | :---: | :---: | :---: |
+| **View All Campus Tickets** | ✅ *All Depts* | 🏢 *Own Dept* | ❌ | ❌ |
+| **Update Ticket Status** | ❌ *View-Only* | ✅ *Own Dept* | ✅ *Assigned Only* | ❌ *(Reopen own)* |
+| **Selective Ticket Reassignment** | 🌐 *(Acting as HOD)* | ✅ *Own Dept* | ❌ | ❌ |
+| **Category & Assignee Allocations** | ✅ *All Depts* | ✅ *Own Dept* | ❌ | ❌ |
+| **User Directory Management** | ✅ *Full Access* | 🏢 *Dept Users* | ❌ | ❌ |
+| **Campus Location Management** | ✅ *Full Access* | ❌ | ❌ | ❌ |
+| **Metabase & Institutional Analytics** | ✅ *Campus-Wide* | 🏢 *Dept KPIs* | 📌 *CA Reports* | ❌ |
 
 ---
 
-## Screenshots
+## Quick Start (Docker)
 
-*(Screenshots will display here when deployed)*
+### 1. Clone & Configure Environment
+```bash
+git clone https://github.com/bhaskar1461/snist_helpdesk.git
+cd snist_helpdesk
+cp .env.example .env
+```
 
----
-
-## Installation
-
-### Option 1: Docker (Recommended)
-Build and run all services in a single command:
+### 2. Boot All Services
 ```bash
 docker compose up -d --build
 ```
 
-### Option 2: Local Development
-Refer to [docs/development.md](docs/development.md) for local manual configurations.
+### 3. Access Portals
+- **Web Application**: [http://localhost:5000](http://localhost:5000) (or port `5001`)
+- **Metabase BI**: [http://localhost:3002](http://localhost:3002)
 
-### Option 3: Automated Script VPS Build
-To deploy instantly on a clean VPS instance:
+---
+
+## Automated VPS / VM Installation
+
+To deploy on a clean Ubuntu VPS or VirtualBox guest VM:
 ```bash
 bash install.sh
 ```
 
 ---
 
-## Requirements
+## Automated Test Suite
 
-- **Operating System**: Ubuntu 20.04 LTS / 22.04 LTS (or Windows with Docker Desktop)
-- **RAM**: Minimum 2 GB (4 GB recommended)
-- **CPU**: Dual-core x86_64
-- **Disk**: 10 GB free space
-- **Software**: Docker 20.10+, Docker Compose 2.0+
-
----
-
-## Environment Variables
-
-| Variable | Description | Default / Example |
-| :--- | :--- | :--- |
-| `MYSQL_HOST` | Database Host Address | `seg-dev.sreenidhi.edu.in` |
-| `MYSQL_DATABASE` | Database Name | `seg_demo` |
-| `MYSQL_USER` | MySQL Username | `demo` |
-| `MYSQL_PASSWORD` | MySQL User Password | `Admin@321#` |
-| `SECRET_KEY` | Flask session cookie signing key | `c69fc621e47743c584ea0...` |
-| `SMTP_HOST` | SMTP Server Host Address | `smtp.gmail.com` |
-| `SMTP_PORT` | SMTP Connection Port | `587` |
-
-*(See `.env.example` for all notification and WhatsApp key variables)*
+Run the full automated test suite (74 tests covering RBAC, mutations, auto-routing, exports, and edge cases):
+```bash
+python -m pytest tests
+```
 
 ---
 
-## Database Setup
+## Database Architecture & Migrations
 
-- **Production Schema**: The production-ready database schema is provided in [`sql/production_schema.sql`](sql/production_schema.sql) with clean `helpdesk_*` table prefixes.
-- **Anti-Duplication**: Built-in double-submit protection using UUID `submission_key` constraints on `helpdesk_tickets` and unique deduplication indexes on activities & notes.
-- **Automated Bootstrapping & Migrations**: Automatically builds database tables and executes migrations (`v2` to `v6`) on application startup. Can be disabled via `INIT_DEMO_DB=false`.
-- **Manual Schema Setup**:
-  ```bash
-  mysql -u <user> -p <db_name> < sql/production_schema.sql
-  ```
-
----
-
-## API Documentation
-
-- **GET `/api/locations`**: Fetches location block/room tree details.
-- **GET `/api/categories`**: Retrieves category names grouped by branches.
-- **POST `/authority/update-status/<id>`**: Updates ticket status with file signature validation.
-
----
-
-## Authentication
-
-- Access is restricted using Role-Based Access Control (`@role_required`).
-- Permitted Roles: `SUPER_ADMIN`, `ADMIN`, `HOD`, `CA`, and `FACULTY`.
-- Defaults: Promotes teachers to respective HOD/CA profiles based on department references.
-
----
-
-## Logs
-- Standard container out logs:
-  ```bash
-  docker compose logs -f web
-  ```
-
----
-
-## Monitoring
-- Check endpoint status codes:
-  - `/` (Redirect status `302` or page load `200`).
-  - `/api/locations` (`200` JSON response).
-
----
-
-## Troubleshooting
-Refer to the [Troubleshooting Guide](docs/troubleshooting.md) for diagnostic workflows.
+- **Production Schema**: [`sql/production_schema.sql`](sql/production_schema.sql)
+- **Legacy Migration Pipeline**:
+  - `scripts/migrate_legacy_data.py`: Imports historical complaints (`sys_complaint`) and administrators (`sys_administrators`) into normalized `helpdesk_*` tables.
+  - `scripts/fix_legacy_creators.py`: Resolves legacy ticket creators to verified faculty records in `teacher_info`.
+- **Demo DB Initializer**: `python scripts/init_demo_db.py`
 
 ---
 
 ## License
-Distributed under the MIT License. See [LICENSE](LICENSE) for details.
 
----
-
-## Contributing
-We welcome improvements! See [CONTRIBUTING.md](CONTRIBUTING.md) for onboarding guidelines.
+Distributed under the MIT License. Developed for Sreenidhi Educational Group.
