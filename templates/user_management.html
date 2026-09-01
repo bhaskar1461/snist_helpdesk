@@ -372,7 +372,7 @@
           <div class="mgmt-card-header">
             <div class="mgmt-card-title" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
               <h3>User Directory</h3>
-              <span style="background:var(--primary-light); color:var(--primary); padding:2px 10px; border-radius:12px; font-size:0.78rem; font-weight:700;">{{ users|length }} Users</span>
+              <span style="background:var(--primary-light); color:var(--primary); padding:2px 10px; border-radius:12px; font-size:0.78rem; font-weight:700;">{{ total_users }} Users</span>
             </div>
           </div>
 
@@ -475,6 +475,32 @@
               </tbody>
             </table>
           </div>
+          {% if total_pages and total_pages > 1 %}
+            <div class="pagination-bar" style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-top:1px solid #f1f5f9; background:#ffffff; font-size:0.84rem; flex-wrap:wrap; gap:8px;">
+              <div style="color:var(--slate-600);">
+                Showing <strong>{{ (page - 1) * per_page + 1 }}</strong> to <strong>{{ [page * per_page, total_users]|min }}</strong> of <strong>{{ total_users }}</strong> users
+              </div>
+              <div style="display:flex; gap:6px; align-items:center;">
+                {% if page > 1 %}
+                  <a href="{{ url_for('management.user_management', page=page-1, q=filters.q, department=filters.department, role=filters.roles) }}" class="btn-table-action btn-cancel" style="padding:6px 12px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                    &laquo; Previous
+                  </a>
+                {% else %}
+                  <span class="btn-table-action btn-cancel" style="padding:6px 12px; opacity:0.4; cursor:not-allowed; display:inline-flex; align-items:center; gap:4px;">&laquo; Previous</span>
+                {% endif %}
+
+                <span style="font-weight:600; color:var(--slate-700); padding:0 8px;">Page {{ page }} of {{ total_pages }}</span>
+
+                {% if page < total_pages %}
+                  <a href="{{ url_for('management.user_management', page=page+1, q=filters.q, department=filters.department, role=filters.roles) }}" class="btn-table-action btn-cancel" style="padding:6px 12px; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                    Next &raquo;
+                  </a>
+                {% else %}
+                  <span class="btn-table-action btn-cancel" style="padding:6px 12px; opacity:0.4; cursor:not-allowed; display:inline-flex; align-items:center; gap:4px;">Next &raquo;</span>
+                {% endif %}
+              </div>
+            </div>
+          {% endif %}
         </section>
       </div>
     </main>

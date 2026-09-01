@@ -124,6 +124,55 @@
       color: var(--slate-600);
     }
 
+    .contact-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      margin-top: 4px;
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      color: var(--slate-700);
+      text-decoration: none;
+      font-size: 0.78rem;
+      font-weight: 600;
+      transition: all 0.15s ease;
+      width: fit-content;
+    }
+
+    .contact-link:hover {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+      color: var(--primary);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 5px rgba(79, 70, 229, 0.08);
+    }
+
+    .contact-link.call-action {
+      background: #eef2ff;
+      border-color: #c7d2fe;
+      color: var(--primary);
+    }
+
+    .contact-link.call-action:hover {
+      background: #e0e7ff;
+      border-color: #a5b4fc;
+      color: var(--primary-hover);
+    }
+
+    .call-badge {
+      background: var(--primary);
+      color: #ffffff;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 4px;
+      letter-spacing: 0.03em;
+      display: inline-flex;
+      align-items: center;
+    }
+
     .desc-box {
       background: #ffffff;
       border: 1.5px solid #e2e8f0;
@@ -397,15 +446,39 @@
             <div class="detail-body">
               <!-- Meta Info Grid -->
               <div class="meta-grid">
+                {% set is_creator = (user and user.email and ticket.created_by_email and user.email|lower == ticket.created_by_email|lower) %}
+                {% set is_assignee = (user and user.email and ticket.assigned_to_email and user.email|lower == ticket.assigned_to_email|lower) %}
                 <div class="meta-item">
                   <span class="meta-label">Submitted By</span>
                   <span class="meta-value">{{ ticket.created_by_name }}</span>
                   <small>{{ ticket.created_by_email }}</small>
+                  {% if not is_creator %}
+                    {% if ticket.created_by_phone %}
+                      <a href="tel:{{ ticket.created_by_phone }}" class="contact-link call-action" title="Call User (Submitter)">
+                        <i data-lucide="phone-call" style="width:13px;height:13px;color:var(--primary);"></i>
+                        <span>{{ ticket.created_by_phone }}</span>
+                        <span class="call-badge">Call User</span>
+                      </a>
+                    {% else %}
+                      <small style="color:var(--slate-400); font-size:0.75rem; margin-top:2px;">No phone registered</small>
+                    {% endif %}
+                  {% endif %}
                 </div>
                 <div class="meta-item">
                   <span class="meta-label">Assigned To</span>
                   <span class="meta-value">{{ ticket.assigned_to_name or 'Unassigned' }}</span>
                   <small>{{ ticket.assigned_to_email or 'Auto-routing queue' }}</small>
+                  {% if not is_assignee and ticket.assigned_to_name and ticket.assigned_to_name != 'Unassigned' %}
+                    {% if ticket.assigned_to_phone %}
+                      <a href="tel:{{ ticket.assigned_to_phone }}" class="contact-link call-action" title="Call Assignee (CA)">
+                        <i data-lucide="phone-call" style="width:13px;height:13px;color:var(--primary);"></i>
+                        <span>{{ ticket.assigned_to_phone }}</span>
+                        <span class="call-badge">Call CA</span>
+                      </a>
+                    {% else %}
+                      <small style="color:var(--slate-400); font-size:0.75rem; margin-top:2px;">No phone registered</small>
+                    {% endif %}
+                  {% endif %}
                 </div>
                 <div class="meta-item">
                   <span class="meta-label">Category</span>

@@ -276,6 +276,7 @@
       color: var(--slate-900);
       display: -webkit-box;
       -webkit-line-clamp: 2;
+      line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
       line-height: 1.35;
@@ -504,7 +505,17 @@
                     {% if ticket.assigned_to_name %}
                       <div class="user-cell">
                         <div class="user-avatar-mini" style="background:#e0e7ff; color:#4338ca;">{{ ticket.assigned_to_name[0] | upper }}</div>
-                        <span style="font-weight:600; font-size:0.84rem; color:var(--slate-900);">{{ ticket.assigned_to_name }}</span>
+                        <div>
+                          <span style="font-weight:600; font-size:0.84rem; color:var(--slate-900);">{{ ticket.assigned_to_name }}</span>
+                          {% if ticket.assigned_to_phone %}
+                            <div>
+                              <a href="tel:{{ ticket.assigned_to_phone }}" title="Call Assignee" style="font-size:0.74rem; color:var(--primary); text-decoration:none; display:inline-flex; align-items:center; gap:3px; font-weight:600;">
+                                <i data-lucide="phone" style="width:10px; height:10px;"></i>
+                                <span>{{ ticket.assigned_to_phone }}</span>
+                              </a>
+                            </div>
+                          {% endif %}
+                        </div>
                       </div>
                     {% else %}
                       <span style="color:#94a3b8; font-size:0.8rem; font-style:italic;">Unassigned</span>

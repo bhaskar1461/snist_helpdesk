@@ -50,14 +50,14 @@ class MockDbState:
 
         # 2. Seed default users
         users = [
-            {"id": 1, "name": "Super Admin", "email": "admin@gmail.com", "password": generate_password_hash("123"), "role": "SUPER_ADMIN", "department": "Administration", "org_id": "2000"},
-            {"id": 2, "name": "Campus Admin", "email": "campus.admin@gmail.com", "password": generate_password_hash("123"), "role": "ADMIN", "department": "Administration", "org_id": "2000"},
-            {"id": 3, "name": "Dr. Kavya", "email": "hod@gmail.com", "password": generate_password_hash("123"), "role": "HOD", "department": "CSE", "org_id": "2000"},
-            {"id": 4, "name": "Chandini CA", "email": "ca@gmail.com", "password": generate_password_hash("123"), "role": "CA", "department": "CSE", "org_id": "2000"},
-            {"id": 5, "name": "Sravan CA", "email": "sravan.ca@gmail.com", "password": generate_password_hash("123"), "role": "CA", "department": "Facilities", "org_id": "2000"},
-            {"id": 6, "name": "Bhaskar CA", "email": "bhaskar.ca@gmail.com", "password": generate_password_hash("123"), "role": "CA", "department": "Maintenance", "org_id": "2000"},
-            {"id": 7, "name": "Demo Faculty", "email": "faculty@gmail.com", "password": generate_password_hash("123"), "role": "FACULTY", "department": "CSE", "org_id": "2000"},
-            {"id": 8, "name": "SNU Admin", "email": "snu.admin@gmail.com", "password": generate_password_hash("123"), "role": "SUPER_ADMIN", "department": "Administration", "org_id": "3000"},
+            {"id": 1, "name": "Super Admin", "email": "admin@gmail.com", "password": generate_password_hash("123"), "role": "SUPER_ADMIN", "department": "Administration", "phone": "9876543210", "org_id": "2000"},
+            {"id": 2, "name": "Campus Admin", "email": "campus.admin@gmail.com", "password": generate_password_hash("123"), "role": "ADMIN", "department": "Administration", "phone": "9876543210", "org_id": "2000"},
+            {"id": 3, "name": "Dr. Kavya", "email": "hod@gmail.com", "password": generate_password_hash("123"), "role": "HOD", "department": "CSE", "phone": "9876543210", "org_id": "2000"},
+            {"id": 4, "name": "Chandini CA", "email": "ca@gmail.com", "password": generate_password_hash("123"), "role": "CA", "department": "CSE", "phone": "9876543210", "org_id": "2000"},
+            {"id": 5, "name": "Sravan CA", "email": "sravan.ca@gmail.com", "password": generate_password_hash("123"), "role": "CA", "department": "Facilities", "phone": "9876543210", "org_id": "2000"},
+            {"id": 6, "name": "Bhaskar CA", "email": "bhaskar.ca@gmail.com", "password": generate_password_hash("123"), "role": "CA", "department": "Maintenance", "phone": "9876543210", "org_id": "2000"},
+            {"id": 7, "name": "Demo Faculty", "email": "faculty@gmail.com", "password": generate_password_hash("123"), "role": "FACULTY", "department": "CSE", "phone": "9876543210", "org_id": "2000"},
+            {"id": 8, "name": "SNU Admin", "email": "snu.admin@gmail.com", "password": generate_password_hash("123"), "role": "SUPER_ADMIN", "department": "Administration", "phone": "9876543210", "org_id": "3000"},
         ]
         self.tables["helpdesk_users"] = users
         self.next_ids["helpdesk_users"] = 9
@@ -462,8 +462,10 @@ class MockCursor:
 
                 r["created_by_name"] = creator["name"] if creator else "Unknown Faculty"
                 r["created_by_email"] = creator["email"] if creator else ""
+                r["created_by_phone"] = creator.get("phone", "") if creator else ""
                 r["assigned_to_name"] = assignee["name"] if assignee else "Unassigned CA"
                 r["assigned_to_email"] = assignee["email"] if assignee else ""
+                r["assigned_to_phone"] = assignee.get("phone", "") if assignee else ""
                 r["category_name"] = cat["category_name"] if cat else "Uncategorized"
                 r["department"] = cat["department"] if cat else "General"
                 r["room_no"] = loc_room["room_no"] if loc_room else ""

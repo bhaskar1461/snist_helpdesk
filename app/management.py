@@ -511,11 +511,11 @@ def category_assignments():
         cat["block_mappings"] = demo_db.get_category_block_mappings(cat["id"]) if hasattr(demo_db, 'get_category_block_mappings') else []
         cat["assignees"] = demo_db.get_category_assignees(cat["id"]) if hasattr(demo_db, 'get_category_assignees') else []
 
-    # Fetch promoteable Assignees and Faculty strictly for the target department (only active users)
+    # Fetch Assignees strictly for the target department (only active CA/ASSIGNEE users)
     if dept_filter:
-        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE", "FACULTY"], department=dept_filter, org_id=user["org_id"])
+        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE"], department=dept_filter, org_id=user["org_id"])
     else:
-        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE", "FACULTY"], org_id=user["org_id"])
+        candidate_users = demo_db.list_users(role=["CA", "ASSIGNEE"], org_id=user["org_id"])
 
     promoteable_users = []
     seen_emails = set()
@@ -556,22 +556,6 @@ def category_assignments():
             "role": u["role"],
             "department": dept_name or "General",
         })
-
-    if live_db.enabled:
-        ref_users = live_db.fetch_reference_users(department=dept_filter, org_id=user["org_id"], limit=5000)
-        for r in ref_users:
-            email_lower = (r.get("EMAIL_ID") or "").lower().strip()
-            if email_lower and email_lower not in seen_emails:
-                seen_emails.add(email_lower)
-                raw_dept = (r.get("department_code") or r.get("department_name") or "FACULTY").strip()
-                dept_name = dept_map.get(raw_dept) or dept_map.get(raw_dept.upper()) or raw_dept
-                promoteable_users.append({
-                    "id": f"ref:{r['EMAIL_ID']}",
-                    "name": r.get("TEACHER_NAME") or "Unknown",
-                    "email": r["EMAIL_ID"],
-                    "role": "FACULTY",
-                    "department": dept_name or "FACULTY",
-                })
 
     # Sort promoteable users by department and name for clean optgroup categorization
     promoteable_users.sort(key=lambda x: (x["department"].upper(), x["name"].upper()))
@@ -985,10 +969,24 @@ def user_management():
     users = demo_db.list_users(role=role_arg, department=department, search=search, org_id=user["org_id"])
     if user["role"] == "HOD":
         users = [u for u in users if u["role"] in ("CA", "FACULTY")]
+    
+    # Server-side pagination to prevent browser freezing on large user directories
+    page = safe_int(request.args.get("page", "1")) or 1
+    per_page = 50
+    total_users = len(users)
+    total_pages = max(1, (total_users + per_page - 1) // per_page)
+    page = min(max(1, page), total_pages)
+    start_idx = (page - 1) * per_page
+    paginated_users = users[start_idx:start_idx + per_page]
+
     departments = live_departments(user["org_id"])
     return render_template(
         "user_management.html",
-        users=users,
+        users=paginated_users,
+        total_users=total_users,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
         departments=departments,
         filters={"q": search, "role": roles_filter[0] if len(roles_filter) == 1 else "", "roles": roles_filter, "department": department or ""},
         roles=roles_list,
@@ -1115,6 +1113,110 @@ def delete_user(user_id):
     except ValueError as exc:
         flash(str(exc), "error")
     return redirect(url_for("management.user_management"))
+
+
+# ── HOD Ticket Management: Selective Ticket Reassignment ─────────────────
+@management_bp.route("/hod/ticket-management", methods=["GET", "POST"])
+@role_required("HOD", "SUPER_ADMIN", "ADMIN")
+def hod_ticket_management():
+    from app import get_demo_db, get_live_db
+    demo_db = get_demo_db()
+    live_db = get_live_db()
+    user = current_user()
+
+    # Determine target department
+    if user["role"] == "HOD":
+        dept_filter = user["department"]
+    else:
+        dept_filter = request.args.get("department", "").strip() or request.form.get("department", "").strip() or None
+
+    if request.method == "POST":
+        action = request.form.get("action", "").strip()
+        if action == "reassign_tickets":
+            source_ca_id = safe_int(request.form.get("source_ca_id", "0"))
+            target_ca_id = safe_int(request.form.get("target_ca_id", "0"))
+            ticket_ids = [safe_int(tid) for tid in request.form.getlist("selected_tickets") if safe_int(tid) > 0]
+            if not ticket_ids:
+                single_tid = safe_int(request.form.get("ticket_id", "0"))
+                if single_tid > 0:
+                    ticket_ids = [single_tid]
+            remarks = request.form.get("remarks", "").strip()
+
+            try:
+                result = demo_db.reassign_tickets(
+                    ticket_ids=ticket_ids,
+                    source_ca_id=source_ca_id,
+                    target_ca_id=target_ca_id,
+                    actor=user,
+                    remarks=remarks
+                )
+                flash(
+                    f"Successfully transferred {result['reassigned_count']} ticket(s) from {result['source_ca_name']} to {result['target_ca_name']}.",
+                    "success"
+                )
+            except Exception as e:
+                flash(f"Reassignment failed: {e}", "error")
+
+            return redirect(url_for("management.hod_ticket_management", ca_id=source_ca_id, department=dept_filter or ""))
+
+    # GET Request
+    selected_ca_id = safe_int(request.args.get("ca_id", "0")) or None
+
+    # Fetch all active CAs / Assignees in the department for source and replacement selection
+    if dept_filter:
+        cas_in_dept = demo_db.list_users(role=["CA", "ASSIGNEE"], department=dept_filter, org_id=user["org_id"])
+    else:
+        cas_in_dept = demo_db.list_users(role=["CA", "ASSIGNEE"], org_id=user["org_id"])
+
+    # Only include active users
+    cas_in_dept = [ca for ca in cas_in_dept if ca.get("is_active", 1) != 0]
+
+    # Enrich CAs with active ticket counts
+    for ca in cas_in_dept:
+        ca_tickets = demo_db.get_ca_open_tickets(ca["id"], department=dept_filter, org_id=user["org_id"])
+        ca["open_ticket_count"] = len(ca_tickets)
+
+    # Sort CAs by name
+    cas_in_dept.sort(key=lambda x: (x.get("name") or "").upper())
+
+    # If selected_ca_id is not provided but CAs exist, default to first CA with open tickets or first CA
+    if not selected_ca_id and cas_in_dept:
+        with_tickets = [ca for ca in cas_in_dept if ca.get("open_ticket_count", 0) > 0]
+        selected_ca_id = with_tickets[0]["id"] if with_tickets else cas_in_dept[0]["id"]
+
+    # Fetch tickets assigned to the selected CA
+    ca_tickets = []
+    selected_ca = None
+    if selected_ca_id:
+        selected_ca = demo_db.get_user(selected_ca_id)
+        ca_tickets = demo_db.get_ca_open_tickets(selected_ca_id, department=dept_filter, org_id=user["org_id"])
+
+    # Filter replacement candidates: strictly active CAs in the same department (excluding selected_ca_id)
+    eligible_replacements = [
+        u for u in cas_in_dept
+        if u.get("id") != selected_ca_id
+    ]
+    eligible_replacements.sort(key=lambda x: (x.get("name") or "").upper())
+
+    # Department list for Super Admin / Admin
+    departments = live_departments(user["org_id"]) if user["role"] in ["SUPER_ADMIN", "ADMIN"] else []
+
+    # Categories for filter tags
+    categories = demo_db.list_categories(department=dept_filter, org_id=user["org_id"])
+
+    ctx = page_context("Ticket Management")
+    ctx.update({
+        "current_page": "ticket_management",
+        "dept_filter": dept_filter,
+        "departments": departments,
+        "cas": cas_in_dept,
+        "selected_ca": selected_ca,
+        "selected_ca_id": selected_ca_id,
+        "tickets": ca_tickets,
+        "eligible_replacements": eligible_replacements,
+        "categories": categories,
+    })
+    return render_template("hod_ticket_management.html", **ctx)
 
 
 

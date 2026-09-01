@@ -157,6 +157,12 @@
       margin-bottom: 1.25rem;
       box-shadow: 0 4px 12px rgba(0,0,0,0.04);
       animation: slideDown 0.2s ease-out forwards;
+      position: relative;
+      z-index: 20;
+    }
+    .collapsible-panel.has-open-dropdown,
+    .collapsible-panel:focus-within {
+      z-index: 1000 !important;
     }
     @keyframes slideDown {
       from { opacity: 0; transform: translateY(-8px); }
@@ -182,6 +188,7 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.02);
       overflow: visible;
       position: relative;
+      z-index: 1;
     }
     .filter-bar {
       display: flex;
@@ -616,15 +623,15 @@
               <span>Category Name</span>
               <input type="text" name="category_name" class="input-style" placeholder="e.g. WiFi Connectivity, Plumbing, Projectors" required>
             </label>
-            <label class="field">
-              <span>Assigned To (Optional)</span>
+            <div class="field">
+              <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); margin-bottom: 4px; display: block;">Assigned To (Optional)</span>
               <select id="create-cat-ca" name="assigned_ca_id" class="input-style searchable-select user-select" data-placeholder="Choose an Assignee (Optional)...">
                 <option value="">Leave Unassigned</option>
                 {% for u in users %}
                   <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
                 {% endfor %}
               </select>
-            </label>
+            </div>
 
             <div class="field">
               <span>Location Block Mapping (Multi-Select)</span>
@@ -865,15 +872,15 @@
         <input type="hidden" id="edit-cat-dept" name="department">
         {% endif %}
 
-        <label class="field" style="margin-bottom: 12px; display: block;">
-          <span>Assigned To</span>
+        <div class="field" style="margin-bottom: 12px; display: block;">
+          <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); margin-bottom: 4px; display: block;">Assigned To</span>
           <select id="edit-cat-ca" name="assigned_ca_id" class="input-style searchable-select user-select" style="width:100%;" data-placeholder="Choose an Assignee...">
             <option value="none">Unassigned</option>
             {% for u in users %}
               <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
             {% endfor %}
           </select>
-        </label>
+        </div>
 
 
         <div class="field" style="margin-bottom: 16px; display: block;">
@@ -1032,7 +1039,7 @@
           </div>
         </div>
 
-        <label class="field" style="margin-bottom: 14px; display: block;">
+        <div class="field" style="margin-bottom: 14px; display: block;">
           <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); margin-bottom: 4px; display: block;">Select Assignee / Faculty</span>
           <select id="atc-person-select" name="faculty_id" class="input-style searchable-select user-select" style="width:100%;" required data-placeholder="— Choose person to assign —">
             <option value="">— Choose person to assign —</option>
@@ -1040,7 +1047,7 @@
               <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
             {% endfor %}
           </select>
-        </label>
+        </div>
 
         <div class="field" style="margin-bottom: 16px; display: block;">
           <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); margin-bottom: 4px; display: block;">Assigned Problem Location Blocks</span>
@@ -1483,14 +1490,25 @@
         Array.from(personSelect.options).forEach(opt => {
           if (!opt.value) {
             opt.style.display = '';
+            opt.hidden = false;
+            opt.classList.remove('hidden-by-dept');
             return;
           }
           const optDept = (opt.getAttribute('data-dept') || '').toLowerCase().trim();
           const matches = !selectedDept || !optDept || optDept === selectedDept ||
                           optDept.includes(selectedDept) || selectedDept.includes(optDept);
-          opt.style.display = matches ? '' : 'none';
+          if (matches) {
+            opt.style.display = '';
+            opt.hidden = false;
+            opt.classList.remove('hidden-by-dept');
+          } else {
+            opt.style.display = 'none';
+            opt.hidden = true;
+            opt.classList.add('hidden-by-dept');
+          }
         });
         if (personSelect._smartSelect) {
+          personSelect._smartSelect.close();
           personSelect._smartSelect.sync();
         }
       }

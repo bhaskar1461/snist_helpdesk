@@ -195,20 +195,21 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
             ("dashboards.hod_my_tickets", "My Tickets", "ticket"),
             ("dashboards.hod_all_tickets", "All Tickets", "clipboard-list"),
             ("management.category_assignments", "Assignee Management", "folder-open"),
+            ("management.hod_ticket_management", "Ticket Management", "arrow-right-left"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
         ],
         "ASSIGNEE": [
             ("tickets.authority_tickets", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("tickets.authority_my_tickets", "My Tickets", "ticket"),
-            ("tickets.authority_dept_tickets", "Assigned Tickets", "clipboard-list"),
+            ("tickets.authority_assigned_tickets", "Assigned Tickets", "clipboard-list"),
             ("tickets.ca_report", "Reports", "bar-chart-3"),
         ],
         "CA": [
             ("tickets.authority_tickets", "Dashboard", "layout-dashboard"),
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("tickets.authority_my_tickets", "My Tickets", "ticket"),
-            ("tickets.authority_dept_tickets", "Assigned Tickets", "clipboard-list"),
+            ("tickets.authority_assigned_tickets", "Assigned Tickets", "clipboard-list"),
             ("tickets.ca_report", "Reports", "bar-chart-3"),
         ],
         "FACULTY": [

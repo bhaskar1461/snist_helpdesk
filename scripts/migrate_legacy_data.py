@@ -105,10 +105,38 @@ def run_migration():
         
         teacher_to_user_id[tid] = uid
 
-    print(f"[OK] Migrated/mapped {len(teacher_to_user_id)} legacy users ({users_migrated} new users added).")
+    # Map all teachers from teacher_info into teacher_to_user_id
+    cursor.execute("""
+        SELECT ti.TEACHER_CODE, ti.SAP_ID, u.id AS user_id
+        FROM teacher_info ti
+        JOIN helpdesk_users u ON LOWER(u.email) = LOWER(ti.EMAIL_ID)
+        WHERE ti.EMAIL_ID IS NOT NULL AND ti.EMAIL_ID != '';
+    """)
+    for r in cursor.fetchall():
+        uid = r["user_id"]
+        if r.get("TEACHER_CODE"):
+            teacher_to_user_id[r["TEACHER_CODE"].strip()] = uid
+            teacher_to_user_id[r["TEACHER_CODE"].strip().upper()] = uid
+        if r.get("SAP_ID"):
+            teacher_to_user_id[r["SAP_ID"].strip()] = uid
+            teacher_to_user_id[r["SAP_ID"].strip().upper()] = uid
+
+    print(f"[OK] Migrated/mapped {len(teacher_to_user_id)} legacy user aliases.")
+
+    # Ensure a designated 'Legacy Faculty' user exists for completely unknown legacy submitters
+    cursor.execute("SELECT id FROM helpdesk_users WHERE email = 'legacy.faculty@sreenidhi.edu.in';")
+    legacy_user = cursor.fetchone()
+    if not legacy_user:
+        cursor.execute("""
+            INSERT INTO helpdesk_users (name, email, password, role, department, phone)
+            VALUES ('Legacy Faculty Archive', 'legacy.faculty@sreenidhi.edu.in', %s, 'FACULTY', 'General', '9704083464');
+        """, (default_pw_hash,))
+        default_creator_id = cursor.lastrowid
+    else:
+        default_creator_id = legacy_user["id"]
 
     # Get a default CA user ID for category mapping
-    cursor.execute("SELECT id FROM helpdesk_users WHERE role IN ('SUPER_ADMIN', 'ADMIN', 'CA') LIMIT 1;")
+    cursor.execute("SELECT id FROM helpdesk_users WHERE role = 'CA' LIMIT 1;")
     default_ca = cursor.fetchone()
     default_ca_id = default_ca["id"] if default_ca else 1
 
@@ -161,7 +189,7 @@ def run_migration():
         cat_id = categories_cache[cat_key]
 
         # 3c. Resolve created_by user_id
-        creator_id = teacher_to_user_id.get(raised_by_tid, default_ca_id)
+        creator_id = teacher_to_user_id.get(raised_by_tid.upper()) or teacher_to_user_id.get(raised_by_tid, default_creator_id)
 
         # Check if ticket already imported
         cursor.execute("SELECT id FROM helpdesk_tickets WHERE id = %s;", (ticket_id,))

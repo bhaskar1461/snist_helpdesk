@@ -435,6 +435,14 @@
                   <td>
                     {% if ticket.assigned_to_name %}
                       <strong style="color:var(--slate-800); font-size:0.84rem;">{{ ticket.assigned_to_name }}</strong>
+                      {% if ticket.assigned_to_phone %}
+                        <div style="margin-top:2px;">
+                          <a href="tel:{{ ticket.assigned_to_phone }}" title="Call Assignee" style="font-size:0.75rem; color:var(--primary); text-decoration:none; display:inline-flex; align-items:center; gap:3px; font-weight:600;">
+                            <i data-lucide="phone" style="width:11px; height:11px;"></i>
+                            <span>{{ ticket.assigned_to_phone }}</span>
+                          </a>
+                        </div>
+                      {% endif %}
                     {% else %}
                       <span style="color:#94a3b8; font-size:0.8rem; font-style:italic;">Auto-routing</span>
                     {% endif %}

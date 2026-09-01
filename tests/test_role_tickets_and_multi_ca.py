@@ -75,3 +75,40 @@ class TestRoleTicketsAndMultiCA(HelpdeskTestCase):
         # Faculty is strictly forbidden from accessing super-admin or admin all-tickets routes
         res_admin_all = self.client.get("/admin/all-tickets", follow_redirects=False)
         self.assertIn(res_admin_all.status_code, [302, 403])
+
+    def test_ca_assigned_tickets_scoped_to_assignee(self):
+        # 1. Seed two tickets: one assigned to Chandini (id=4), one assigned to Bhaskar CA (id=6)
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"] = [
+            {
+                "id": 101,
+                "title": "Chandini Ticket",
+                "description": "Assigned to Chandini",
+                "category_id": 1,
+                "created_by": 7,
+                "assigned_to": 4, # Chandini
+                "status": "PENDING",
+                "org_id": "2000",
+                "location_id": 1,
+            },
+            {
+                "id": 102,
+                "title": "Other CA Ticket",
+                "description": "Assigned to Bhaskar CA",
+                "category_id": 1,
+                "created_by": 7,
+                "assigned_to": 6, # Bhaskar CA
+                "status": "PENDING",
+                "org_id": "2000",
+                "location_id": 1,
+            }
+        ]
+
+        # 2. Login as Chandini
+        self.login_as("ca@gmail.com")
+
+        # 3. Access Assigned Tickets repository
+        res = self.client.get("/authority/assigned-tickets")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b"Chandini Ticket", res.data)
+        self.assertNotIn(b"Other CA Ticket", res.data)
+

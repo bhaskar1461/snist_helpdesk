@@ -912,12 +912,12 @@ def ticket_detail(ticket_id):
     activity = demo_db.list_ticket_activity(ticket_id)
     # Determine next allowed transitions for status action
     next_statuses = list(demo_db.ALLOWED_TRANSITIONS.get(ticket["status"], set()))
-    # CA or SUPER_ADMIN can update ticket status
-    can_update = user["role"] == "SUPER_ADMIN" or (user["role"] == "CA" and ticket["assigned_to_email"].lower() == user["email"].lower())
+    # CA or HOD can update ticket status (SUPER_ADMIN has read-only view access)
+    can_update = (user["role"] in ["CA", "ASSIGNEE"] and ticket.get("assigned_to_email", "").lower() == user["email"].lower()) or (user["role"] == "HOD" and user.get("department") == ticket.get("department"))
     # Ticket creator can REOPEN a resolved ticket
     can_reopen = (
         ticket["status"] == "RESOLVED"
-        and ticket["created_by_email"].lower() == user["email"].lower()
+        and ticket.get("created_by_email", "").lower() == user["email"].lower()
     )
     return render_template(
         "ticket_detail.html",
@@ -931,7 +931,7 @@ def ticket_detail(ticket_id):
 
 
 @app.route("/authority/update-status/<int:ticket_id>", methods=["POST"])
-@role_required("CA", "SUPER_ADMIN")
+@role_required("CA", "ASSIGNEE", "HOD")
 def authority_update_status(ticket_id):
     user = current_user()
     status = request.form.get("status", "").strip().upper()
@@ -1071,10 +1071,23 @@ def user_management():
     users = demo_db.list_users(role=role_arg, department=department, search=search, org_id=user["org_id"])
     if user["role"] == "HOD":
         users = [u for u in users if u["role"] in ("CA", "FACULTY")]
+    
+    page = safe_int(request.args.get("page", "1")) or 1
+    per_page = 50
+    total_users = len(users)
+    total_pages = max(1, (total_users + per_page - 1) // per_page)
+    page = min(max(1, page), total_pages)
+    start_idx = (page - 1) * per_page
+    paginated_users = users[start_idx:start_idx + per_page]
+
     departments = live_departments(user["org_id"])
     return render_template(
         "user_management.html",
-        users=users,
+        users=paginated_users,
+        total_users=total_users,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
         departments=departments,
         filters={"q": search, "role": roles_filter[0] if len(roles_filter) == 1 else "", "roles": roles_filter, "department": department or ""},
         roles=roles_list,

@@ -182,6 +182,7 @@ class SmartSelect {
   _bindEvents() {
     // Trigger click
     this.trigger.addEventListener('click', (e) => {
+      e.preventDefault();
       if (this.select.disabled) return;
       if (e.target === this.clearBtn) {
         this.clear();
@@ -274,10 +275,17 @@ class SmartSelect {
   open() {
     if (this.isOpen || this.select.disabled) return;
     document.querySelectorAll('.smart-select-container.is-open').forEach(c => {
-      if (c !== this.container) c.classList.remove('is-open');
+      if (c !== this.container) {
+        c.classList.remove('is-open');
+        const prevParent = c.closest('.collapsible-panel, .form-card, .dashboard-card, .table-card, .modal-card');
+        if (prevParent) prevParent.classList.remove('has-open-dropdown');
+      }
     });
     this.isOpen = true;
     this.container.classList.add('is-open');
+
+    const parentPanel = this.container.closest('.collapsible-panel, .form-card, .dashboard-card, .table-card, .modal-card');
+    if (parentPanel) parentPanel.classList.add('has-open-dropdown');
 
     // Auto-position check (flip up if near bottom)
     const rect = this.container.getBoundingClientRect();
@@ -302,6 +310,10 @@ class SmartSelect {
     if (!this.isOpen) return;
     this.isOpen = false;
     this.container.classList.remove('is-open');
+
+    const parentPanel = this.container.closest('.collapsible-panel, .form-card, .dashboard-card, .table-card, .modal-card');
+    if (parentPanel) parentPanel.classList.remove('has-open-dropdown');
+
     this.trigger.focus();
   }
 

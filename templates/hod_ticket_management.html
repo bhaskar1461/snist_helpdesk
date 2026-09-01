@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ticket Management — SNIST Helpdesk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/super_admin.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/smart_select.css') }}">
+  <style>
+    /* Transfer Controls Bar */
+    .transfer-bar-card {
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 12px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+    .transfer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 1.25rem;
+      align-items: flex-end;
+    }
+    @media (max-width: 992px) {
+      .transfer-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    .control-label {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--slate-700);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .control-label .step-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--primary-light, #eef2ff);
+      color: var(--primary);
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+    .btn-transfer {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 0 20px;
+      background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(79, 70, 229, 0.25);
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      height: 42px;
+    }
+    .btn-transfer:hover:not(:disabled) {
+      background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);
+      box-shadow: 0 4px 10px rgba(79, 70, 229, 0.35);
+      transform: translateY(-1px);
+    }
+    .btn-transfer:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+    .transfer-badge-count {
+      background: rgba(255, 255, 255, 0.25);
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+
+    /* Table Toolbar & Search */
+    .table-card {
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+      overflow: hidden;
+    }
+    .table-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1rem 1.25rem;
+      background: #ffffff;
+      border-bottom: 1px solid var(--slate-200);
+      flex-wrap: wrap;
+    }
+    .search-box-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 240px;
+      max-width: 420px;
+    }
+    .search-box-wrap i {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--slate-400);
+      width: 16px;
+      height: 16px;
+    }
+    .search-box-wrap input {
+      width: 100%;
+      padding: 9px 12px 9px 36px;
+      border: 1px solid var(--slate-200);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      box-sizing: border-box;
+    }
+    .search-box-wrap input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+    .status-filter-pills {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .filter-pill {
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--slate-600);
+      background: var(--slate-100);
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .filter-pill:hover {
+      background: var(--slate-200);
+    }
+    .filter-pill.active {
+      background: var(--primary-light, #eef2ff);
+      color: var(--primary);
+      border-color: rgba(79, 70, 229, 0.2);
+      font-weight: 600;
+    }
+
+    /* Custom Table Specifics */
+    .custom-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    .custom-table th {
+      background: var(--slate-50);
+      padding: 10px 16px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--slate-600);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--slate-200);
+    }
+    .custom-table td {
+      padding: 12px 16px;
+      font-size: 0.88rem;
+      color: var(--slate-800);
+      border-bottom: 1px solid var(--slate-100);
+      vertical-align: middle;
+    }
+    .custom-table tbody tr:hover {
+      background: #faf8ff;
+    }
+    .custom-table tbody tr.row-selected {
+      background: #eef2ff !important;
+    }
+    .ticket-id-badge {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 0.84rem;
+      font-weight: 700;
+      color: var(--primary);
+      text-decoration: none;
+      background: #f1f5f9;
+      padding: 3px 7px;
+      border-radius: 5px;
+      border: 1px solid var(--slate-200);
+      display: inline-block;
+      transition: all 0.15s ease;
+    }
+    .ticket-id-badge:hover {
+      background: var(--primary-light, #eef2ff);
+      border-color: var(--primary);
+    }
+    .checkbox-cell {
+      width: 44px;
+      text-align: center;
+    }
+    .checkbox-custom {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    /* Status Badges */
+    .status-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .status-dot.pending { background: #fef3c7; color: #92400e; }
+    .status-dot.pending::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; }
+    .status-dot.in-progress { background: #dbeafe; color: #1e40af; }
+    .status-dot.in-progress::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #2563eb; }
+    .status-dot.on-hold { background: #f3e8ff; color: #6b21a8; }
+    .status-dot.on-hold::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #8b5cf6; }
+    .status-dot.reopened { background: #ffe4e6; color: #9f1239; }
+    .status-dot.reopened::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #e11d48; }
+
+    .dept-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #e0f2fe;
+      color: #0369a1;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    /* Confirmation Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      z-index: 99999;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+    .modal-card {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      width: 100%;
+      max-width: 520px;
+      padding: 1.5rem;
+      animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes modalPop {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--slate-100);
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+    }
+    .modal-header h3 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-family: 'Outfit', sans-serif;
+      color: var(--slate-900);
+    }
+    .ca-transfer-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--slate-50);
+      border: 1px solid var(--slate-200);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 14px;
+    }
+    .ca-box {
+      display: flex;
+      flex-direction: column;
+    }
+    .ca-box .ca-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--slate-500);
+      text-transform: uppercase;
+    }
+    .ca-box .ca-name {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--slate-900);
+    }
+    .selected-tickets-list {
+      max-height: 160px;
+      overflow-y: auto;
+      border: 1px solid var(--slate-200);
+      border-radius: 6px;
+      background: #fafafa;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      font-size: 0.84rem;
+    }
+    .selected-ticket-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 0;
+      border-bottom: 1px dashed var(--slate-200);
+    }
+    .selected-ticket-item:last-child {
+      border-bottom: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-shell">
+    <script>
+      if (localStorage.getItem('sidebar-collapsed') === 'true') {
+        document.querySelector('.admin-shell').classList.add('sidebar-collapsed');
+      }
+    </script>
+    {% include 'sidebar.html' %}
+
+    <main class="admin-main">
+      {% set page_kicker = "HOD Ticket Management" %}
+      {% set page_heading = "Selective Ticket Reassignment" %}
+      {% include 'topbar.html' %}
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="flash-stack" style="margin-bottom: 1.25rem;">
+            {% for category, message in messages %}
+              <div class="flash-message {{ category }}">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <!-- Top Title & Subtitle Banner -->
+      <div style="margin-bottom: 1.25rem;">
+        <span class="page-kicker" style="font-size: 0.78rem; font-weight: 700; color: var(--primary); letter-spacing: 0.05em; text-transform: uppercase;">HOD TICKET MANAGEMENT</span>
+        <h1 style="font-family: 'Outfit', sans-serif; font-size: 1.5rem; font-weight: 700; color: var(--slate-900); margin: 2px 0 4px;">Selective Ticket Reassignment</h1>
+        <p style="color: var(--slate-600); font-size: 0.88rem; margin: 0;">Reassign specific open tickets from an unavailable or absent Assignee to another active Assignee in your department.</p>
+      </div>
+
+      {% if departments %}
+        <div style="background: #ffffff; border: 1px solid var(--slate-200); border-radius: 10px; padding: 12px 16px; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:0.84rem; font-weight:700; color:var(--slate-800);">Acting as Department Head for:</span>
+            <span class="dept-badge">{{ dept_filter or 'Choose Department' }}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.82rem; font-weight:600; color:var(--slate-600);">Switch Department:</label>
+            <select class="input-style" style="padding: 6px 12px; font-size:0.84rem;" onchange="window.location.href='{{ url_for('management.hod_ticket_management') }}?department=' + encodeURIComponent(this.value)">
+              <option value="">— Select Department —</option>
+              {% for d in departments %}
+                <option value="{{ d.code }}" {% if dept_filter == d.code or dept_filter == d.name %}selected{% endif %}>{{ d.name }} ({{ d.code }})</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      {% endif %}
+
+      <!-- Transfer Control Center: Source CA, Replacement CA & Transfer Action -->
+      <div class="transfer-bar-card">
+        <div class="transfer-grid">
+          <!-- Step 1: Select Current / Absent CA -->
+          <div class="control-group">
+            <label class="control-label">
+              <span class="step-badge">1</span>
+              <span>Current / Absent Assignee (Source)</span>
+            </label>
+            <select id="source-ca-select" class="input-style searchable-select user-select" style="width:100%;" onchange="changeSourceCA(this.value)" data-placeholder="Choose current CA...">
+              <option value="">— Select Current CA —</option>
+              {% for ca in cas %}
+                <option value="{{ ca.id }}" data-dept="{{ ca.department|e }}" {% if selected_ca_id == ca.id %}selected{% endif %}>
+                  {{ ca.name }} ({{ ca.open_ticket_count }} open tickets) | {{ ca.email }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Step 2: Select Replacement CA (Active Department CAs only) -->
+          <div class="control-group">
+            <label class="control-label">
+              <span class="step-badge">2</span>
+              <span>Replacement Assignee (Target)</span>
+            </label>
+            <select id="target-ca-select" class="input-style searchable-select user-select" style="width:100%;" onchange="validateTransferState()" data-placeholder="Choose replacement CA...">
+              <option value="">— Select Replacement CA —</option>
+              {% for u in eligible_replacements %}
+                <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Step 3: Trigger Transfer Action -->
+          <div class="control-group" style="display:flex; align-items:flex-end;">
+            <button type="button" class="btn-transfer" id="btn-open-transfer" onclick="openConfirmationModal()" disabled>
+              <i data-lucide="arrow-right-left" style="width:16px;height:16px;"></i>
+              <span>Transfer Selected</span>
+              <span class="transfer-badge-count" id="btn-badge-count">0</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tickets Table Card -->
+      <div class="table-card">
+        <!-- Table Header Toolbar -->
+        <div class="table-toolbar">
+          <div class="search-box-wrap">
+            <i data-lucide="search"></i>
+            <input type="text" id="ticket-search" placeholder="Search ticket ID, summary, room..." onkeyup="filterTicketRows()">
+          </div>
+          <div class="status-filter-pills">
+            <span class="filter-pill active" onclick="setStatusFilter('ALL', this)">All ({{ tickets|length }})</span>
+            <span class="filter-pill" onclick="setStatusFilter('PENDING', this)">Pending</span>
+            <span class="filter-pill" onclick="setStatusFilter('IN_PROGRESS', this)">In Progress</span>
+            <span class="filter-pill" onclick="setStatusFilter('ON_HOLD', this)">On Hold</span>
+            <span class="filter-pill" onclick="setStatusFilter('REOPENED', this)">Reopened</span>
+          </div>
+        </div>
+
+        <!-- Table Container -->
+        <div style="overflow-x:auto;">
+          <table class="custom-table" id="tickets-table">
+            <thead>
+              <tr>
+                <th class="checkbox-cell">
+                  <input type="checkbox" id="master-select-all" class="checkbox-custom" title="Select All Visible" onchange="toggleSelectAllTickets(this)">
+                </th>
+                <th>Ticket</th>
+                <th>Subject & Details</th>
+                <th>Category</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Submitted By</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody id="tickets-tbody">
+              {% if not selected_ca_id %}
+                <tr>
+                  <td colspan="8" style="text-align:center; padding:3.5rem 1rem; color:var(--slate-400);">
+                    <i data-lucide="user-check" style="width:38px;height:38px;margin:0 auto 10px;display:block;opacity:0.6;"></i>
+                    <div style="font-weight:600; font-size:1rem; color:var(--slate-700);">Please select a Current Assignee above</div>
+                    <p style="font-size:0.85rem; margin-top:4px;">Select an Assignee to view and manage their open tickets.</p>
+                  </td>
+                </tr>
+              {% elif tickets|length == 0 %}
+                <tr>
+                  <td colspan="8" style="text-align:center; padding:3.5rem 1rem; color:var(--slate-400);">
+                    <i data-lucide="check-circle-2" style="width:38px;height:38px;margin:0 auto 10px;display:block;color:#10b981;opacity:0.8;"></i>
+                    <div style="font-weight:600; font-size:1rem; color:var(--slate-700);">No Open Tickets</div>
+                    <p style="font-size:0.85rem; margin-top:4px;"><strong>{{ selected_ca.name if selected_ca else 'This Assignee' }}</strong> currently has no pending or in-progress tickets.</p>
+                  </td>
+                </tr>
+              {% else %}
+                {% for t in tickets %}
+                  <tr class="ticket-row" data-id="{{ t.id }}" data-status="{{ t.status }}" data-category="{{ (t.category_name or '')|lower }}" data-corpus="{{ t.id }} {{ (t.title or '')|lower }} {{ (t.description or '')|lower }} {{ (t.category_name or '')|lower }} {{ (t.location_block or '')|lower }} {{ (t.location_room_no or '')|lower }} {{ (t.created_by_name or '')|lower }}">
+                    <td class="checkbox-cell">
+                      <input type="checkbox" class="checkbox-custom ticket-cb" value="{{ t.id }}" data-title="{{ t.title|e }}" onchange="handleTicketCheck(this)">
+                    </td>
+                    <td>
+                      <a href="{{ url_for('tickets.ticket_detail', ticket_id=t.id) }}" class="ticket-id-badge" target="_blank" title="View details">#{{ t.id }}</a>
+                    </td>
+                    <td>
+                      <div style="font-weight:600; color:var(--slate-900); font-size:0.88rem;">{{ t.title }}</div>
+                      {% if t.description %}
+                        <div style="color:var(--slate-500); font-size:0.78rem; max-width:320px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                          {{ t.description }}
+                        </div>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <span class="dept-badge">{{ t.category_name }}</span>
+                    </td>
+                    <td>
+                      <span style="font-size:0.82rem; color:var(--slate-700);">
+                        📍 {{ t.location_block or 'Campus' }}{% if t.location_floor %} · {{ t.location_floor }}{% endif %}{% if t.location_room_no %} · Rm {{ t.location_room_no }}{% endif %}
+                      </span>
+                    </td>
+                    <td>
+                      {% if t.status == 'PENDING' %}
+                        <span class="status-dot pending">Pending</span>
+                      {% elif t.status == 'IN_PROGRESS' %}
+                        <span class="status-dot in-progress">In Progress</span>
+                      {% elif t.status == 'ON_HOLD' %}
+                        <span class="status-dot on-hold">On Hold</span>
+                      {% elif t.status == 'REOPENED' %}
+                        <span class="status-dot reopened">Reopened</span>
+                      {% else %}
+                        <span class="status-dot">{{ t.status }}</span>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <div style="font-size:0.84rem; font-weight:600; color:var(--slate-800);">{{ t.created_by_name }}</div>
+                      <small style="color:var(--slate-500); font-size:0.75rem;">{{ t.created_by_email }}</small>
+                    </td>
+                    <td style="font-size:0.8rem; color:var(--slate-500); white-space:nowrap;">
+                      {{ t.created_at.strftime('%d %b %Y, %I:%M %p') if t.created_at else '—' }}
+                    </td>
+                  </tr>
+                {% endfor %}
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Confirmation Transfer Modal -->
+  <div id="transfer-confirm-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Confirm Selective Ticket Transfer</h3>
+        <button type="button" class="close-panel-btn" onclick="closeConfirmationModal()" style="font-size: 1.4rem; background:none; border:none; cursor:pointer;">&times;</button>
+      </div>
+
+      <form id="reassign-form" method="post" action="{{ url_for('management.hod_ticket_management') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="reassign_tickets">
+        <input type="hidden" id="form-source-ca-id" name="source_ca_id">
+        <input type="hidden" id="form-target-ca-id" name="target_ca_id">
+        <div id="selected-tickets-hidden-inputs"></div>
+
+        <!-- Transfer Banner -->
+        <div class="ca-transfer-banner">
+          <div class="ca-box">
+            <span class="ca-label">From Current CA</span>
+            <span class="ca-name" id="modal-from-ca">—</span>
+          </div>
+          <i data-lucide="arrow-right" style="width:20px;height:20px;color:var(--primary);"></i>
+          <div class="ca-box" style="text-align:right;">
+            <span class="ca-label">To Replacement CA</span>
+            <span class="ca-name" id="modal-to-ca" style="color:var(--primary);">—</span>
+          </div>
+        </div>
+
+        <p style="font-size:0.86rem; color:var(--slate-600); margin-bottom:10px;">
+          You are about to selectively transfer <strong id="modal-ticket-count" style="color:var(--slate-900);">0</strong> tickets. Only these specific tickets will change assignees:
+        </p>
+
+        <!-- Selected Tickets Preview List -->
+        <div class="selected-tickets-list" id="modal-tickets-list">
+          <!-- Dynamically populated -->
+        </div>
+
+        <!-- Optional Transfer Remarks -->
+        <div style="margin-bottom:16px;">
+          <span style="font-weight:600; font-size:0.84rem; color:var(--slate-700); margin-bottom:4px; display:block;">Transfer Remarks (Optional)</span>
+          <input type="text" name="remarks" class="input-style" placeholder="e.g. CA on medical leave; reassigned for urgent resolution." style="width:100%; box-sizing:border-box;">
+        </div>
+
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button type="button" class="btn-secondary-action" onclick="closeConfirmationModal()">Cancel</button>
+          <button type="submit" class="btn-primary-action" id="modal-submit-btn">
+            <i data-lucide="check" style="width:14px;height:14px;"></i> Confirm & Transfer
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/smart_select.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+  <script>
+    let currentStatusFilter = 'ALL';
+
+    function changeSourceCA(caId) {
+      if (!caId) return;
+      const url = new URL(window.location.href);
+      url.searchParams.set('ca_id', caId);
+      window.location.href = url.toString();
+    }
+
+    function handleTicketCheck(checkbox) {
+      const row = checkbox.closest('tr');
+      if (row) {
+        row.classList.toggle('row-selected', checkbox.checked);
+      }
+      validateTransferState();
+    }
+
+    function toggleSelectAllTickets(masterCheckbox) {
+      const isChecked = masterCheckbox.checked;
+      const visibleCheckboxes = document.querySelectorAll('#tickets-tbody tr:not([style*="display: none"]) .ticket-cb');
+      visibleCheckboxes.forEach(cb => {
+        cb.checked = isChecked;
+        const row = cb.closest('tr');
+        if (row) row.classList.toggle('row-selected', isChecked);
+      });
+      validateTransferState();
+    }
+
+    function validateTransferState() {
+      const checkedTickets = document.querySelectorAll('.ticket-cb:checked');
+      const targetCaSelect = document.getElementById('target-ca-select');
+      const transferBtn = document.getElementById('btn-open-transfer');
+      const countBadge = document.getElementById('btn-badge-count');
+
+      const count = checkedTickets.length;
+      if (countBadge) countBadge.textContent = count;
+
+      const hasTargetCA = targetCaSelect && targetCaSelect.value && targetCaSelect.value.trim() !== '';
+      if (transferBtn) {
+        transferBtn.disabled = (count === 0 || !hasTargetCA);
+      }
+    }
+
+    function setStatusFilter(status, pillElement) {
+      currentStatusFilter = status;
+      document.querySelectorAll('.status-filter-pills .filter-pill').forEach(el => el.classList.remove('active'));
+      if (pillElement) pillElement.classList.add('active');
+      filterTicketRows();
+    }
+
+    function filterTicketRows() {
+      const query = (document.getElementById('ticket-search').value || '').toLowerCase().trim();
+      const rows = document.querySelectorAll('#tickets-tbody tr.ticket-row');
+      let visibleCount = 0;
+
+      rows.forEach(row => {
+        const rowStatus = (row.getAttribute('data-status') || '').toUpperCase();
+        const corpus = (row.getAttribute('data-corpus') || '').toLowerCase();
+
+        const matchStatus = (currentStatusFilter === 'ALL' || rowStatus === currentStatusFilter);
+        const matchQuery = (!query || corpus.includes(query));
+
+        const isVisible = matchStatus && matchQuery;
+        row.style.display = isVisible ? '' : 'none';
+        if (isVisible) visibleCount++;
+      });
+    }
+
+    function openConfirmationModal() {
+      const checkedBoxes = Array.from(document.querySelectorAll('.ticket-cb:checked'));
+      if (checkedBoxes.length === 0) return;
+
+      const sourceSelect = document.getElementById('source-ca-select');
+      const targetSelect = document.getElementById('target-ca-select');
+
+      const sourceOpt = sourceSelect.options[sourceSelect.selectedIndex];
+      const targetOpt = targetSelect.options[targetSelect.selectedIndex];
+
+      const sourceName = sourceOpt ? sourceOpt.text.split('(')[0].trim() : 'Source CA';
+      const targetName = targetOpt ? targetOpt.text.split('(')[0].trim() : 'Replacement CA';
+
+      document.getElementById('form-source-ca-id').value = sourceSelect.value;
+      document.getElementById('form-target-ca-id').value = targetSelect.value;
+      document.getElementById('modal-from-ca').textContent = sourceName;
+      document.getElementById('modal-to-ca').textContent = targetName;
+      document.getElementById('modal-ticket-count').textContent = checkedBoxes.length;
+
+      // Populate hidden inputs & preview list
+      const hiddenInputsWrap = document.getElementById('selected-tickets-hidden-inputs');
+      const previewList = document.getElementById('modal-tickets-list');
+      hiddenInputsWrap.innerHTML = '';
+      previewList.innerHTML = '';
+
+      checkedBoxes.forEach(cb => {
+        // Add hidden input for POST
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'selected_tickets';
+        input.value = cb.value;
+        hiddenInputsWrap.appendChild(input);
+
+        // Add preview row
+        const item = document.createElement('div');
+        item.className = 'selected-ticket-item';
+        item.innerHTML = `
+          <strong>#${cb.value}</strong>
+          <span style="color:var(--slate-600); max-width:320px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+            ${cb.getAttribute('data-title') || ''}
+          </span>
+        `;
+        previewList.appendChild(item);
+      });
+
+      document.getElementById('transfer-confirm-modal').classList.add('active');
+    }
+
+    function closeConfirmationModal() {
+      document.getElementById('transfer-confirm-modal').classList.remove('active');
+    }
+
+    // Backdrop click close
+    document.addEventListener('DOMContentLoaded', function() {
+      const modal = document.getElementById('transfer-confirm-modal');
+      if (modal) {
+        modal.addEventListener('click', function(e) {
+          if (e.target === this) closeConfirmationModal();
+        });
+      }
+      validateTransferState();
+    });
+  </script>
+</body>
+</html>

@@ -89,11 +89,15 @@ def create_ticket_for_role():
 
         org_id = user["org_id"]
         submission_key = request.form.get("submission_key", "").strip() or None
-        demo_db.create_ticket(title=title, description=description, category_id=category_id,
-                              created_by=user["id"], org_id=org_id, location_id=location_id,
-                              submission_key=submission_key)
-        flash("Ticket created and auto-assigned to the mapped Assignee.", "success")
-        return redirect(url_for(route_for_role(user["role"])))
+        try:
+            demo_db.create_ticket(title=title, description=description, category_id=category_id,
+                                  created_by=user["id"], org_id=org_id, location_id=location_id,
+                                  submission_key=submission_key)
+            flash("Ticket created and auto-assigned to the mapped Assignee.", "success")
+            return redirect(url_for(route_for_role(user["role"])))
+        except Exception as e:
+            flash(f"Ticket creation failed: {e}", "error")
+            return redirect(url_for("tickets.create_ticket_for_role"))
 
     # Default: show categories for the user's own department initially
     selected_dept = request.args.get("dept", user_dept_code).strip()
@@ -152,7 +156,7 @@ def ticket_detail(ticket_id):
     user_email = user.get("email") or ""
     next_statuses = list(demo_db.ALLOWED_TRANSITIONS.get(ticket.get("status", ""), set()))
     
-    can_update = user.get("role") in ["SUPER_ADMIN", "ADMIN"] or (
+    can_update = (
         user.get("role") in ["CA", "ASSIGNEE"] and (
             (assigned_email and user_email and assigned_email.lower() == user_email.lower())
             or (ticket.get("assigned_to") and ticket.get("assigned_to") == user.get("id"))
@@ -186,7 +190,7 @@ def ticket_detail(ticket_id):
 
 
 @tickets_bp.route("/authority/update-status/<int:ticket_id>", methods=["POST"])
-@role_required("ASSIGNEE", "CA", "SUPER_ADMIN", "ADMIN", "HOD")
+@role_required("ASSIGNEE", "CA", "HOD")
 def authority_update_status(ticket_id):
     from app import get_demo_db
     demo_db = get_demo_db()
@@ -280,7 +284,6 @@ def authority_tickets():
     filters = filters_from_request()
     assigned_tickets = demo_db.list_tickets(user, scope="assigned", filters=filters)
     own_tickets = demo_db.list_tickets(user, scope="own", filters=filters)
-    dept_tickets = demo_db.list_tickets(user, scope="department", filters=filters)
 
     # Dashboard summary for stat cards
     summary = demo_db.dashboard_summary(user)
@@ -288,7 +291,6 @@ def authority_tickets():
         "authority_tickets.html",
         assigned_tickets=assigned_tickets,
         own_tickets=own_tickets,
-        dept_tickets=dept_tickets,
         filters=filters,
         summary=summary,
         **page_context("Assignee"),
@@ -313,26 +315,27 @@ def authority_my_tickets():
     )
 
 
+@tickets_bp.route("/authority/assigned-tickets")
 @tickets_bp.route("/authority/dept-tickets")
 @tickets_bp.route("/authority/all-tickets")
 @role_required("ASSIGNEE", "CA")
-def authority_dept_tickets():
+def authority_assigned_tickets():
     from app import get_demo_db, get_live_db
     demo_db = get_demo_db()
     live_db = get_live_db()
     user = current_user()
     filters = filters_from_request()
-    dept_tickets = demo_db.list_tickets(user, scope="department", filters=filters)
+    assigned_tickets = demo_db.list_tickets(user, scope="assigned", filters=filters)
     departments = live_departments(user.get("org_id"))
     locations = live_db.fetch_locations() if live_db.enabled else []
     return render_template(
         "management_all_tickets.html",
-        tickets=dept_tickets,
+        tickets=assigned_tickets,
         filters=filters,
         departments=departments,
         locations=locations,
-        export_scope="authority_dept",
-        page_title="Assignee Department Tickets",
+        export_scope="authority_assigned",
+        page_title="Assignee Tickets Repository",
         **page_context("Assignee"),
     )
 

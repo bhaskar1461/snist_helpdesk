@@ -279,3 +279,44 @@ class TestTickets(HelpdeskTestCase):
         GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"] = "RESOLVED"
         ticket_resolved = db_service.get_ticket(40)
         self.assertFalse(ticket_resolved.get("is_escalated"), "Expected resolved ticket to not be escalated")
+
+    def test_assigned_ca_contact_info_display(self):
+        # Seed a ticket assigned to CA Chandini (id=4) created by Faculty (id=7)
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"] = [{
+            "id": 159,
+            "title": "Internet issue in SAP lab",
+            "description": "Wifi not connecting",
+            "category_id": 1,
+            "created_by": 7,
+            "assigned_to": 4,
+            "status": "PENDING",
+            "org_id": "2000",
+            "location_id": 1,
+            "created_at": "2026-08-13 13:57:00"
+        }]
+
+        # 1. Test db_service.get_ticket returns assigned_to_phone and created_by_phone
+        from app import get_demo_db
+        demo_db = get_demo_db()
+        ticket = demo_db.get_ticket(159)
+        self.assertIsNotNone(ticket)
+        self.assertEqual(ticket["assigned_to_name"], "Chandini CA")
+        self.assertEqual(ticket["assigned_to_phone"], "9876543210")
+        self.assertEqual(ticket["created_by_phone"], "9876543210")
+
+        # 2. When Faculty (creator) views ticket: sees CA phone with 'Call CA' button, not their own
+        self.login_as("faculty@gmail.com")
+        res = self.client.get("/tickets/159")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn(b"Chandini CA", res.data)
+        self.assertIn(b"Call CA", res.data)
+        self.assertNotIn(b"Call User", res.data)
+
+        # 3. When CA views ticket: sees Submitter phone with 'Call User' button, not their own
+        self.login_as("ca@gmail.com")
+        res_ca = self.client.get("/tickets/159")
+        self.assertEqual(res_ca.status_code, 200)
+        self.assertIn(b"Demo Faculty", res_ca.data)
+        self.assertIn(b"Call User", res_ca.data)
+        self.assertNotIn(b"Call CA", res_ca.data)
+

@@ -509,11 +509,11 @@ class LiveDbService(BaseMySQLService):
 
 
 class DemoDbService(BaseMySQLService):
-    def get_user_phone(self, email):
+    def get_user_phone(self, email, use_fallback=True):
         """Query helpdesk_users, teacher_info, and sys_administrators for user's phone. Returns phone number or fallback."""
         test_number = os.getenv("SMS_TEST_NUMBER")
         if not email:
-            return test_number
+            return test_number if use_fallback else None
 
         if self.enabled:
             # 1. Check helpdesk_users.phone
@@ -547,7 +547,7 @@ class DemoDbService(BaseMySQLService):
             except Exception:
                 pass
 
-        return test_number if test_number else None
+        return test_number if use_fallback else None
 
     def ensure_schema(self, schema_path: Path):
         if not self.enabled:
@@ -1077,7 +1077,29 @@ class DemoDbService(BaseMySQLService):
                     block_name = row.get("block")
 
         # Resolve assigned CA dynamically
-        assigned_ca_id = self.resolve_assigned_ca(category_id, block_name) or category["assigned_ca_id"]
+        assigned_ca_id = self.resolve_assigned_ca(category_id, block_name) or category.get("assigned_ca_id")
+
+        if not assigned_ca_id:
+            # Fallback 1: Any active CA in the category's department
+            cat_dept = (category.get("department") or "").strip()
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id FROM helpdesk_users WHERE role IN ('CA', 'ASSIGNEE') AND LOWER(department) = LOWER(%s) AND is_active = 1 LIMIT 1",
+                    (cat_dept,)
+                )
+                ca_row = cursor.fetchone()
+                if ca_row:
+                    assigned_ca_id = ca_row["id"]
+                else:
+                    # Fallback 2: Department HOD or Administrator
+                    cursor.execute(
+                        "SELECT id FROM helpdesk_users WHERE role IN ('HOD', 'ADMIN', 'SUPER_ADMIN') AND is_active = 1 ORDER BY id ASC LIMIT 1"
+                    )
+                    admin_row = cursor.fetchone()
+                    if admin_row:
+                        assigned_ca_id = admin_row["id"]
+                    else:
+                        raise ValueError(f"Category '{category['category_name']}' has no assigned Assignee. Please assign a CA before creating tickets.")
 
         with self.connection() as connection, connection.cursor() as cursor:
             try:
@@ -1177,8 +1199,10 @@ class DemoDbService(BaseMySQLService):
                 c.department,
                 creator.name AS created_by_name,
                 creator.email AS created_by_email,
+                creator.phone AS created_by_phone,
                 assignee.name AS assigned_to_name,
                 assignee.email AS assigned_to_email,
+                assignee.phone AS assigned_to_phone,
                 loc.block AS location_block,
                 loc.floor AS location_floor,
                 loc.room_no AS location_room_no,
@@ -1267,7 +1291,15 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql, (ticket_id,))
             ticket = cursor.fetchone()
-            return self.add_escalation_status(ticket)
+            if not ticket:
+                return None
+            ticket = self.add_escalation_status(ticket)
+            if ticket:
+                if (not ticket.get("assigned_to_phone") or str(ticket.get("assigned_to_phone")).strip() in ('', '0', 'None')) and ticket.get("assigned_to_email"):
+                    ticket["assigned_to_phone"] = self.get_user_phone(ticket["assigned_to_email"], use_fallback=False)
+                if (not ticket.get("created_by_phone") or str(ticket.get("created_by_phone")).strip() in ('', '0', 'None')) and ticket.get("created_by_email"):
+                    ticket["created_by_phone"] = self.get_user_phone(ticket["created_by_email"], use_fallback=False)
+            return ticket
 
     ALLOWED_TRANSITIONS = {
         "PENDING": {"IN_PROGRESS"},
@@ -1287,8 +1319,9 @@ class DemoDbService(BaseMySQLService):
 
         # Permission check:
         # - Assigned CA can update their own assigned tickets
-        # - SUPER_ADMIN can update any ticket
+        # - Department HOD can update tickets in their department
         # - Ticket creator can REOPEN a RESOLVED ticket
+        # - SUPER_ADMIN and ADMIN have view-only access across all tickets and cannot update resolution status
         is_assigned_ca = (
             actor.get("role") in ["CA", "ASSIGNEE"]
             and (
@@ -1296,7 +1329,6 @@ class DemoDbService(BaseMySQLService):
                 or (ticket.get("assigned_to") and ticket.get("assigned_to") == actor.get("id"))
             )
         )
-        is_super_admin = actor.get("role") in ["SUPER_ADMIN", "ADMIN"]
         is_hod = actor.get("role") == "HOD" and actor.get("department") == ticket.get("department")
         is_creator_reopening = (
             (
@@ -1306,7 +1338,7 @@ class DemoDbService(BaseMySQLService):
             and ticket.get("status") == "RESOLVED"
             and status == "REOPENED"
         )
-        if not is_assigned_ca and not is_super_admin and not is_hod and not is_creator_reopening:
+        if not is_assigned_ca and not is_hod and not is_creator_reopening:
             raise PermissionError("Only the assigned Assignee or Department Head can update this ticket.")
 
         # Enforce valid status transitions
@@ -1347,6 +1379,132 @@ class DemoDbService(BaseMySQLService):
                 except Exception:
                     pass
         return True
+
+    def get_ca_open_tickets(self, ca_id: int, department: str = None, org_id: str = None) -> list:
+        """Fetch all active open tickets assigned to a specific CA (PENDING, IN_PROGRESS, ON_HOLD, REOPENED)."""
+        sql = self.ticket_query_base() + " AND t.assigned_to = %s AND t.status IN ('PENDING', 'IN_PROGRESS', 'ON_HOLD', 'REOPENED')"
+        params = [ca_id]
+        if department:
+            sql += " AND LOWER(c.department) = LOWER(%s)"
+            params.append(department)
+        if org_id:
+            sql += " AND t.org_id = %s"
+            params.append(org_id)
+        sql += " ORDER BY t.created_at DESC"
+
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(sql, tuple(params))
+            tickets = cursor.fetchall()
+            return [self.add_escalation_status(t) for t in tickets]
+
+    def reassign_tickets(self, ticket_ids: list, source_ca_id: int, target_ca_id: int, actor: dict, remarks: str = "") -> dict:
+        """
+        Selectively reassigns a list of tickets from source_ca_id to target_ca_id.
+        Performs strict validation of actor permissions, ticket status, CA eligibility, and department scoping.
+        """
+        if not ticket_ids:
+            raise ValueError("No tickets selected for reassignment.")
+
+        try:
+            source_ca_id = int(str(source_ca_id).strip())
+            target_ca_id = int(str(target_ca_id).strip())
+        except (ValueError, TypeError):
+            raise ValueError("Both source and replacement Assignee must be specified.")
+
+        if source_ca_id == target_ca_id:
+            raise ValueError("Source Assignee and Replacement Assignee cannot be the same person.")
+
+        # 1. Validate Actor Permissions
+        actor_role = (actor.get("role") or "").upper()
+        if actor_role not in ["HOD", "ADMIN", "SUPER_ADMIN"]:
+            raise PermissionError("Only Department Heads and Administrators can reassign tickets.")
+
+        # 2. Validate Source & Target CAs
+        source_ca = self.get_user(source_ca_id)
+        if not source_ca:
+            raise ValueError("Source Assignee not found.")
+
+        target_ca = self.get_user(target_ca_id)
+        if not target_ca:
+            raise ValueError("Replacement Assignee not found.")
+
+        if target_ca.get("is_active", 1) == 0:
+            raise ValueError("Replacement Assignee account is inactive.")
+
+        if actor_role == "HOD":
+            actor_dept = (actor.get("department") or "").lower().strip()
+            target_dept = (target_ca.get("department") or "").lower().strip()
+            if actor_dept and target_dept and actor_dept != target_dept:
+                raise PermissionError("Replacement Assignee must belong to your department.")
+
+        # 3. Validate Each Selected Ticket
+        valid_tickets = []
+        for t_id in ticket_ids:
+            try:
+                tid = int(str(t_id).strip())
+            except (ValueError, TypeError):
+                continue
+            ticket = self.get_ticket(tid)
+            if not ticket:
+                raise ValueError(f"Ticket #{tid} not found.")
+
+            if ticket.get("assigned_to") != source_ca_id:
+                raise ValueError(f"Ticket #{tid} is not currently assigned to {source_ca.get('name')}.")
+
+            if ticket.get("status") in ["RESOLVED"]:
+                raise ValueError(f"Ticket #{tid} is already RESOLVED and cannot be reassigned.")
+
+            if actor_role == "HOD":
+                ticket_dept = (ticket.get("department") or "").lower().strip()
+                actor_dept = (actor.get("department") or "").lower().strip()
+                if actor_dept and ticket_dept and actor_dept != ticket_dept:
+                    raise PermissionError(f"Ticket #{tid} belongs to {ticket.get('department')}, not your department.")
+
+            valid_tickets.append(ticket)
+
+        if not valid_tickets:
+            raise ValueError("No valid tickets eligible for reassignment.")
+
+        # 4. Atomic Execution
+        transfer_note = remarks.strip() if remarks else f"Ticket selectively reassigned from {source_ca.get('name')} to {target_ca.get('name')} by {actor.get('name')} ({actor_role})."
+
+        with self.connection() as connection, connection.cursor() as cursor:
+            for t in valid_tickets:
+                cursor.execute(
+                    "UPDATE helpdesk_tickets SET assigned_to = %s WHERE id = %s AND assigned_to = %s",
+                    (target_ca_id, t["id"], source_ca_id),
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO helpdesk_ticket_activity
+                        (ticket_id, action_by, from_status, to_status, remarks, time_taken, attachment_path)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (t["id"], actor["id"], t["status"], t["status"], transfer_note, "", ""),
+                )
+
+        # Audit Event
+        self.log_audit_event(
+            "TICKETS_REASSIGNED", actor["id"], actor.get("org_id", "2000"),
+            target_type="tickets", target_id=target_ca_id,
+            details={
+                "source_ca_id": source_ca_id,
+                "source_ca_name": source_ca.get("name"),
+                "target_ca_id": target_ca_id,
+                "target_ca_name": target_ca.get("name"),
+                "reassigned_count": len(valid_tickets),
+                "ticket_ids": [t["id"] for t in valid_tickets],
+                "remarks": remarks,
+            }
+        )
+
+        return {
+            "success": True,
+            "reassigned_count": len(valid_tickets),
+            "ticket_ids": [t["id"] for t in valid_tickets],
+            "source_ca_name": source_ca.get("name"),
+            "target_ca_name": target_ca.get("name"),
+        }
 
     # ── Analytics ────────────────────────────────────────
 
