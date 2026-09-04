@@ -8,14 +8,14 @@ DB_PASS = os.getenv("MYSQL_PASSWORD", "")
 DB_PORT = int(os.getenv("MYSQL_PORT", "3306"))
 
 DEFAULT_STAFF = [
-    {"name": "Super Admin", "email": "admin@gmail.com", "role": "SUPER_ADMIN", "department": "Administration", "password": "123"},
-    {"name": "Campus Admin", "email": "campus.admin@gmail.com", "role": "ADMIN", "department": "Administration", "password": "123"},
-    {"name": "CTO Admin", "email": "cto@sreenidhi.edu.in", "role": "SUPER_ADMIN", "department": "CTO", "password": None},
-    {"name": "Srinivas SAP", "email": "srinivas.n@sreenidhi.edu.in", "role": "SUPER_ADMIN", "department": "SAP", "password": None},
-    {"name": "ICT Manager", "email": "managerict@sreenidhi.edu.in", "role": "CA", "department": "ICT", "password": None},
-    {"name": "Facilities Manager", "email": "managerfs@sreenidhi.edu.in", "role": "CA", "department": "Facilities", "password": None},
-    {"name": "HCM Executive", "email": "ramkumar.b@sreenidhi.edu.in", "role": "CA", "department": "HCM", "password": None},
-    {"name": "MM Executive", "email": "chakradhar.n@sreenidhi.edu.in", "role": "CA", "department": "MM", "password": None},
+    {"name": "Super Admin", "email": "admin@gmail.com", "role": "SUPER_ADMIN", "department": "Administration", "password": "Admin@321#"},
+    {"name": "Campus Admin", "email": "campus.admin@gmail.com", "role": "ADMIN", "department": "Administration", "password": "Admin@321#"},
+    {"name": "CTO Admin", "email": "cto@sreenidhi.edu.in", "role": "SUPER_ADMIN", "department": "CTO", "password": "Admin@321#"},
+    {"name": "Srinivas SAP", "email": "srinivas.n@sreenidhi.edu.in", "role": "SUPER_ADMIN", "department": "SAP", "password": "Admin@321#"},
+    {"name": "ICT Manager", "email": "managerict@sreenidhi.edu.in", "role": "CA", "department": "ICT", "password": "Admin@321#"},
+    {"name": "Facilities Manager", "email": "managerfs@sreenidhi.edu.in", "role": "CA", "department": "Facilities", "password": "Admin@321#"},
+    {"name": "HCM Executive", "email": "ramkumar.b@sreenidhi.edu.in", "role": "CA", "department": "HCM", "password": "Admin@321#"},
+    {"name": "MM Executive", "email": "chakradhar.n@sreenidhi.edu.in", "role": "CA", "department": "MM", "password": "Admin@321#"},
 ]
 
 DEFAULT_CATEGORIES = [
