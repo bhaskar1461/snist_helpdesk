@@ -146,14 +146,8 @@ def sso_login():
                         "org_id": teacher.get("org_id", "2000"),
                     }
                 else:
-                    user = {
-                        "id": email,
-                        "name": name,
-                        "email": email,
-                        "role": role,
-                        "department": dept,
-                        "org_id": resolve_user_org(email, dept, live_db),
-                    }
+                    flash(f"Access restricted: The account ({email}) is not registered in the SNIST staff directory. Please contact the administrator.", "error")
+                    return redirect(url_for("auth.login"))
 
             _set_session(user, email)
             flash(f"Signed in via Google SSO ({email}).", "success")
@@ -276,14 +270,13 @@ def sso_callback():
                     "org_id": teacher.get("org_id", "2000"),
                 }
             else:
-                user = {
-                    "id": email,
-                    "name": name,
-                    "email": email,
-                    "role": role,
-                    "department": department,
-                    "org_id": resolve_user_org(email, department, live_db),
-                }
+                log.warning("SSO login denied for unregistered user: %s", email)
+                flash(
+                    f"Access restricted: The account ({email}) is not registered in the SNIST staff directory. "
+                    "Please contact the system administrator.",
+                    "error",
+                )
+                return redirect(url_for("auth.login"))
 
         _set_session(user, email)
         return redirect(url_for(route_for_role(user["role"])))

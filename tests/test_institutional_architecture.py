@@ -256,3 +256,42 @@ class TestInstitutionalArchitecture(HelpdeskTestCase):
         # 2. Verify zero rows inserted into helpdesk_users
         current_user_count = len(GLOBAL_DB_STATE.tables["helpdesk_users"])
         self.assertEqual(current_user_count, initial_user_count)
+
+    def test_sso_unregistered_user_rejected(self):
+        """SSO login is rejected if email is not present in institutional teacher_info or staff_roles."""
+        # 1. Test via mock SSO login POST
+        res_mock = self.client.post("/sso/login", data={
+            "email": "unregistered.student@sreenidhi.edu.in",
+            "name": "Random Student",
+            "department": "CSE",
+            "role": "FACULTY"
+        }, follow_redirects=True)
+        self.assertEqual(res_mock.status_code, 200)
+        self.assertIn(b"Access restricted", res_mock.data)
+        with self.client.session_transaction() as sess:
+            self.assertNotIn("user_id", sess)
+
+        # 2. Test via Google OAuth2 callback
+        with self.client.session_transaction() as sess:
+            sess["sso_state"] = "mock_sso_state_reject"
+
+        token_cm = MagicMock()
+        token_cm.read.return_value = json.dumps({"access_token": "mock_token"}).encode()
+        token_mock = MagicMock()
+        token_mock.__enter__.return_value = token_cm
+
+        userinfo_cm = MagicMock()
+        userinfo_cm.read.return_value = json.dumps({
+            "email": "unregistered.student@sreenidhi.edu.in",
+            "name": "Random Student",
+        }).encode()
+        userinfo_mock = MagicMock()
+        userinfo_mock.__enter__.return_value = userinfo_cm
+
+        with patch("urllib.request.urlopen", side_effect=[token_mock, userinfo_mock]):
+            res_cb = self.client.get("/sso/callback?code=mock_code&state=mock_sso_state_reject", follow_redirects=True)
+            self.assertEqual(res_cb.status_code, 200)
+            self.assertIn(b"Access restricted", res_cb.data)
+
+        with self.client.session_transaction() as sess:
+            self.assertNotIn("user_id", sess)
