@@ -68,7 +68,7 @@ def search_users():
                 continue
             seen_emails.add(email_lower)
             results.append({
-                "id": f"ref:{r['EMAIL_ID']}",
+                "id": r.get("TEACHER_ID") or r.get("id") or r['EMAIL_ID'],
                 "name": r.get("TEACHER_NAME") or "Unknown",
                 "email": r.get("EMAIL_ID", ""),
                 "employee_id": str(r.get("SAP_ID") or r.get("TEACHER_ID") or ""),
@@ -214,7 +214,7 @@ def list_assignees():
                 continue
             seen.add(ref_email.lower())
             results.append({
-                "id": ref_email,
+                "id": ru.get("id") or ru.get("TEACHER_ID") or ref_email,
                 "name": ref_name,
                 "email": ref_email,
                 "department": department,

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ role_title }} All Tickets — SNIST Helpdesk</title>
+  <title>{{ role_title }} All Tickets — Help Desk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -402,20 +402,37 @@
             {% endfor %}
           </select>
 
-          <!-- Department Dropdown -->
-          <select name="department" class="filter-select">
-            <option value="">All Departments</option>
-            {% for department in departments %}
-              <option value="{{ department.code }}" {% if filters.department == department.code %}selected{% endif %}>{{ department.code }}</option>
-            {% endfor %}
-          </select>
+          {% if (current_user and current_user.role == 'HOD') or session.get('acting_role') == 'HOD' or session.get('role') == 'HOD' %}
+            <!-- HOD Dynamic Read-only Org & Department Badges -->
+            <div style="display:inline-flex; align-items:center; gap:8px;">
+              <span class="filter-fixed-badge" style="background:#f1f5f9; color:var(--slate-700); border:1.5px solid #cbd5e1; padding:7px 12px; border-radius:8px; font-size:0.84rem; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+                <i data-lucide="building" style="width:14px;height:14px;color:var(--slate-500);"></i>
+                <span>{{ org_label }}</span>
+              </span>
+              <span class="filter-fixed-badge" style="background:var(--primary-light); color:var(--primary); border:1.5px solid #c7d2fe; padding:7px 12px; border-radius:8px; font-size:0.84rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                <i data-lucide="briefcase" style="width:14px;height:14px;color:var(--primary);"></i>
+                <span>{{ session.get('acting_department') or (current_user.department if current_user else '') }}</span>
+              </span>
+            </div>
+            <input type="hidden" name="org_id" value="{{ current_user.org_id if current_user else '2000' }}">
+            <input type="hidden" name="department" value="{{ session.get('acting_department') or (current_user.department if current_user else '') }}">
+          {% else %}
+            <!-- Admin / Super Admin Dropdowns -->
+            <!-- Org Dropdown (Before All Departments) -->
+            <select name="org_id" class="filter-select" id="filter-org-select" onchange="filterDeptOptions()">
+              <option value="">All Orgs</option>
+              <option value="2000" {% if filters.org_id == '2000' %}selected{% endif %}>SNIST</option>
+              <option value="3000" {% if filters.org_id == '3000' %}selected{% endif %}>SNU</option>
+            </select>
 
-          <!-- Org Dropdown -->
-          <select name="org_id" class="filter-select">
-            <option value="">All Orgs</option>
-            <option value="2000" {% if filters.org_id == '2000' %}selected{% endif %}>SNIST</option>
-            <option value="3000" {% if filters.org_id == '3000' %}selected{% endif %}>SNU</option>
-          </select>
+            <!-- Department Dropdown (Only with Active Categories) -->
+            <select name="department" class="filter-select" id="filter-dept-select">
+              <option value="">All Departments</option>
+              {% for department in departments %}
+                <option value="{{ department.code }}" data-org="{{ department.org_id or '2000' }}" {% if filters.department == department.code %}selected{% endif %}>{{ department.code }}</option>
+              {% endfor %}
+            </select>
+          {% endif %}
 
           <!-- Date Filters -->
           <div style="display:flex; align-items:center; gap:6px;">
@@ -454,7 +471,7 @@
             <thead>
               <tr>
                 <th style="width: 70px;">ID</th>
-                <th>Complaint & Category</th>
+                <th>Ticket & Category</th>
                 <th>Department</th>
                 <th>Location</th>
                 <th>Status</th>
@@ -547,7 +564,29 @@
   </div>
 
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script>lucide.createIcons();</script>
+  <script>
+    lucide.createIcons();
+
+    function filterDeptOptions() {
+      const orgSelect = document.getElementById('filter-org-select');
+      const deptSelect = document.getElementById('filter-dept-select');
+      if (!orgSelect || !deptSelect) return;
+      const selectedOrg = orgSelect.value;
+      const options = deptSelect.querySelectorAll('option[data-org]');
+      options.forEach(opt => {
+        const optOrg = opt.getAttribute('data-org');
+        if (!selectedOrg || optOrg === selectedOrg) {
+          opt.style.display = '';
+        } else {
+          opt.style.display = 'none';
+          if (deptSelect.value === opt.value) {
+            deptSelect.value = '';
+          }
+        }
+      });
+    }
+    document.addEventListener('DOMContentLoaded', filterDeptOptions);
+  </script>
   <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>

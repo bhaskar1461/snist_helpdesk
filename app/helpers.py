@@ -174,7 +174,7 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("dashboards.super_admin_my_tickets", "My Tickets", "ticket"),
             ("dashboards.super_admin_all_tickets", "All Tickets", "clipboard-list"),
-            ("management.category_assignments", "Assignee Management", "folder-open"),
+            ("management.category_assignments", "Categories", "folder-open"),
             ("management.user_management", "Users", "users"),
             ("management.location_management", "Locations", "map-pin"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
@@ -184,7 +184,7 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("dashboards.admin_my_tickets", "My Tickets", "ticket"),
             ("dashboards.admin_all_tickets", "All Tickets", "clipboard-list"),
-            ("management.category_assignments", "Assignee Management", "folder-open"),
+            ("management.category_assignments", "Categories", "folder-open"),
             ("management.user_management", "Users", "users"),
             ("management.location_management", "Locations", "map-pin"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
@@ -194,7 +194,8 @@ def sidebar_links(role: str) -> list[tuple[str, str, str]]:
             ("tickets.create_ticket_for_role", "Create Ticket", "plus-circle"),
             ("dashboards.hod_my_tickets", "My Tickets", "ticket"),
             ("dashboards.hod_all_tickets", "All Tickets", "clipboard-list"),
-            ("management.category_assignments", "Assignee Management", "folder-open"),
+            ("management.category_assignments", "Categories", "folder-open"),
+            ("management.user_management", "Users", "users"),
             ("management.hod_ticket_management", "Ticket Management", "arrow-right-left"),
             ("analytics.analytics_dashboard", "Analytics", "bar-chart-3"),
         ],
@@ -288,16 +289,14 @@ def normalize_dept_name(val: str, org_id: str = "2000") -> str:
 def departments_match(dept1: str, dept2: str, org_id: str = "2000") -> bool:
     if not dept1 or not dept2:
         return False
-    d1_norm = normalize_dept_name(dept1, org_id).lower()
-    d2_norm = normalize_dept_name(dept2, org_id).lower()
+    d1_norm = normalize_dept_name(dept1, org_id).strip().lower()
+    d2_norm = normalize_dept_name(dept2, org_id).strip().lower()
     if d1_norm == d2_norm:
         return True
-    if d1_norm in d2_norm or d2_norm in d1_norm:
-        return True
     aliases = [
-        {"facilities", "fecilities", "facilities & security", "f&s", "estate", "maintenance"},
+        {"facilities", "fecilities", "facilities & security", "f&s", "estate", "maintenance", "facilities & estates"},
         {"ict", "information technology", "information and communication technology", "sap"},
-        {"cse", "computer science and engineering", "computer science", "cs"},
+        {"cse", "computer science and engineering", "computer science"},
         {"ece", "electronics and communication engineering"},
         {"eee", "electrical and electronics engineering", "soee"},
         {"s&h", "science and humanities", "s and h", "maths", "physics", "chemistry", "english"},
@@ -306,6 +305,28 @@ def departments_match(dept1: str, dept2: str, org_id: str = "2000") -> bool:
         if d1_norm in grp and d2_norm in grp:
             return True
     return False
+
+def active_category_departments(demo_db, org_id=None):
+    active_categories = demo_db.list_categories(active_only=True)
+    seen = set()
+    departments = []
+    for cat in active_categories:
+        dept = (cat.get("department") or "").strip()
+        if not dept:
+            continue
+        display_dept = "Facilities" if dept.lower() in ("facilities", "fecilities") else dept
+        if display_dept.upper() in seen:
+            continue
+        cat_org = str(cat.get("org_id") or "2000")
+        if org_id and cat_org != str(org_id):
+            continue
+        seen.add(display_dept.upper())
+        departments.append({
+            "code": display_dept,
+            "name": display_dept,
+            "org_id": cat_org
+        })
+    return sorted(departments, key=lambda d: d["code"])
 
 def live_departments(org_id=None):
     global _DEPT_CACHE, _DEPT_CACHE_TIME

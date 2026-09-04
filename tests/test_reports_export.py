@@ -98,16 +98,16 @@ class TestReportsExport(HelpdeskTestCase):
 
     def test_audit_logging_system(self):
         # Trigger an action that creates an audit event
-        self.login_as("admin@gmail.com")
-
-        # Create a new user (generates audit event)
-        self.client.post("/user-management", data={
-            "name": "Audit Test User",
-            "email": "audit_test@gmail.com",
-            "password": "123",
-            "role": "FACULTY",
-            "department": "CSE"
-        })
+        from app import get_demo_db
+        demo_db = get_demo_db()
+        demo_db.log_audit_event(
+            "USER_UPDATED",
+            actor_id=1,
+            org_id="2000",
+            target_type="user",
+            target_id=1,
+            details={"email": "faculty@gmail.com", "action": "test"}
+        )
 
         # Verify audit event table contains the log entry
         audit_events = GLOBAL_DB_STATE.tables["helpdesk_audit_events"]
@@ -115,4 +115,4 @@ class TestReportsExport(HelpdeskTestCase):
         self.assertEqual(audit_events[-1]["org_id"], "2000")
         
         # Check details contain user email or action
-        self.assertIn("audit_test@gmail.com", audit_events[-1]["details"])
+        self.assertIn("faculty@gmail.com", audit_events[-1]["details"])

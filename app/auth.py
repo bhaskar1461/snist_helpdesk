@@ -51,49 +51,8 @@ def login():
     password = request.form.get("password", "").strip()
 
     try:
-        # 1) Try demo_users first
+        # Authenticate user directly (checks staff roles and authoritative teacher_info)
         user = demo_db.authenticate_user(email, password)
-
-        # 2) Auto-provision from teacher_info for institutional emails
-        teacher_lookup_occurred = False
-        if not user and email.endswith(("@sreenidhi.edu.in", "@suh.edu.in", "@sreegroup.edu.in")):
-            if demo_db.get_user_by_email(email):
-                record_login_attempt(ip)
-                flash("Invalid email or password.", "error")
-                return render_template("login.html", sso_enabled=SSO_ENABLED)
-
-            teacher_lookup_occurred = True
-            try:
-                teacher = live_db.lookup_teacher_by_email(email)
-            except Exception as e:
-                log.warning("Live DB teacher lookup failed: %s", e)
-                teacher = None
-
-            if teacher and teacher.get("sap_id"):
-                sap_id = str(teacher["sap_id"]).strip()
-                if password == sap_id:
-                    teacher_name = (teacher.get("name") or "User").strip()
-                    teacher_dept = (teacher.get("department") or "").strip() or "General"
-                    try:
-                        user_id = demo_db.create_user({
-                            "name": teacher_name,
-                            "email": email,
-                            "password": sap_id,
-                            "role": "FACULTY",
-                            "department": teacher_dept,
-                        })
-                        user = {
-                            "id": user_id,
-                            "name": teacher_name,
-                            "email": email,
-                            "role": "FACULTY",
-                            "department": teacher_dept,
-                        }
-                        log.info("Auto-provisioned teacher %s (%s) as FACULTY.", teacher_name, email)
-                    except Exception as exc:
-                        log.error("Failed to auto-provision teacher %s: %s", email, exc)
-                        flash("Account setup failed. Please contact the administrator.", "error")
-                        return render_template("login.html", sso_enabled=SSO_ENABLED)
     except Exception as db_err:
         log.error("Database connection error during login: %s", db_err)
         flash("Database temporarily unavailable. Please try again in a few moments.", "error")
@@ -177,18 +136,24 @@ def sso_login():
             else:
                 teacher = live_db.lookup_teacher_by_email(email) if live_db.enabled else None
                 if teacher:
-                    name = teacher.get("name") or name
-                    dept = teacher.get("department") or dept
-
-                import secrets as _s
-                user_id = demo_db.create_user({
-                    "name": name,
-                    "email": email,
-                    "password": _s.token_hex(16),
-                    "role": role,
-                    "department": dept,
-                })
-                user = {"id": user_id, "name": name, "email": email, "role": role, "department": dept}
+                    resolved_role = "HOD" if teacher.get("is_hod") else role
+                    user = {
+                        "id": teacher["id"],
+                        "name": teacher.get("name") or name,
+                        "email": email,
+                        "role": resolved_role,
+                        "department": teacher.get("department") or dept,
+                        "org_id": teacher.get("org_id", "2000"),
+                    }
+                else:
+                    user = {
+                        "id": email,
+                        "name": name,
+                        "email": email,
+                        "role": role,
+                        "department": dept,
+                        "org_id": resolve_user_org(email, dept, live_db),
+                    }
 
             _set_session(user, email)
             flash(f"Signed in via Google SSO ({email}).", "success")
@@ -292,44 +257,33 @@ def sso_callback():
         if SSO_DEPT_CLAIM and SSO_DEPT_CLAIM in userinfo:
             department = str(userinfo[SSO_DEPT_CLAIM]).strip()
 
-        # Auto-provision or update user
+        # Direct institutional resolution - zero duplicate user creation
         existing = demo_db.get_user_by_email(email)
         if existing:
-            # Update profile from SSO
-            demo_db.update_user(existing["id"], {
-                "name": name,
-                "email": email,
-            })
-            user = {
-                "id": existing["id"],
-                "name": name,
-                "email": email,
-                "role": existing["role"],
-                "department": existing["department"],
-            }
+            user = existing
+            if name and not user.get("name"):
+                user["name"] = name
         else:
-            # Try to resolve department from teacher_info
             teacher = live_db.lookup_teacher_by_email(email) if live_db.enabled else None
             if teacher:
-                department = (teacher.get("department") or department).strip()
-                name = (teacher.get("name") or name).strip()
-
-            import secrets as _s
-            user_id = demo_db.create_user({
-                "name": name,
-                "email": email,
-                "password": _s.token_hex(16),  # random password (SSO users won't use it)
-                "role": role,
-                "department": department,
-            })
-            user = {
-                "id": user_id,
-                "name": name,
-                "email": email,
-                "role": role,
-                "department": department,
-            }
-            log.info("Auto-provisioned SSO user %s (%s) as %s.", name, email, role)
+                resolved_role = "HOD" if teacher.get("is_hod") else role
+                user = {
+                    "id": teacher["id"],
+                    "name": teacher.get("name") or name,
+                    "email": email,
+                    "role": resolved_role,
+                    "department": teacher.get("department") or department,
+                    "org_id": teacher.get("org_id", "2000"),
+                }
+            else:
+                user = {
+                    "id": email,
+                    "name": name,
+                    "email": email,
+                    "role": role,
+                    "department": department,
+                    "org_id": resolve_user_org(email, department, live_db),
+                }
 
         _set_session(user, email)
         return redirect(url_for(route_for_role(user["role"])))

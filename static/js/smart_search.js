@@ -192,9 +192,9 @@
       });
     }
 
-    // Render People Section
+    // Render Assignees / CAs Section
     if (peopleToRender.length > 0) {
-      html += `<div class="smart-results-section-header" style="${catsToRender.length > 0 ? 'margin-top: 6px;' : ''}"><span>People & Assignees (${currentResults.people.length})</span></div>`;
+      html += `<div class="smart-results-section-header" style="${catsToRender.length > 0 ? 'margin-top: 6px;' : ''}"><span>Assignees & CAs (${currentResults.people.length})</span></div>`;
       peopleToRender.forEach(u => {
         const itemIdx = flatItemsList.length;
         flatItemsList.push({ type: 'person', data: u });

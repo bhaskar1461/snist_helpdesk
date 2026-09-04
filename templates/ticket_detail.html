@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ticket #{{ ticket.id }} — SNIST Helpdesk</title>
+  <title>Ticket #{{ ticket.id }} — Help Desk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -470,7 +470,7 @@
                   <small>{{ ticket.assigned_to_email or 'Auto-routing queue' }}</small>
                   {% if not is_assignee and ticket.assigned_to_name and ticket.assigned_to_name != 'Unassigned' %}
                     {% if ticket.assigned_to_phone %}
-                      <a href="tel:{{ ticket.assigned_to_phone }}" class="contact-link call-action" title="Call Assignee (CA)">
+                      <a href="tel:{{ ticket.assigned_to_phone }}" class="contact-link call-action" title="Call Assignee">
                         <i data-lucide="phone-call" style="width:13px;height:13px;color:var(--primary);"></i>
                         <span>{{ ticket.assigned_to_phone }}</span>
                         <span class="call-badge">Call CA</span>
@@ -497,7 +497,7 @@
               </div>
 
               <!-- Description -->
-              <span class="meta-label" style="display:block; margin-bottom:6px;">Complaint Description</span>
+              <span class="meta-label" style="display:block; margin-bottom:6px;">Ticket Description</span>
               <div class="desc-box">{{ ticket.description }}</div>
 
               <!-- Status Update Action Form -->

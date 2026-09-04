@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Category & Assignee Management</title>
+  <title>Categories — Help Desk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
@@ -551,8 +551,8 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      {% set page_kicker = "Management" %}
-      {% set page_heading = "Category & Assignee Management" %}
+      {% set page_kicker = "Helpdesk Management" %}
+      {% set page_heading = "Categories" %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -589,7 +589,7 @@
         {% if not read_only %}
         <div class="action-toolbar">
           <button type="button" class="btn-secondary-action" onclick="openAssignPersonModal()">
-            <i data-lucide="user-check"></i> Assign to Person
+            <i data-lucide="user-check"></i> Assign to CA
           </button>
           <button type="button" class="btn-primary-action" onclick="togglePanel('create-panel')">
             <i data-lucide="plus"></i> Add Category
@@ -634,7 +634,7 @@
             </div>
 
             <div class="field">
-              <span>Location Block Mapping (Multi-Select)</span>
+              <span>Block Mapping</span>
               <div class="block-multi-select-container" id="create-block-select">
                 <div class="multi-select-display" onclick="toggleMultiSelectDropdown('create-block-select')">
                   <div class="selected-chips-wrap">
@@ -695,7 +695,7 @@
                       <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                     </svg>
                   </span>
-                  <input type="text" name="q" id="filter-search" value="{{ filters.q }}" placeholder="Search categories or people..." class="input-style smart-search-input" autocomplete="off" onkeyup="if(event.key==='Enter'&&(!window.SmartSearch||document.getElementById('smart-search-popup').style.display==='none')) submitFilters()">
+                  <input type="text" name="q" id="filter-search" value="{{ filters.q }}" placeholder="Search categories or CAs..." class="input-style smart-search-input" autocomplete="off" onkeyup="if(event.key==='Enter'&&(!window.SmartSearch||document.getElementById('smart-search-popup').style.display==='none')) submitFilters()">
                   <span id="clear-smart-search" class="smart-search-clear" style="display:none;" title="Clear search">&times;</span>
                 </div>
 
@@ -705,7 +705,7 @@
                     <div class="smart-popup-tabs">
                       <button type="button" class="smart-tab active" data-tab="all" onclick="window.SmartSearch.setTab('all')">All <span class="tab-badge" id="tab-count-all">0</span></button>
                       <button type="button" class="smart-tab" data-tab="categories" onclick="window.SmartSearch.setTab('categories')">Categories <span class="tab-badge" id="tab-count-categories">0</span></button>
-                      <button type="button" class="smart-tab" data-tab="people" onclick="window.SmartSearch.setTab('people')">People <span class="tab-badge" id="tab-count-people">0</span></button>
+                      <button type="button" class="smart-tab" data-tab="people" onclick="window.SmartSearch.setTab('people')">CAs <span class="tab-badge" id="tab-count-people">0</span></button>
                     </div>
                     <div class="smart-popup-hint">
                       <span><kbd>↑</kbd><kbd>↓</kbd></span>
@@ -800,7 +800,7 @@
                               </div>
                             </div>
                             {% if not read_only %}
-                              <button type="button" class="btn-remove-assignee" title="Remove {{ a.ca_name or 'Assignee' }} from this category" onclick="removeAssigneeFromCat({{ item.id }}, {{ a.ca_id }}, '{{ (a.ca_name or 'Assignee')|e }}')">&times;</button>
+                              <button type="button" class="btn-remove-assignee" title="Remove {{ a.ca_name or 'Assignee' }} from this category" data-cat-id="{{ item.id }}" data-ca-id="{{ a.ca_id }}" data-ca-name="{{ a.ca_name or 'Assignee' }}" onclick="removeAssigneeFromCat(this.dataset.catId, this.dataset.caId, this.dataset.caName)">&times;</button>
                             {% endif %}
                           </div>
                         {% endfor %}
@@ -808,7 +808,7 @@
                         <span class="unassigned-text">Unassigned</span>
                       {% endif %}
                       {% if not read_only %}
-                        <button type="button" class="btn-add-assignee-chip" onclick="openAssignToCatModal({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}')">
+                        <button type="button" class="btn-add-assignee-chip" data-cat-id="{{ item.id }}" data-cat-name="{{ item.category_name|e }}" data-dept="{{ item.department|e }}" onclick="openAssignToCatModal(this.dataset.catId, this.dataset.catName, this.dataset.dept)">
                           <i data-lucide="plus" style="width:12px;height:12px;"></i> Add Assignee
                         </button>
                       {% endif %}
@@ -825,13 +825,13 @@
                   {% if not read_only %}
                   <td class="actions-cell" style="text-align: right;">
                     {% set mapped_blocks = item.block_mappings | map(attribute='block') | list if item.block_mappings else [] %}
-                    <button type="button" class="tbl-action-btn" onclick="openEditModal({{ item.id }}, '{{ item.category_name|e }}', '{{ item.department|e }}', '{{ item.assigned_ca_id or '' }}', {{ mapped_blocks|tojson|e }})">Edit</button>
+                    <button type="button" class="tbl-action-btn" data-cat-id="{{ item.id }}" data-cat-name="{{ item.category_name|e }}" data-dept="{{ item.department|e }}" data-ca-id="{{ item.assigned_ca_id or '' }}" data-blocks="{{ mapped_blocks|tojson|e }}" onclick="openEditModal(this.dataset.catId, this.dataset.catName, this.dataset.dept, this.dataset.caId, JSON.parse(this.dataset.blocks || '[]'))">Edit</button>
                     {% if item.is_active == 0 %}
-                      <button type="button" class="tbl-action-btn" style="color:#10b981;" onclick="toggleCatStatus({{ item.id }}, 1)">Enable</button>
+                      <button type="button" class="tbl-action-btn" style="color:#10b981;" data-cat-id="{{ item.id }}" onclick="toggleCatStatus(this.dataset.catId, 1)">Enable</button>
                     {% else %}
-                      <button type="button" class="tbl-action-btn" style="color:#f59e0b;" onclick="toggleCatStatus({{ item.id }}, 0)">Disable</button>
+                      <button type="button" class="tbl-action-btn" style="color:#f59e0b;" data-cat-id="{{ item.id }}" onclick="toggleCatStatus(this.dataset.catId, 0)">Disable</button>
                     {% endif %}
-                    <button type="button" class="tbl-action-btn danger" onclick="confirmDelete({{ item.id }}, '{{ item.category_name|e }}')">Delete</button>
+                    <button type="button" class="tbl-action-btn danger" data-cat-id="{{ item.id }}" data-cat-name="{{ item.category_name|e }}" onclick="confirmDelete(this.dataset.catId, this.dataset.catName)">Delete</button>
                   </td>
                   {% endif %}
                 </tr>
@@ -884,7 +884,7 @@
 
 
         <div class="field" style="margin-bottom: 16px; display: block;">
-          <span>Problem Location Block Mapping (Multi-Select)</span>
+          <span>Block Mapping</span>
           <div class="block-multi-select-container" id="edit-block-select">
             <div class="multi-select-display" onclick="toggleMultiSelectDropdown('edit-block-select')">
               <div class="selected-chips-wrap">
@@ -945,11 +945,14 @@
     </div>
   </div>
 
-  <!-- Assign to Person Modal -->
+  <!-- Assign to CA Modal -->
   <div id="assign-person-overlay" class="modal-overlay">
     <div class="modal-card" style="max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; overflow: visible;">
       <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-        <h3 style="margin: 0;">Assign Multiple Categories to a Person</h3>
+        <div>
+          <h3 style="margin: 0; font-size: 1.25rem;">Assign Categories to Assignee</h3>
+          <p style="margin: 3px 0 0; font-size: 0.8rem; color: var(--slate-600);">Allocate categories and campus location blocks to an Assignee.</p>
+        </div>
         <button type="button" class="close-panel-btn" onclick="closeAssignPersonModal()" style="font-size: 1.4rem;">&times;</button>
       </div>
 
@@ -957,24 +960,42 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="assign_ca">
 
-        <!-- Step 1: Pick person -->
-        <div class="field" style="margin-bottom: 14px; display: block; position: relative; z-index: 50;">
+        {% if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] %}
+        <!-- Step 1: Choose Department (Admins only) -->
+        <div class="field" style="margin-bottom: 14px; display: block; position: relative;">
           <label style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
             <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">1</span>
-            Choose Person
+            Choose Department
           </label>
-          <select name="faculty_id" id="assign-person-select" class="input-style searchable-select user-select" style="width: 100%;" required onchange="filterAssignPersonCategories()" data-placeholder="— Search person by name or email —">
-            <option value="">— Select a person —</option>
+          <select id="assign-person-dept-select" class="input-style" style="width: 100%; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; outline: none; background: #fff;" onchange="onAssignPersonDeptChange(this.value)">
+            <option value="">— All Departments —</option>
+            {% for d in modal_departments|default(departments) %}
+              <option value="{{ d.code }}">{{ d.name }} ({{ d.code }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
+        <!-- Step {{ '2' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '1' }}: Choose Assignee -->
+        <div class="field" style="margin-bottom: 14px; display: block; position: relative; z-index: 50;">
+          <label style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">{{ '2' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '1' }}</span>
+            Choose Assignee
+          </label>
+          <select name="faculty_id" id="assign-person-select" class="input-style searchable-select user-select" style="width: 100%;" required onchange="filterAssignPersonCategories()" data-placeholder="— Search Assignee by name or email —">
+            <option value="">— Select an Assignee —</option>
             {% for u in users %}
-              <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+              {% if u.role in ['CA', 'ASSIGNEE'] %}
+                <option value="{{ u.id }}" data-dept="{{ u.department|e }}" data-role="{{ u.role }}">{{ u.name }} (ASSIGNEE) | {{ u.department }} | {{ u.email }}</option>
+              {% endif %}
             {% endfor %}
           </select>
         </div>
 
-        <!-- Step 2: Pick categories -->
-        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; margin-bottom: 14px;">
+        <!-- Step {{ '3' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '2' }}: Pick categories -->
+        <div style="margin-bottom: 14px; display: flex; flex-direction: column;">
           <div style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">2</span>
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">{{ '3' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '2' }}</span>
             Select Categories to Assign
             <span id="ap-selected-count" style="margin-left: auto; font-size: 0.78rem; color: var(--primary); font-weight: 600;">0 selected</span>
           </div>
@@ -987,7 +1008,7 @@
           </div>
 
           <!-- Category list -->
-          <div id="ap-category-list" style="flex: 1; overflow-y: auto; border: 1px solid var(--slate-200); border-radius: var(--radius); padding: 6px;">
+          <div id="ap-category-list" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--slate-200); border-radius: var(--radius); padding: 6px;">
             {% for item in categories %}
               {% if item.is_active != 0 %}
               <label class="option-item ap-cat-item" data-name="{{ item.category_name|lower|e }}" data-dept="{{ item.department|lower|e }}" style="justify-content: space-between;">
@@ -1005,6 +1026,47 @@
               {% endif %}
             {% endfor %}
             <div id="ap-no-results" style="display: none; text-align: center; color: #94a3b8; padding: 1.5rem; font-size: 0.88rem;">No categories match your search.</div>
+          </div>
+        </div>
+
+        <!-- Step {{ '4' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '3' }}: Block Mapping -->
+        <div class="field" style="margin-bottom: 14px; display: block; position: relative;">
+          <label style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">{{ '4' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '3' }}</span>
+            Block Mapping
+          </label>
+          <div class="block-multi-select-container" id="ap-block-select">
+            <div class="multi-select-display" onclick="toggleMultiSelectDropdown('ap-block-select')">
+              <div class="selected-chips-wrap">
+                <span class="placeholder-text">All Blocks (Default) or select specific blocks...</span>
+              </div>
+              <div class="display-controls">
+                <span class="selection-count-badge" style="display:none;">0 selected</span>
+                <span class="dropdown-chevron">&#9662;</span>
+              </div>
+            </div>
+            <div class="multi-select-dropdown" onclick="event.stopPropagation()">
+              <div class="dropdown-header-tools">
+                <div class="search-wrap">
+                  <input type="text" class="block-search-input input-style" style="width:100%; box-sizing:border-box;" placeholder="Search location blocks..." onkeyup="filterMultiSelectOptions('ap-block-select', this.value)">
+                </div>
+                <div class="bulk-actions-wrap">
+                  <button type="button" class="btn-bulk-select-all" onclick="selectAllMultiSelect('ap-block-select')">Select All</button>
+                  <button type="button" class="btn-bulk-clear-all" onclick="clearAllMultiSelect('ap-block-select')">Clear All</button>
+                </div>
+              </div>
+              <div class="options-scroll-list">
+                {% for b in blocks %}
+                  <label class="option-item" data-value="{{ b }}">
+                    <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('ap-block-select')">
+                    <span class="option-label-text">{{ b }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+              <div class="dropdown-footer-summary">
+                <span class="footer-count">0 of {{ blocks|length }} selected</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -1040,11 +1102,13 @@
         </div>
 
         <div class="field" style="margin-bottom: 14px; display: block;">
-          <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); margin-bottom: 4px; display: block;">Select Assignee / Faculty</span>
-          <select id="atc-person-select" name="faculty_id" class="input-style searchable-select user-select" style="width:100%;" required data-placeholder="— Choose person to assign —">
-            <option value="">— Choose person to assign —</option>
+          <span style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); margin-bottom: 4px; display: block;">Select Assignee</span>
+          <select id="atc-person-select" name="faculty_id" class="input-style searchable-select user-select" style="width:100%;" required data-placeholder="— Choose Assignee to assign —">
+            <option value="">— Choose Assignee to assign —</option>
             {% for u in users %}
-              <option value="{{ u.id }}" data-dept="{{ u.department|e }}">{{ u.name }} ({{ u.role }}) | {{ u.email }}</option>
+              {% if u.role in ['CA', 'ASSIGNEE'] %}
+                <option value="{{ u.id }}" data-dept="{{ u.department|e }}" data-role="{{ u.role }}">{{ u.name }} (ASSIGNEE) | {{ u.department }} | {{ u.email }}</option>
+              {% endif %}
             {% endfor %}
           </select>
         </div>
@@ -1329,11 +1393,25 @@
     }
 
     // ── Assign to Person Modal ────────────────────────────────────────
+    function onAssignPersonDeptChange(selectedDept) {
+      filterAssigneesByDept('assign-person-dept-select', 'assign-person-select');
+      filterApCategories();
+      updateApCount();
+    }
+
     function openAssignPersonModal() {
       document.getElementById('assign-person-overlay').classList.add('active');
       // Reset state
+      const deptSelect = document.getElementById('assign-person-dept-select');
+      if (deptSelect) {
+        deptSelect.value = '';
+      }
       const apSelect = document.getElementById('assign-person-select');
       if (apSelect) {
+        Array.from(apSelect.options).forEach(opt => {
+          opt.style.display = '';
+          opt.hidden = false;
+        });
         apSelect.value = '';
         if (!apSelect._smartSelect && typeof SmartSelect !== 'undefined') {
           SmartSelect.enhance(apSelect);
@@ -1344,6 +1422,7 @@
         }
       }
       apClearAll();
+      clearAllMultiSelect('ap-block-select');
       const sInput = document.getElementById('ap-category-search');
       if (sInput) sInput.value = '';
       filterApCategories();
@@ -1378,10 +1457,14 @@
                             (selectedDeptText && (selectedDeptText.includes(optDept) || optDept.includes(selectedDeptText)));
             if (matches) {
               opt.style.display = '';
+              opt.hidden = false;
+              opt.classList.remove('hidden-by-dept');
               hasVisibleChild = true;
               if (opt.selected) hasValidSelection = true;
             } else {
               opt.style.display = 'none';
+              opt.hidden = true;
+              opt.classList.add('hidden-by-dept');
               if (opt.selected) opt.selected = false;
             }
           });
@@ -1391,6 +1474,8 @@
         Array.from(caSelect.options).forEach(opt => {
           if (!opt.value || opt.value === 'none') {
             opt.style.display = '';
+            opt.hidden = false;
+            opt.classList.remove('hidden-by-dept');
             return;
           }
           const optDept = (opt.getAttribute('data-dept') || '').toLowerCase().trim();
@@ -1399,9 +1484,13 @@
                           (selectedDeptText && (selectedDeptText.includes(optDept) || optDept.includes(selectedDeptText)));
           if (matches) {
             opt.style.display = '';
+            opt.hidden = false;
+            opt.classList.remove('hidden-by-dept');
             if (opt.selected) hasValidSelection = true;
           } else {
             opt.style.display = 'none';
+            opt.hidden = true;
+            opt.classList.add('hidden-by-dept');
             if (opt.selected) opt.selected = false;
           }
         });
@@ -1423,7 +1512,7 @@
       // Uncheck categories that do not belong to personDept
       document.querySelectorAll('.ap-cat-item').forEach(item => {
         const dept = (item.getAttribute('data-dept') || '').toLowerCase().trim();
-        if (personDept && dept && dept !== personDept) {
+        if (personDept && dept && dept !== personDept && !dept.includes(personDept) && !personDept.includes(dept)) {
           const cb = item.querySelector('input[type="checkbox"]');
           if (cb) cb.checked = false;
         }
@@ -1432,25 +1521,40 @@
       updateApCount();
     }
 
-    function filterApCategories() {
+    function getApCurrentDept() {
       const select = document.getElementById('assign-person-select');
-      const selectedOpt = select.options[select.selectedIndex];
-      const personDept = selectedOpt ? (selectedOpt.getAttribute('data-dept') || '').toLowerCase().trim() : '';
+      const selectedOpt = select && select.selectedIndex >= 0 ? select.options[select.selectedIndex] : null;
+      const personDept = selectedOpt && selectedOpt.value ? (selectedOpt.getAttribute('data-dept') || '').toLowerCase().trim() : '';
+      if (personDept) return personDept;
 
-      const query = (document.getElementById('ap-category-search').value || '').toLowerCase().trim();
+      const deptSelect = document.getElementById('assign-person-dept-select');
+      const chosenDept = deptSelect ? (deptSelect.value || '').toLowerCase().trim() : '';
+      if (chosenDept) return chosenDept;
+      return '';
+    }
+
+    function filterApCategories() {
+      const targetDept = getApCurrentDept();
+      const query = (document.getElementById('ap-category-search')?.value || '').toLowerCase().trim();
       const items = document.querySelectorAll('.ap-cat-item');
       let visible = 0;
       items.forEach(item => {
         const name = (item.getAttribute('data-name') || '').toLowerCase();
         const dept = (item.getAttribute('data-dept') || '').toLowerCase();
-        const matchDept = !personDept || dept === personDept;
+        const matchDept = !targetDept || dept === targetDept || dept.includes(targetDept) || targetDept.includes(dept);
         const matchQuery = !query || name.includes(query) || dept.includes(query);
         const match = matchDept && matchQuery;
         item.style.display = match ? 'flex' : 'none';
-        if (match) visible++;
+        if (match) {
+          visible++;
+        } else {
+          const cb = item.querySelector('input[type="checkbox"]');
+          if (cb) cb.checked = false;
+        }
       });
       const noResults = document.getElementById('ap-no-results');
       if (noResults) noResults.style.display = visible === 0 ? 'block' : 'none';
+      updateApCount();
     }
 
     function apSelectAll() {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>User Management — SNIST Helpdesk</title>
+  <title>User Management — Help Desk</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
@@ -18,6 +18,8 @@
       --slate-100: #f1f5f9;
       --slate-200: #e2e8f0;
       --slate-300: #cbd5e1;
+      --slate-400: #94a3b8;
+      --slate-500: #64748b;
       --slate-600: #475569;
       --slate-700: #334155;
       --slate-800: #1e293b;
@@ -31,257 +33,422 @@
       color: var(--slate-800);
     }
 
-    .user-mgmt-grid {
-      display: grid;
-      grid-template-columns: 360px 1fr;
-      gap: 24px;
-      align-items: start;
-    }
-
-    @media (max-width: 1080px) {
-      .user-mgmt-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .mgmt-card {
-      background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: var(--radius);
-      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
-      overflow: hidden;
-      margin-bottom: 24px;
-    }
-
-    .mgmt-card-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid #f1f5f9;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      background: #ffffff;
-    }
-
-    .mgmt-card-title h3 {
-      margin: 0;
-      font-family: 'Outfit', sans-serif;
-      font-size: 1.05rem;
-      font-weight: 600;
-      color: var(--slate-900);
-    }
-
-    .mgmt-card-title p {
-      margin: 2px 0 0;
-      font-size: 0.8rem;
-      color: var(--slate-600);
-    }
-
-    .mgmt-form {
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .form-group label {
-      font-size: 0.84rem;
-      font-weight: 600;
-      color: var(--slate-700);
-    }
-
-    .form-group input, .form-group select {
-      width: 100%;
-      box-sizing: border-box;
-      padding: 9px 12px;
-      border: 1.5px solid #cbd5e1;
-      border-radius: 8px;
-      font-size: 0.88rem;
-      font-family: inherit;
-      color: var(--slate-900);
-      background: #ffffff;
-      transition: all 0.15s;
-    }
-
-    .form-group input:focus, .form-group select:focus {
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
-      outline: none;
-    }
-
-    .btn-create {
-      background: var(--primary);
-      color: #ffffff;
-      border: none;
-      padding: 10px 18px;
-      border-radius: 8px;
-      font-size: 0.88rem;
-      font-weight: 600;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.15s;
-      margin-top: 6px;
-    }
-
-    .btn-create:hover {
-      background: var(--primary-hover);
-    }
-
-    /* ── Directory Table & Filters ────────────────────────────────────── */
-    .filter-bar-wrap {
-      padding: 14px 20px;
-      background: #ffffff;
-      border-bottom: 1px solid #e2e8f0;
+    /* ── Top Header & Metrics Strip ────────────────────────────────── */
+    .header-bar {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 10px;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 1.25rem;
     }
-
-    .filter-search-input {
-      flex: 1 1 200px;
-      padding: 8px 12px;
-      border: 1.5px solid #cbd5e1;
-      border-radius: 8px;
-      font-size: 0.86rem;
-      color: var(--slate-800);
+    .header-stats {
+      display: flex;
+      gap: 12px;
       background: #ffffff;
-      outline: none;
+      padding: 10px 18px;
+      border-radius: 12px;
+      border: 1px solid var(--slate-200);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
-
-    .filter-search-input:focus {
-      border-color: var(--primary);
+    .metric-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      border-right: 1px solid var(--slate-200);
     }
+    .metric-item:last-child { border-right: none; }
+    .metric-item .val { font-size: 1.15rem; font-weight: 700; color: var(--slate-900); font-family: 'Space Grotesk', sans-serif; }
+    .metric-item .lbl { font-size: 0.78rem; font-weight: 500; color: var(--slate-600); }
 
-    .role-badge {
+    .action-toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .btn-primary-action {
+      background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+      color: #ffffff !important;
+      font-weight: 600;
+      font-size: 0.88rem;
+      padding: 9px 18px;
+      border-radius: 10px;
+      border: none;
       display: inline-flex;
       align-items: center;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 0.72rem;
+      gap: 8px;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(79,70,229,0.28);
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .btn-primary-action:hover {
+      background: linear-gradient(135deg, #4338ca 0%, #3730a3 100%);
+      box-shadow: 0 4px 12px rgba(79,70,229,0.38);
+      transform: translateY(-1px);
+    }
+
+    /* ── Main Container & Card ─────────────────────────────────────── */
+    .user-mgmt-grid {
+      display: block;
+      width: 100%;
+    }
+    .mgmt-card {
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03), 0 2px 8px rgba(0,0,0,0.02);
+      overflow: hidden;
+      margin-bottom: 2rem;
+    }
+    .mgmt-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      background: #ffffff;
+      border-bottom: 1px solid var(--slate-200);
+    }
+    .mgmt-card-header h3 {
+      margin: 0;
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.15rem;
       font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.02em;
+      color: var(--slate-900);
     }
 
-    .role-badge.super_admin { background: #fce7f3; color: #9d174d; }
-    .role-badge.admin { background: #dbeafe; color: #1d4ed8; }
-    .role-badge.hod { background: #e0e7ff; color: #3730a3; }
-    .role-badge.ca, .role-badge.assignee { background: #d1fae5; color: #065f46; }
-    .role-badge.faculty, .role-badge.user { background: #f1f5f9; color: #334155; }
+    /* ── Filter Strip Toolbar ───────────────────────────────────────── */
+    .filter-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      background: #f8fafc;
+      border-bottom: 1px solid var(--slate-200);
+    }
+    .search-input-wrap {
+      position: relative;
+      flex: 1;
+      min-width: 260px;
+    }
+    .search-input-wrap svg {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--slate-400);
+      pointer-events: none;
+    }
+    .filter-search-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 12px 8px 36px;
+      border: 1.5px solid var(--slate-300);
+      border-radius: 8px;
+      font-size: 0.88rem;
+      background: #ffffff;
+      color: var(--slate-800);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .filter-search-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
 
-    .dept-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      background: #e0f2fe;
-      color: #0369a1;
+    /* ── Role Multi-Select Dropdown ────────────────────────────────── */
+    .multi-select {
+      position: relative;
+    }
+    .multi-select-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: #ffffff;
+      border: 1.5px solid var(--slate-300);
+      border-radius: 8px;
+      font-size: 0.86rem;
+      font-weight: 500;
+      color: var(--slate-700);
+      cursor: pointer;
+      outline: none;
+      transition: all 0.15s;
+    }
+    .multi-select-btn:hover { border-color: var(--slate-400); }
+    .multi-select-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 10px;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.12), 0 8px 10px -6px rgba(0,0,0,0.06);
+      padding: 8px;
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 100;
+      min-width: 190px;
+    }
+    .multi-select-dropdown.open {
+      display: flex !important;
+    }
+    .multi-select-dropdown label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
       border-radius: 6px;
-      font-size: 0.75rem;
-      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: background 0.12s;
+    }
+    .multi-select-dropdown label:hover {
+      background: var(--slate-50);
+    }
+    .multi-select-dropdown input[type="checkbox"] {
+      accent-color: var(--primary);
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
     }
 
-    .btn-group { display: flex; gap: 6px; }
+    .select-dept-filter {
+      padding: 8px 14px;
+      border: 1.5px solid var(--slate-300);
+      border-radius: 8px;
+      font-size: 0.86rem;
+      outline: none;
+      background: #ffffff;
+      color: var(--slate-800);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .select-dept-filter:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
 
-    .btn-table-action {
+    .btn-filter-apply {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--primary);
+      color: #ffffff;
       border: none;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 0.78rem;
+      border-radius: 8px;
+      font-size: 0.86rem;
       font-weight: 600;
       cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-filter-apply:hover {
+      background: var(--primary-hover);
+    }
+    .btn-filter-reset {
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      padding: 8px 12px;
+      background: #ffffff;
+      color: var(--slate-600);
+      border: 1.5px solid var(--slate-300);
+      border-radius: 8px;
+      font-size: 0.86rem;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
       transition: all 0.15s;
     }
-
-    .btn-edit { background: #eef2ff; color: var(--primary); }
-    .btn-edit:hover { background: #e0e7ff; }
-
-    .btn-delete { background: #fee2e2; color: #dc2626; }
-    .btn-delete:hover { background: #fecaca; }
-
-    .btn-save { background: #10b981; color: #ffffff; }
-    .btn-save:hover { background: #059669; }
-
-    .btn-cancel { background: #f1f5f9; color: var(--slate-700); }
-    .btn-cancel:hover { background: #e2e8f0; }
-
-    .edit-row td {
-      background: #f8fafc !important;
-      padding: 8px 12px;
+    .btn-filter-reset:hover {
+      background: var(--slate-100);
+      color: var(--slate-800);
     }
 
-    .edit-row input, .edit-row select {
+    /* ── Modern Table Styles ────────────────────────────────────────── */
+    .modern-table {
       width: 100%;
-      padding: 6px 8px;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-      font-size: 0.82rem;
+      border-collapse: collapse;
+      text-align: left;
+    }
+    .modern-table th {
+      background: #f8fafc;
+      padding: 12px 18px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--slate-600);
+      border-bottom: 1px solid var(--slate-200);
+      white-space: nowrap;
+    }
+    .modern-table td {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--slate-100);
+      vertical-align: middle;
+      font-size: 0.88rem;
+    }
+    .modern-table tbody tr:hover {
+      background: #fbfcfe;
     }
 
-    .confirm-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.45);
-      backdrop-filter: blur(4px);
-      z-index: 9999;
+    .user-info-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .user-avatar-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+      color: #3730a3;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
+      font-weight: 700;
+      font-size: 0.82rem;
+      flex-shrink: 0;
+      border: 1px solid #c7d2fe;
+    }
+    .user-name-title {
+      font-weight: 600;
+      color: var(--slate-900);
+      font-size: 0.88rem;
     }
 
-    .confirm-overlay.active { display: flex; }
+    .role-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .role-badge.super_admin { background: #f3e8ff; color: #7e22ce; border: 1px solid #e9d5ff; }
+    .role-badge.admin { background: #e0e7ff; color: #4338ca; border: 1px solid #c7d2fe; }
+    .role-badge.hod { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .role-badge.ca, .role-badge.assignee { background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .role-badge.faculty, .role-badge.user { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
 
+    .dept-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      background: #f1f5f9;
+      color: var(--slate-700);
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .btn-table-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border: 1px solid var(--slate-200);
+      background: #ffffff;
+      color: var(--slate-700);
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+    .btn-table-action:hover {
+      background: var(--slate-50);
+      border-color: var(--slate-300);
+    }
+    .btn-table-action.btn-delete:hover {
+      color: #ef4444;
+      border-color: #fca5a5;
+      background: #fef2f2;
+    }
+
+    /* Modal Overlay Dialogs */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 1rem;
+    }
+    .modal-overlay.active {
+      display: flex !important;
+    }
+    .modal-card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 1.75rem;
+      width: 100%;
+      max-width: 520px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      border: 1px solid var(--slate-200);
+      animation: modalFadeIn 0.2s ease-out;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .modal-card h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--slate-900);
+      margin: 0 0 1rem;
+    }
+    .confirm-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(15, 23, 42, 0.5);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      padding: 1rem;
+    }
+    .confirm-overlay.active {
+      display: flex !important;
+    }
     .confirm-box {
       background: #ffffff;
-      border-radius: var(--radius);
-      padding: 24px;
-      max-width: 420px;
-      width: 90%;
-      box-shadow: 0 20px 40px rgba(15, 23, 42, 0.2);
+      border-radius: 12px;
+      padding: 1.75rem;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--slate-200);
     }
-
-    .confirm-box h3 { margin: 0 0 8px; font-size: 1.1rem; color: #dc2626; display: flex; align-items: center; gap: 8px; }
-    .confirm-box p { color: var(--slate-600); font-size: 0.88rem; margin: 0 0 16px; line-height: 1.45; }
-
-    /* Multi-role checkbox dropdown */
-    .multi-select { position: relative; display: inline-block; min-width: 140px; }
-    .multi-select-btn {
-      width: 100%; padding: 8px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; background: #fff; cursor: pointer;
-      font-size: 0.86rem; text-align: left; display: flex; justify-content: space-between; align-items: center;
+    .confirm-box h3 {
+      margin: 0 0 8px;
+      font-size: 1.15rem;
+      color: #b91c1c;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
-    .multi-select-btn::after { content: '▾'; font-size: 0.7rem; color: #64748b; }
-    .multi-select-dropdown {
-      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff;
-      border: 1.5px solid #cbd5e1; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.12); z-index: 50; padding: 6px 0; max-height: 220px; overflow-y: auto;
+    .confirm-box p {
+      font-size: 0.9rem;
+      color: var(--slate-600);
+      margin: 0 0 1.25rem;
     }
-    .multi-select-dropdown.open { display: block; }
-    .multi-select-dropdown label { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; font-size: 0.82rem; }
-    .multi-select-dropdown label:hover { background: #f1f5f9; }
-
-    .dept-multi-select { position: relative; display: inline-block; width: 100%; }
-    .dept-multi-btn {
-      width: 100%; padding: 7px 10px; border: 1.5px solid #cbd5e1; border-radius: 8px; background: #fff; cursor: pointer;
-      font-size: 0.84rem; text-align: left; display: flex; justify-content: space-between; align-items: center;
-    }
-    .dept-multi-panel {
-      display: none; position: absolute; top: calc(100% + 2px); left: 0; min-width: 200px; max-width: 280px;
-      background: #fff; border: 1.5px solid #cbd5e1; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.15);
-      z-index: 60; padding: 6px 0; max-height: 200px; overflow-y: auto;
-    }
-    .dept-multi-panel.open { display: block; }
-    .dept-multi-panel label { display: flex; align-items: center; gap: 6px; padding: 5px 10px; cursor: pointer; font-size: 0.8rem; margin: 0; }
-    .dept-multi-panel label:hover { background: #f1f5f9; }
   </style>
 </head>
 <body>
@@ -293,8 +460,8 @@
     </script>
     {% include 'sidebar.html' %}
     <main class="admin-main">
-      {% set page_kicker = "Institutional Directory" %}
-      {% set page_heading = "User Management" %}
+      {% set page_kicker = "" %}
+      {% set page_heading = "Users" %}
       {% include 'topbar.html' %}
 
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -307,129 +474,181 @@
         {% endif %}
       {% endwith %}
 
+      <!-- Top Header & Metrics Strip -->
+      <div class="header-bar">
+        <div class="header-stats">
+          <div class="metric-item">
+            <span class="val">{{ total_users }}</span>
+            <span class="lbl">Total Users</span>
+          </div>
+          {% if stats %}
+          <div class="metric-item">
+            <span class="val" style="color:#3b82f6;">{{ stats.cas }}</span>
+            <span class="lbl">Assignees</span>
+          </div>
+          <div class="metric-item">
+            <span class="val" style="color:#64748b;">{{ stats.faculty }}</span>
+            <span class="lbl">Standard Users</span>
+          </div>
+          <div class="metric-item">
+            <span class="val" style="color:#10b981;">{{ stats.departments }}</span>
+            <span class="lbl">Departments</span>
+          </div>
+          {% endif %}
+        </div>
+
+        <div class="action-toolbar">
+          <button type="button" class="btn-primary-action" onclick="openAssignCaModal()">
+            <i data-lucide="user-check" style="width:16px;height:16px;"></i> Assign to Assignee
+          </button>
+        </div>
+      </div>
+
       <div class="user-mgmt-grid">
-        <!-- Left: Create User Form Card -->
+        <!-- User Directory Table Card -->
         <section class="mgmt-card">
           <div class="mgmt-card-header">
-            <div class="mgmt-card-title">
-              <h3>Create User</h3>
+            <div style="display:flex; align-items:center; gap:12px;">
+              <h3 style="margin:0;">User Directory</h3>
+              <span style="background:var(--primary-light); color:var(--primary); padding:3px 10px; border-radius:12px; font-size:0.78rem; font-weight:700; border:1px solid #e0e7ff;">Page {{ page }} of {{ total_pages }}</span>
             </div>
-          </div>
-          <form method="post" action="" class="mgmt-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-group">
-              <label>Full Name *</label>
-              <input type="text" name="name" placeholder="e.g. Dr. Ramesh Rao" required>
-            </div>
-            <div class="form-group">
-              <label>Email Address *</label>
-              <input type="email" name="email" placeholder="e.g. ramesh.rao@sreenidhi.edu.in" required>
-            </div>
-            <div class="form-group">
-              <label>Initial Password *</label>
-              <input type="text" name="password" value="123" required>
-            </div>
-            <div class="form-group">
-              <label>System Role *</label>
-              <select name="role" id="create-role" required onchange="filterDepartments('create')">
-                <option value="">Select Role</option>
-                {% for role in roles %}
-                  <option value="{{ role }}">{{ 'USER' if role == 'FACULTY' else role }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Department *</label>
-              <select name="department" id="create-department" required>
-                <option value="">Select Department</option>
-                {% for department in departments %}
-                  <option value="{{ department.code }}" data-all="true">{{ department.code }}</option>
-                {% endfor %}
-              </select>
-              <div id="create-department-multi" class="dept-multi-select" style="display:none;">
-                <button type="button" class="dept-multi-btn" onclick="toggleDeptPanel('create')">
-                  <span class="dept-label-text" id="create-dept-label">Select departments</span>
-                  <span>▾</span>
-                </button>
-                <div class="dept-multi-panel" id="create-dept-panel">
-                  {% for department in departments %}
-                    <label data-all="true">
-                      <input type="checkbox" name="department" value="{{ department.code }}" onchange="updateDeptLabel('create')"> {{ department.code }}
-                    </label>
-                  {% endfor %}
-                </div>
-              </div>
-              <span id="create-dept-hint" style="font-size:0.75rem; color:#64748b;"></span>
-            </div>
-            <button type="submit" class="btn-create">
-              <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create User
-            </button>
-          </form>
-        </section>
-
-        <!-- Right: User Directory Table Card -->
-        <section class="mgmt-card">
-          <div class="mgmt-card-header">
-            <div class="mgmt-card-title" style="display:flex; align-items:center; justify-content:space-between; width:100%;">
-              <h3>User Directory</h3>
-              <span style="background:var(--primary-light); color:var(--primary); padding:2px 10px; border-radius:12px; font-size:0.78rem; font-weight:700;">{{ total_users }} Users</span>
+            <div style="font-size:0.82rem; color:var(--slate-500);">
+              Showing {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total_users]|min }} of {{ total_users }} records
             </div>
           </div>
 
-          <!-- Filter Toolbar -->
-          <form class="filter-bar-wrap" method="get" action="" id="filter-form">
-            <input type="text" name="q" value="{{ filters.q }}" class="filter-search-input" placeholder="Search by name, email, department...">
+          <!-- Filter Toolbar Strip -->
+          <form class="filter-strip" method="get" action="{{ url_for('management.user_management') }}" id="filter-form">
+            <div class="search-input-wrap">
+              <i data-lucide="search" style="width:16px; height:16px;"></i>
+              <input type="text" name="q" value="{{ filters.q }}" class="filter-search-input" placeholder="Search by name, email, or department...">
+            </div>
             
             <div class="multi-select" id="role-multi-select">
               <button type="button" class="multi-select-btn" onclick="toggleRoleDropdown()">
+                <i data-lucide="shield" style="width:14px; height:14px; color:var(--slate-500);"></i>
                 <span id="role-btn-label">All Roles</span>
+                <i data-lucide="chevron-down" style="width:14px; height:14px; margin-left:auto;"></i>
               </button>
               <div class="multi-select-dropdown" id="role-dropdown">
                 {% for role in roles %}
                   <label>
-                    <input type="checkbox" name="role" value="{{ role }}" {% if role in filters.get('roles', []) %}checked{% endif %}>
+                    <input type="checkbox" name="role" value="{{ role }}" {% if role in filters.get('roles', []) or role == filters.get('role') %}checked{% endif %}>
                     <span class="role-badge {{ role|lower }}">{{ 'USER' if role == 'FACULTY' else role }}</span>
                   </label>
                 {% endfor %}
               </div>
             </div>
 
-            <select name="department" style="padding:8px 12px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; outline:none;">
-              <option value="">All Departments</option>
-              {% for department in departments %}
-                <option value="{{ department.code }}" {% if filters.department == department.code %}selected{% endif %}>{{ department.code }}</option>
-              {% endfor %}
-            </select>
+            {% if session.get('role') == 'HOD' %}
+              <div style="display:inline-flex; align-items:center; gap:6px; padding:7px 12px; background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:8px; font-weight:600; font-size:0.84rem;">
+                <i data-lucide="building" style="width:14px;height:14px;"></i> {{ session.get('department') }} Department
+              </div>
+              <input type="hidden" name="department" value="{{ session.get('department') }}">
+            {% else %}
+              <select name="department" class="select-dept-filter">
+                <option value="">All Departments</option>
+                {% for department in departments %}
+                  <option value="{{ department.code }}" {% if filters.department == department.code %}selected{% endif %}>{{ department.code }}</option>
+                {% endfor %}
+              </select>
+            {% endif %}
 
-            <button class="btn-table-action btn-create" style="margin-top:0; padding:8px 14px;" type="submit">
-              <i data-lucide="filter" style="width:14px;height:14px;"></i> Filter
-            </button>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="btn-filter-apply" type="submit">
+                <i data-lucide="filter" style="width:14px;height:14px;"></i> Filter
+              </button>
+              {% if filters.q or filters.role or filters.roles or (filters.department and session.get('role') != 'HOD') %}
+                <a href="{{ url_for('management.user_management') }}" class="btn-filter-reset" title="Clear Filters">
+                  <i data-lucide="x" style="width:14px;height:14px;"></i> Clear
+                </a>
+              {% endif %}
+            </div>
           </form>
 
           <div style="overflow-x:auto;">
-            <table class="modern-table" style="min-width:720px;">
+            <table class="modern-table" style="min-width:860px;">
               <thead>
                 <tr>
                   <th>User / Name</th>
                   <th>Email</th>
                   <th>Role</th>
                   <th>Department</th>
+                  <th>Assigned Categories</th>
                   <th style="text-align:right; width:120px;">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {% for item in users %}
+                  {% set can_edit = (session.get('role') in ['SUPER_ADMIN', 'ADMIN'] and (session.get('role') == 'SUPER_ADMIN' or item.role != 'SUPER_ADMIN')) or (session.get('role') == 'HOD' and item.role in ['CA', 'ASSIGNEE', 'FACULTY']) %}
                   <tr id="user-view-{{ item.id }}">
-                    <td><strong>{{ item.name }}</strong></td>
-                    <td style="color:var(--slate-600); font-size:0.84rem;">{{ item.email }}</td>
-                    <td><span class="role-badge {{ item.role|lower }}">{{ 'USER' if item.role == 'FACULTY' else item.role }}</span></td>
+                    <td>
+                      <div class="user-info-cell">
+                        <span class="user-avatar-circle">{{ ((item.name or 'U')[:1]).upper() }}</span>
+                        <strong class="user-name-title">{{ item.name }}</strong>
+                      </div>
+                    </td>
+                    <td style="color:var(--slate-600); font-size:0.84rem; font-family:'Space Grotesk', monospace;">{{ item.email }}</td>
+                    <td><span class="role-badge {{ 'assignee' if item.role in ['CA', 'ASSIGNEE'] else item.role|lower }}">{{ 'ASSIGNEE' if item.role in ['CA', 'ASSIGNEE'] else ('USER' if item.role == 'FACULTY' else item.role) }}</span></td>
                     <td><span class="dept-badge">{{ item.department }}</span></td>
+                    <td>
+                      {% if item.role in ['CA', 'ASSIGNEE'] or (item.assigned_categories and item.assigned_categories|length > 0) %}
+                        <div class="user-categories-cell">
+                          <div class="cat-summary-row">
+                            <span class="category-count-badge {{ 'has-cats' if item.assigned_categories else 'empty' }}">
+                              {{ item.assigned_categories|length }} {{ 'Category' if item.assigned_categories|length == 1 else 'Categories' }}
+                            </span>
+                            {% if can_edit %}
+                              <button type="button" class="btn-manage-cat-link" data-id="{{ item.id }}" data-name="{{ item.name|e }}" data-dept="{{ item.department|e }}" data-cats='{{ item.assigned_categories|tojson }}' onclick="handleManageCatClick(this)">
+                                <i data-lucide="edit-3" style="width:11px;height:11px;"></i> Manage
+                              </button>
+                            {% endif %}
+                          </div>
+                          {% if item.assigned_categories %}
+                            <div class="assignee-pills-wrap" style="margin-top:4px;">
+                              {% for cat in item.assigned_categories %}
+                                <div class="assignee-card-pill" style="margin-bottom:3px;">
+                                  <div class="assignee-pill-info">
+                                    <span class="ca-avatar" style="background:#e0e7ff; color:#4f46e5;">
+                                      <i data-lucide="tag" style="width:10px;height:10px;"></i>
+                                    </span>
+                                    <div class="assignee-pill-text">
+                                      <span class="assignee-pill-name">{{ cat.category_name }}</span>
+                                      <div class="assignee-pill-blocks">
+                                        {% if cat.blocks and 'All Blocks' not in cat.blocks %}
+                                          {% for b in cat.blocks %}
+                                            <span class="block-sub-badge">{{ b }}</span>
+                                          {% endfor %}
+                                        {% else %}
+                                          <span class="block-sub-badge all">All Blocks</span>
+                                        {% endif %}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  {% if can_edit %}
+                                    <button type="button" class="btn-remove-assignee" title="Unassign {{ cat.category_name }}" data-ca-id="{{ item.id }}" data-cat-id="{{ cat.category_id }}" data-cat-name="{{ cat.category_name|e }}" data-ca-name="{{ item.name|e }}" onclick="handleUnassignClick(this)">&times;</button>
+                                  {% endif %}
+                                </div>
+                              {% endfor %}
+                            </div>
+                          {% else %}
+                            <div style="font-size:0.78rem; color:#94a3b8; font-style:italic; margin-top:2px;">
+                              No categories mapped
+                            </div>
+                          {% endif %}
+                        </div>
+                      {% else %}
+                        <span style="color:#cbd5e1; font-size:0.85rem;">—</span>
+                      {% endif %}
+                    </td>
                     <td style="text-align:right;">
                       <div class="btn-group" style="justify-content:flex-end;">
-                        {% if session.get('role') == 'SUPER_ADMIN' or item.role != 'SUPER_ADMIN' %}
+                        {% if can_edit %}
                           <button type="button" class="btn-table-action btn-edit" onclick="toggleEdit({{ item.id }})">
                             <i data-lucide="edit-2" style="width:12px;height:12px;"></i> Edit
                           </button>
+                        {% endif %}
+                        {% if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] and (session.get('role') == 'SUPER_ADMIN' or item.role != 'SUPER_ADMIN') %}
                           <button type="button" class="btn-table-action btn-delete" onclick="confirmDelete({{ item.id }}, '{{ item.name|e }}')">
                             <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
                           </button>
@@ -437,29 +656,21 @@
                       </div>
                     </td>
                   </tr>
-                  {% if session.get('role') == 'SUPER_ADMIN' or item.role != 'SUPER_ADMIN' %}
-                  <tr id="user-edit-{{ item.id }}" class="edit-row" style="display:none;">
+                  {% if can_edit %}
+                  <tr id="user-edit-{{ item.id }}" class="edit-row" style="display:none; background:#f8fafc;">
                     <form method="post" action="/user-management/{{ item.id }}/update">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <td><input type="text" name="name" value="{{ item.name }}" required></td>
-                      <td><input type="email" name="email" value="{{ item.email }}" required></td>
+                      <td><strong>{{ item.name }}</strong></td>
+                      <td style="color:var(--slate-600); font-size:0.84rem;">{{ item.email }}</td>
                       <td>
-                        <select name="role" required onchange="filterDepartments('edit-{{ item.id }}')">
+                        <select name="role" required style="padding:6px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; font-weight:600; outline:none; background:#ffffff; color:var(--slate-800);">
                           {% for role in roles %}
-                            <option value="{{ role }}" {% if item.role == role %}selected{% endif %}>{{ 'USER' if role == 'FACULTY' else role }}</option>
+                            <option value="{{ role }}" {% if item.role == role or (role == 'ASSIGNEE' and item.role == 'CA') %}selected{% endif %}>{{ 'USER' if role == 'FACULTY' else role }}</option>
                           {% endfor %}
                         </select>
                       </td>
-                      <td>
-                        <select name="department" id="edit-{{ item.id }}-department" required>
-                          {% set item_depts = item.department.split(',') | map('trim') | list %}
-                          {% for department in departments %}
-                            <option value="{{ department.code }}" data-all="true" {% if department.code in item_depts %}selected{% endif %}>
-                              {{ department.code }}
-                            </option>
-                          {% endfor %}
-                        </select>
-                      </td>
+                      <td><span class="dept-badge">{{ item.department }}</span></td>
+                      <td style="color:#94a3b8; font-size:0.82rem; font-style:italic;">Update role above to manage categories</td>
                       <td style="text-align:right;">
                         <div class="btn-group" style="justify-content:flex-end;">
                           <button type="submit" class="btn-table-action btn-save">Save</button>
@@ -470,7 +681,7 @@
                   </tr>
                   {% endif %}
                 {% else %}
-                  <tr><td colspan="5" style="text-align:center; padding:2.5rem; color:#94a3b8;">No users found matching your filters.</td></tr>
+                  <tr><td colspan="6" style="text-align:center; padding:2.5rem; color:#94a3b8;">No users found matching your filters.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -522,124 +733,14 @@
   </div>
 
   <script>
-    const isHodUser = {{ (session.get('role') == 'HOD') | tojson }};
-    const hodDept = {{ session.get('department') | tojson }};
-
-    const ROLE_DEPARTMENTS = {
-      'SUPER_ADMIN': ['Administration'],
-      'ADMIN':       ['Administration'],
-      'HOD':         isHodUser ? [hodDept] : {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code),
-      'CA':          {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code),
-      'FACULTY':     isHodUser ? [hodDept] : {{ departments | tojson }}.filter(d => d.code !== 'Administration').map(d => d.code)
-    };
-
-    function filterDepartments(prefix) {
-      let roleSelect, deptSelect, hintEl;
-
-      if (prefix === 'create') {
-        roleSelect = document.getElementById('create-role');
-        deptSelect = document.getElementById('create-department');
-        hintEl = document.getElementById('create-dept-hint');
-      } else {
-        const editRow = document.getElementById('user-' + prefix);
-        if (!editRow) return;
-        roleSelect = editRow.querySelector('select[name="role"]');
-        deptSelect = document.getElementById(prefix + '-department');
-        hintEl = null;
-      }
-
-      const selectedRole = roleSelect.value;
-      const allowedDepts = ROLE_DEPARTMENTS[selectedRole] || [];
-      const options = deptSelect.querySelectorAll('option[data-all]');
-      let firstVisible = '';
-
-      const isCA = selectedRole === 'CA';
-      const multiBox = document.getElementById(prefix + '-department-multi');
-
-      if (isCA) {
-        deptSelect.style.display = 'none';
-        deptSelect.required = false;
-        if (multiBox) multiBox.style.display = '';
-      } else {
-        deptSelect.style.display = '';
-        deptSelect.required = true;
-        if (multiBox) multiBox.style.display = 'none';
-      }
-
-      options.forEach(opt => {
-        if (allowedDepts.length === 0 || allowedDepts.includes(opt.value)) {
-          opt.style.display = '';
-          opt.disabled = false;
-          if (!firstVisible) firstVisible = opt.value;
-        } else {
-          opt.style.display = 'none';
-          opt.disabled = true;
-        }
-      });
-
-      if (multiBox) {
-        const panel = document.getElementById(prefix + '-dept-panel');
-        if (panel) {
-          panel.querySelectorAll('label[data-all]').forEach(lbl => {
-            const val = lbl.querySelector('input').value;
-            if (allowedDepts.length === 0 || allowedDepts.includes(val)) {
-              lbl.style.display = 'flex';
-            } else {
-              lbl.style.display = 'none';
-            }
-          });
-        }
-        updateDeptLabel(prefix);
-      }
-
-      if (!isCA && allowedDepts.length > 0 && !allowedDepts.includes(deptSelect.value)) {
-        deptSelect.value = firstVisible;
-      }
-
-      if (hintEl) {
-        if (selectedRole === 'SUPER_ADMIN' || selectedRole === 'ADMIN') {
-          hintEl.textContent = 'Admin roles → Administration department';
-        } else if (selectedRole) {
-          hintEl.textContent = selectedRole + ' → Academic / operational departments';
-        } else {
-          hintEl.textContent = '';
-        }
-      }
-    }
-
     function toggleRoleDropdown() {
       document.getElementById('role-dropdown').classList.toggle('open');
-    }
-
-    function toggleDeptPanel(prefix) {
-      document.querySelectorAll('.dept-multi-panel.open').forEach(p => {
-        if (p.id !== prefix + '-dept-panel') p.classList.remove('open');
-      });
-      const panel = document.getElementById(prefix + '-dept-panel');
-      if (panel) panel.classList.toggle('open');
-    }
-
-    function updateDeptLabel(prefix) {
-      const panel = document.getElementById(prefix + '-dept-panel');
-      const labelEl = document.getElementById(prefix + '-dept-label');
-      if (!panel || !labelEl) return;
-      const checked = Array.from(panel.querySelectorAll('input[type="checkbox"]:checked'));
-      if (checked.length === 0) {
-        labelEl.textContent = 'Select departments';
-      } else if (checked.length <= 2) {
-        labelEl.textContent = checked.map(c => c.value).join(', ');
-      } else {
-        labelEl.textContent = checked.length + ' depts selected';
-      }
     }
 
     document.addEventListener('click', function(e) {
       const ms = document.getElementById('role-multi-select');
       if (ms && !ms.contains(e.target)) {
         document.getElementById('role-dropdown').classList.remove('open');
-      }
-      if (!e.target.closest('.dept-multi-select')) {
-        document.querySelectorAll('.dept-multi-panel.open').forEach(p => p.classList.remove('open'));
       }
     });
 
@@ -650,6 +751,7 @@
     function updateRoleLabel() {
       const checked = Array.from(document.querySelectorAll('#role-dropdown input[type="checkbox"]:checked'));
       const label = document.getElementById('role-btn-label');
+      if (!label) return;
       if (checked.length === 0) {
         label.textContent = 'All Roles';
       } else if (checked.length === 1) {
@@ -664,10 +766,10 @@
     function toggleEdit(userId) {
       const viewRow = document.getElementById('user-view-' + userId);
       const editRow = document.getElementById('user-edit-' + userId);
+      if (!viewRow || !editRow) return;
       if (editRow.style.display === 'none') {
         viewRow.style.display = 'none';
         editRow.style.display = '';
-        filterDepartments('edit-' + userId);
       } else {
         viewRow.style.display = '';
         editRow.style.display = 'none';
@@ -685,9 +787,719 @@
     document.getElementById('delete-overlay').addEventListener('click', function(e) {
       if (e.target === this) closeDelete();
     });
+
+    // ── Assign Categories to Assignee Modal Handlers ───────────────────────
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function deptMatches(dept1, dept2) {
+      if (!dept1 || !dept2) return false;
+      const s1 = String(dept1).trim().toLowerCase();
+      const s2 = String(dept2).trim().toLowerCase();
+      if (s1 === s2) return true;
+      if (s1.includes(s2) || s2.includes(s1)) return true;
+
+      const clean1 = s1.replace(/[^a-z0-9]/g, '');
+      const clean2 = s2.replace(/[^a-z0-9]/g, '');
+      if (clean1 && clean2 && (clean1 === clean2 || clean1.includes(clean2) || clean2.includes(clean1))) return true;
+
+      const aliases = [
+        ['cse', 'computer science'],
+        ['ece', 'electronics and comm', 'electronics & comm'],
+        ['eee', 'electrical and elect', 'electrical & elect'],
+        ['it', 'information tech'],
+        ['mech', 'mechanical'],
+        ['civil', 'civil'],
+        ['facilities', 'facilities & estates', 'estate'],
+        ['ict', 'information and communication', 'information & communication'],
+        ['aiml', 'artificial intelligence and machine learning', 'ai & ml', 'ai and ml'],
+        ['aids', 'artificial intelligence and data science', 'ai & ds', 'ai and ds'],
+        ['csit', 'computer science and information'],
+        ['ecm', 'electronics and computer'],
+        ['mba', 'business administration'],
+        ['mca', 'computer application']
+      ];
+      for (const group of aliases) {
+        const m1 = group.some(term => s1.includes(term));
+        const m2 = group.some(term => s2.includes(term));
+        if (m1 && m2) return true;
+      }
+      return false;
+    }
+
+    function getAcaCurrentDept() {
+      const deptSelect = document.getElementById('assign-ca-dept-select');
+      const chosenDept = deptSelect ? (deptSelect.value || '').trim() : '';
+
+      const pSelect = document.getElementById('assign-ca-person-select');
+      const selectedPerson = pSelect && pSelect.selectedIndex >= 0 ? pSelect.options[pSelect.selectedIndex] : null;
+      const personDept = selectedPerson && selectedPerson.value ? (selectedPerson.getAttribute('data-dept') || '').trim() : '';
+
+      if (personDept) return personDept;
+      if (chosenDept) return chosenDept;
+      return '';
+    }
+
+    function onAssignCaDeptChange(selectedDept) {
+      const pSelect = document.getElementById('assign-ca-person-select');
+      const dept = (selectedDept || '').trim();
+
+      if (pSelect) {
+        let currentStillValid = false;
+        const currentVal = pSelect.value;
+
+        for (let i = 0; i < pSelect.options.length; i++) {
+          const opt = pSelect.options[i];
+          if (!opt.value) {
+            opt.hidden = false;
+            opt.style.display = '';
+            opt.classList.remove('hidden-by-dept');
+            continue;
+          }
+          const optDept = opt.getAttribute('data-dept') || '';
+          const match = !dept || deptMatches(optDept, dept);
+          if (match) {
+            opt.hidden = false;
+            opt.style.display = '';
+            opt.classList.remove('hidden-by-dept');
+            if (opt.value === currentVal) currentStillValid = true;
+          } else {
+            opt.hidden = true;
+            opt.style.display = 'none';
+            opt.classList.add('hidden-by-dept');
+          }
+        }
+
+        if (!currentStillValid && currentVal) {
+          pSelect.value = '';
+        }
+
+        if (pSelect._smartSelect) {
+          pSelect._smartSelect.sync();
+        }
+      }
+
+      filterAcaCategories();
+    }
+
+    function openAssignCaModal() {
+      const overlay = document.getElementById('assign-ca-overlay');
+      if (overlay) overlay.classList.add('active');
+
+      const deptSelect = document.getElementById('assign-ca-dept-select');
+      if (deptSelect) {
+        deptSelect.value = '';
+      }
+
+      const pSelect = document.getElementById('assign-ca-person-select');
+      if (pSelect) {
+        for (let i = 0; i < pSelect.options.length; i++) {
+          const opt = pSelect.options[i];
+          opt.hidden = false;
+          opt.style.display = '';
+          opt.classList.remove('hidden-by-dept');
+        }
+        pSelect.value = '';
+        if (!pSelect._smartSelect && typeof SmartSelect !== 'undefined') {
+          SmartSelect.enhance(pSelect);
+        }
+        if (pSelect._smartSelect) {
+          pSelect._smartSelect.close();
+          pSelect._smartSelect.sync();
+        }
+      }
+      const sInput = document.getElementById('aca-category-search');
+      if (sInput) sInput.value = '';
+      acaClearAll();
+      clearAllMultiSelect('aca-block-select');
+      filterAcaCategories();
+      updateAcaCount();
+    }
+
+    function closeAssignCaModal() {
+      const overlay = document.getElementById('assign-ca-overlay');
+      if (overlay) overlay.classList.remove('active');
+      const pSelect = document.getElementById('assign-ca-person-select');
+      if (pSelect && pSelect._smartSelect) {
+        pSelect._smartSelect.close();
+      }
+    }
+
+    document.getElementById('assign-ca-overlay')?.addEventListener('click', function(e) {
+      if (e.target === this) closeAssignCaModal();
+    });
+
+    function filterAssignCaCategories() {
+      filterAcaCategories();
+    }
+
+    function filterAcaCategories() {
+      const query = (document.getElementById('aca-category-search')?.value || '').toLowerCase().trim();
+      const targetDept = getAcaCurrentDept();
+
+      const items = document.querySelectorAll('.aca-cat-item');
+      let visibleCount = 0;
+      items.forEach(item => {
+        const name = (item.getAttribute('data-name') || '').toLowerCase();
+        const itemDept = (item.getAttribute('data-dept') || '').toLowerCase();
+        const deptMatch = !targetDept || deptMatches(itemDept, targetDept);
+        const textMatch = !query || name.includes(query) || itemDept.includes(query);
+
+        if (deptMatch && textMatch) {
+          item.style.display = 'flex';
+          visibleCount++;
+        } else {
+          item.style.display = 'none';
+          const cb = item.querySelector('input[type="checkbox"]');
+          if (cb) cb.checked = false;
+        }
+      });
+      const noRes = document.getElementById('aca-no-results');
+      if (noRes) noRes.style.display = visibleCount === 0 ? 'block' : 'none';
+      updateAcaCount();
+    }
+
+    function acaSelectAll() {
+      document.querySelectorAll('.aca-cat-item').forEach(item => {
+        if (item.style.display !== 'none') {
+          const cb = item.querySelector('input[type="checkbox"]');
+          if (cb) cb.checked = true;
+        }
+      });
+      updateAcaCount();
+    }
+
+    function acaClearAll() {
+      document.querySelectorAll('.aca-cat-item input[type="checkbox"]').forEach(cb => cb.checked = false);
+      updateAcaCount();
+    }
+
+    function updateAcaCount() {
+      const checked = document.querySelectorAll('#aca-category-list input[type="checkbox"]:checked').length;
+      const countEl = document.getElementById('aca-selected-count');
+      if (countEl) countEl.textContent = checked + ' selected';
+      const submitBtn = document.getElementById('aca-submit-btn');
+      const pSelect = document.getElementById('assign-ca-person-select');
+      const hasPerson = pSelect && pSelect.value;
+      if (submitBtn) {
+        submitBtn.disabled = !(checked > 0 && hasPerson);
+        submitBtn.style.opacity = (checked > 0 && hasPerson) ? '1' : '0.5';
+        submitBtn.style.cursor = (checked > 0 && hasPerson) ? 'pointer' : 'not-allowed';
+      }
+    }
+
+    // ── Location Block Multi-Select Helpers ─────────────────────────────
+    function toggleMultiSelectDropdown(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const isOpen = container.classList.contains('open');
+      document.querySelectorAll('.block-multi-select-container').forEach(el => el.classList.remove('open'));
+      if (!isOpen) {
+        container.classList.add('open');
+        const searchInput = container.querySelector('.block-search-input');
+        if (searchInput) searchInput.focus();
+      }
+    }
+
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.block-multi-select-container')) {
+        document.querySelectorAll('.block-multi-select-container').forEach(el => el.classList.remove('open'));
+      }
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        document.querySelectorAll('.block-multi-select-container').forEach(el => el.classList.remove('open'));
+      }
+    });
+
+    function updateMultiSelectState(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+
+      const checkboxes = container.querySelectorAll('.options-scroll-list input[type="checkbox"]');
+      const chipsWrap = container.querySelector('.selected-chips-wrap');
+      const badge = container.querySelector('.selection-count-badge');
+      const footerCount = container.querySelector('.footer-count');
+
+      const checked = Array.from(checkboxes).filter(cb => cb.checked);
+      const total = checkboxes.length;
+
+      chipsWrap.innerHTML = '';
+      if (checked.length === 0) {
+        chipsWrap.innerHTML = '<span class="placeholder-text">All Blocks (Default) or select specific blocks...</span>';
+        if (badge) badge.style.display = 'none';
+      } else {
+        checked.forEach(cb => {
+          const val = cb.value;
+          const chip = document.createElement('span');
+          chip.className = 'chip-item';
+          chip.innerHTML = `
+            <span class="chip-check">✓</span>
+            <span>${escapeHtml(val)}</span>
+            <button type="button" class="chip-remove" onclick="removeMultiSelectChip('${containerId}', '${escapeHtml(val)}', event)">&times;</button>
+          `;
+          chipsWrap.appendChild(chip);
+        });
+        if (badge) {
+          badge.style.display = 'inline-block';
+          badge.textContent = `${checked.length} selected`;
+        }
+      }
+
+      if (footerCount) {
+        footerCount.textContent = `${checked.length} of ${total} selected`;
+      }
+    }
+
+    function removeMultiSelectChip(containerId, val, event) {
+      if (event) event.stopPropagation();
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const cb = Array.from(container.querySelectorAll('.options-scroll-list input[type="checkbox"]')).find(el => el.value === val);
+      if (cb) {
+        cb.checked = false;
+        updateMultiSelectState(containerId);
+      }
+    }
+
+    function selectAllMultiSelect(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.querySelectorAll('.options-scroll-list .option-item').forEach(item => {
+        if (item.style.display !== 'none') {
+          const cb = item.querySelector('input[type="checkbox"]');
+          if (cb) cb.checked = true;
+        }
+      });
+      updateMultiSelectState(containerId);
+    }
+
+    function clearAllMultiSelect(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.querySelectorAll('.options-scroll-list input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+      });
+      updateMultiSelectState(containerId);
+    }
+
+    function filterMultiSelectOptions(containerId, query) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const q = (query || '').toLowerCase().trim();
+      container.querySelectorAll('.options-scroll-list .option-item').forEach(item => {
+        const text = (item.getAttribute('data-value') || item.textContent || '').toLowerCase();
+        item.style.display = text.includes(q) ? 'flex' : 'none';
+      });
+    }
   </script>
+
+  <!-- Assign to CA Modal -->
+  <div id="assign-ca-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; overflow: visible;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+        <div>
+          <h3 style="margin: 0; font-size: 1.25rem;">Assign Categories to Assignee</h3>
+          <p style="margin: 3px 0 0; font-size: 0.8rem; color: var(--slate-600);">Allocate categories and campus location blocks to an Assignee.</p>
+        </div>
+        <button type="button" class="close-panel-btn" onclick="closeAssignCaModal()" style="font-size: 1.4rem;">&times;</button>
+      </div>
+
+      <form method="post" action="{{ url_for('management.category_assignments') }}" style="display: flex; flex-direction: column; flex: 1; overflow: visible;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="assign_ca">
+        <input type="hidden" name="redirect_to" value="{{ url_for('management.user_management') }}">
+
+        {% if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] %}
+        <!-- Step 1: Choose Department (Admins only) -->
+        <div class="field" style="margin-bottom: 14px; display: block; position: relative;">
+          <label style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">1</span>
+            Choose Department
+          </label>
+          <select id="assign-ca-dept-select" class="input-style" style="width: 100%; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; outline: none; background: #fff;" onchange="onAssignCaDeptChange(this.value)">
+            <option value="">— All Departments —</option>
+            {% for d in modal_departments|default(departments) %}
+              <option value="{{ d.code }}">{{ d.name }} ({{ d.code }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
+
+        <!-- Step {{ '2' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '1' }}: Choose Assignee -->
+        <div class="field" style="margin-bottom: 14px; display: block; position: relative; z-index: 50;">
+          <label style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">{{ '2' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '1' }}</span>
+            Choose Assignee
+          </label>
+          <select name="faculty_id" id="assign-ca-person-select" class="input-style user-select searchable-select" style="width: 100%; padding: 9px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; outline: none;" data-placeholder="— Select an Assignee —" data-search-placeholder="Search Assignee by name or email..." required onchange="filterAssignCaCategories()">
+            <option value="">— Select an Assignee —</option>
+            {% for u in candidate_faculties %}
+              {% if u.role in ['CA', 'ASSIGNEE'] %}
+                <option value="{{ u.id }}" data-dept="{{ u.department|e }}" data-role="{{ u.role }}">{{ u.name }} (ASSIGNEE) | {{ u.department }} | {{ u.email }}</option>
+              {% endif %}
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Step {{ '3' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '2' }}: Pick categories -->
+        <div style="margin-bottom: 14px; display: flex; flex-direction: column;">
+          <div style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">{{ '3' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '2' }}</span>
+            Select Categories to Assign
+            <span id="aca-selected-count" style="margin-left: auto; font-size: 0.78rem; color: var(--primary); font-weight: 600;">0 selected</span>
+          </div>
+
+          <!-- Search + bulk controls -->
+          <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+            <input type="text" id="aca-category-search" class="input-style" style="flex: 1; font-size: 0.85rem; padding: 7px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px;" placeholder="Search categories..." oninput="filterAcaCategories()">
+            <button type="button" class="btn-bulk-select-all" onclick="acaSelectAll()">Select All</button>
+            <button type="button" class="btn-bulk-clear-all" onclick="acaClearAll()">Clear</button>
+          </div>
+
+          <!-- Category list -->
+          <div id="aca-category-list" style="max-height: 150px; overflow-y: auto; border: 1px solid var(--slate-200); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px;">
+            {% for item in categories %}
+              {% if item.is_active != 0 %}
+              <label class="aca-cat-item" data-name="{{ item.category_name|lower|e }}" data-dept="{{ item.department|lower|e }}" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-radius: 6px; cursor: pointer; transition: background 0.12s; border: 1px solid #f1f5f9;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <input type="checkbox" name="categories" value="{{ item.id }}" onchange="updateAcaCount()" style="accent-color: var(--primary); width: 16px; height: 16px;">
+                  <div>
+                    <div style="font-weight: 500; font-size: 0.88rem; color: var(--slate-800);">{{ item.category_name }}</div>
+                    <div style="font-size: 0.75rem; color: var(--slate-600);">{{ item.department }}
+                      {% if item.assigned_ca_name %} &nbsp;·&nbsp; Currently: <em>{{ item.assigned_ca_name }}</em>{% endif %}
+                    </div>
+                  </div>
+                </div>
+                <span class="dept-badge" style="font-size: 0.72rem; flex-shrink: 0;">{{ item.department }}</span>
+              </label>
+              {% endif %}
+            {% endfor %}
+            <div id="aca-no-results" style="display: none; text-align: center; color: #94a3b8; padding: 1.5rem; font-size: 0.88rem;">No categories match your search.</div>
+          </div>
+        </div>
+
+        <!-- Step {{ '4' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '3' }}: Block Mapping -->
+        <div class="field" style="margin-bottom: 14px; display: block; position: relative;">
+          <label style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">{{ '4' if session.get('role') in ['SUPER_ADMIN', 'ADMIN'] else '3' }}</span>
+            Block Mapping
+          </label>
+          <div class="block-multi-select-container" id="aca-block-select">
+            <div class="multi-select-display" onclick="toggleMultiSelectDropdown('aca-block-select')">
+              <div class="selected-chips-wrap">
+                <span class="placeholder-text">All Blocks (Default) or select specific blocks...</span>
+              </div>
+              <div class="display-controls">
+                <span class="selection-count-badge" style="display:none;">0 selected</span>
+                <span class="dropdown-chevron">&#9662;</span>
+              </div>
+            </div>
+            <div class="multi-select-dropdown" onclick="event.stopPropagation()">
+              <div class="dropdown-header-tools">
+                <div class="search-wrap">
+                  <input type="text" class="block-search-input input-style" style="width:100%; box-sizing:border-box;" placeholder="Search location blocks..." onkeyup="filterMultiSelectOptions('aca-block-select', this.value)">
+                </div>
+                <div class="bulk-actions-wrap">
+                  <button type="button" class="btn-bulk-select-all" onclick="selectAllMultiSelect('aca-block-select')">Select All</button>
+                  <button type="button" class="btn-bulk-clear-all" onclick="clearAllMultiSelect('aca-block-select')">Clear All</button>
+                </div>
+              </div>
+              <div class="options-scroll-list">
+                {% for b in blocks %}
+                  <label class="option-item" data-value="{{ b }}">
+                    <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('aca-block-select')">
+                    <span class="option-label-text">{{ b }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+              <div class="dropdown-footer-summary">
+                <span class="footer-count">0 of {{ blocks|length }} selected</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--slate-100);">
+          <button type="button" class="btn-table-action btn-cancel" onclick="closeAssignCaModal()" style="padding: 8px 16px;">Cancel</button>
+          <button type="submit" class="btn-table-action btn-save" id="aca-submit-btn" disabled style="padding: 8px 18px; font-weight: 600;">
+            <i data-lucide="check" style="width: 14px; height: 14px;"></i> Assign Categories
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Hidden form for unassigning category from CA -->
+  <form id="unassign-category-form" method="post" action="{{ url_for('management.unassign_ca_category') }}" style="display:none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="ca_id" id="unassign-ca-id" value="">
+    <input type="hidden" name="category_id" id="unassign-category-id" value="">
+    <input type="hidden" name="redirect_to" value="{{ request.full_path or url_for('management.user_management') }}">
+  </form>
+
+  <!-- Manage CA Categories Modal -->
+  <div id="manage-ca-modal-overlay" class="modal-overlay">
+    <div class="modal-card" style="max-width: 620px; max-height: 90vh; display: flex; flex-direction: column; overflow: visible;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+        <div>
+          <h3 style="margin: 0; font-size: 1.25rem;">Manage CA Categories</h3>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <strong id="mca-user-name" style="color: var(--slate-800); font-size: 0.95rem;"></strong>
+            <span class="dept-badge" id="mca-user-dept"></span>
+          </div>
+        </div>
+        <button type="button" class="close-panel-btn" onclick="closeManageUserCategoriesModal()" style="font-size: 1.4rem;">&times;</button>
+      </div>
+
+      <!-- Section 1: Currently Assigned Categories -->
+      <div style="margin-bottom: 14px;">
+        <label style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); margin-bottom: 6px; display: block;">
+          Currently Assigned Categories
+        </label>
+        <div id="mca-current-cats-list" style="max-height: 130px; overflow-y: auto; padding: 2px;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Section 2: Assign Additional Categories Form -->
+      <form method="post" action="{{ url_for('management.category_assignments') }}" style="display: flex; flex-direction: column; flex: 1; overflow: visible; border-top: 1px solid var(--slate-100); padding-top: 12px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="assign_ca">
+        <input type="hidden" name="redirect_to" value="{{ request.full_path or url_for('management.user_management') }}">
+        <input type="hidden" name="faculty_id" id="mca-user-id" value="">
+
+        <!-- Step 1: Pick categories -->
+        <div style="margin-bottom: 14px; display: flex; flex-direction: column;">
+          <div style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">1</span>
+            Select Categories to Assign / Update
+            <span id="mca-selected-count" style="margin-left: auto; font-size: 0.78rem; color: var(--primary); font-weight: 600;">0 selected</span>
+          </div>
+
+          <!-- Search + bulk controls -->
+          <div style="display: flex; gap: 8px; margin-bottom: 8px; align-items: center;">
+            <input type="text" id="mca-category-search" class="input-style" style="flex: 1; font-size: 0.85rem; padding: 7px 12px; border: 1.5px solid #cbd5e1; border-radius: 8px;" placeholder="Search categories..." oninput="filterMcaCategories()">
+            <button type="button" class="btn-bulk-select-all" onclick="mcaSelectAll()">Select All</button>
+            <button type="button" class="btn-bulk-clear-all" onclick="mcaClearAll()">Clear</button>
+          </div>
+
+          <!-- Category list -->
+          <div id="mca-category-list" style="max-height: 130px; overflow-y: auto; border: 1px solid var(--slate-200); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px;">
+            {% for item in categories %}
+              {% if item.is_active != 0 %}
+              <label class="mca-cat-item" data-id="{{ item.id }}" data-name="{{ item.category_name|lower|e }}" data-dept="{{ item.department|lower|e }}" style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; border-radius: 6px; cursor: pointer; transition: background 0.12s; border: 1px solid #f1f5f9;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <input type="checkbox" name="categories" value="{{ item.id }}" onchange="updateMcaCount()" style="accent-color: var(--primary); width: 16px; height: 16px;">
+                  <div>
+                    <div style="font-weight: 500; font-size: 0.88rem; color: var(--slate-800);">{{ item.category_name }}</div>
+                    <div style="font-size: 0.75rem; color: var(--slate-600);">{{ item.department }}
+                      {% if item.assigned_ca_name %} &nbsp;·&nbsp; Currently: <em>{{ item.assigned_ca_name }}</em>{% endif %}
+                    </div>
+                  </div>
+                </div>
+                <span class="dept-badge" style="font-size: 0.72rem; flex-shrink: 0;">{{ item.department }}</span>
+              </label>
+              {% endif %}
+            {% endfor %}
+            <div id="mca-no-results" style="display: none; text-align: center; color: #94a3b8; padding: 1.5rem; font-size: 0.88rem;">No categories match your search.</div>
+          </div>
+        </div>
+
+        <!-- Step 2: Block Mapping -->
+        <div class="field" style="margin-bottom: 14px; display: block; position: relative;">
+          <label style="font-weight: 600; font-size: 0.85rem; color: var(--slate-700); display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span style="background: var(--primary); color: #fff; width: 18px; height: 18px; border-radius: 50%; font-size: 0.72rem; display: inline-flex; align-items: center; justify-content: center; font-weight: 700;">2</span>
+            Block Mapping
+          </label>
+          <div class="block-multi-select-container" id="mca-block-select">
+            <div class="multi-select-display" onclick="toggleMultiSelectDropdown('mca-block-select')">
+              <div class="selected-chips-wrap">
+                <span class="placeholder-text">All Blocks (Default) or select specific blocks...</span>
+              </div>
+              <div class="display-controls">
+                <span class="selection-count-badge" style="display:none;">0 selected</span>
+                <span class="dropdown-chevron">&#9662;</span>
+              </div>
+            </div>
+            <div class="multi-select-dropdown" onclick="event.stopPropagation()">
+              <div class="dropdown-header-tools">
+                <div class="search-wrap">
+                  <input type="text" class="block-search-input input-style" style="width:100%; box-sizing:border-box;" placeholder="Search location blocks..." onkeyup="filterMultiSelectOptions('mca-block-select', this.value)">
+                </div>
+                <div class="bulk-actions-wrap">
+                  <button type="button" class="btn-bulk-select-all" onclick="selectAllMultiSelect('mca-block-select')">Select All</button>
+                  <button type="button" class="btn-bulk-clear-all" onclick="clearAllMultiSelect('mca-block-select')">Clear All</button>
+                </div>
+              </div>
+              <div class="options-scroll-list">
+                {% for b in blocks %}
+                  <label class="option-item" data-value="{{ b }}">
+                    <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('mca-block-select')">
+                    <span class="option-label-text">{{ b }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+              <div class="dropdown-footer-summary">
+                <span class="footer-count">0 of {{ blocks|length }} selected</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--slate-100);">
+          <button type="button" class="btn-table-action btn-cancel" onclick="closeManageUserCategoriesModal()" style="padding: 8px 16px;">Cancel</button>
+          <button type="submit" class="btn-table-action btn-save" id="mca-submit-btn" disabled style="padding: 8px 18px; font-weight: 600;">
+            <i data-lucide="check" style="width: 14px; height: 14px;"></i> Save Assignments
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function handleManageCatClick(btn) {
+      const id = btn.getAttribute('data-id');
+      const name = btn.getAttribute('data-name');
+      const dept = btn.getAttribute('data-dept');
+      let cats = [];
+      try {
+        cats = JSON.parse(btn.getAttribute('data-cats') || '[]');
+      } catch (e) {
+        cats = [];
+      }
+      openManageUserCategoriesModal(id, name, dept, cats);
+    }
+
+    function handleUnassignClick(btn) {
+      const caId = btn.getAttribute('data-ca-id');
+      const catId = btn.getAttribute('data-cat-id');
+      const catName = btn.getAttribute('data-cat-name');
+      const caName = btn.getAttribute('data-ca-name');
+      confirmUnassignCategory(caId, catId, catName, caName);
+    }
+
+    function confirmUnassignCategory(caId, catId, catName, caName) {
+      if (!confirm(`Are you sure you want to unassign category "${catName}" from ${caName}?`)) return;
+      document.getElementById('unassign-ca-id').value = caId;
+      document.getElementById('unassign-category-id').value = catId;
+      document.getElementById('unassign-category-form').submit();
+    }
+
+    let currentMcaUserDept = '';
+
+    function openManageUserCategoriesModal(userId, userName, userDept, assignedCats) {
+      const overlay = document.getElementById('manage-ca-modal-overlay');
+      if (!overlay) return;
+      document.getElementById('mca-user-id').value = userId;
+      document.getElementById('mca-user-name').textContent = userName;
+      document.getElementById('mca-user-dept').textContent = userDept;
+      currentMcaUserDept = (userDept || '').toLowerCase().trim();
+
+      const currentContainer = document.getElementById('mca-current-cats-list');
+      if (!assignedCats || assignedCats.length === 0) {
+        currentContainer.innerHTML = '<div style="padding:10px 14px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; font-size:0.84rem; color:#94a3b8; font-style:italic;">No categories currently assigned to this Assignee.</div>';
+      } else {
+        let html = '';
+        assignedCats.forEach(cat => {
+          const blocksHtml = (cat.blocks && cat.blocks.length > 0 && !cat.blocks.includes('All Blocks'))
+            ? cat.blocks.map(b => `<span class="block-sub-badge">${escapeHtml(b)}</span>`).join(' ')
+            : '<span class="block-sub-badge all">All Blocks</span>';
+          
+          html += `
+            <div class="assignee-card-pill" style="display:flex; justify-content:space-between; width:100%; box-sizing:border-box; padding:6px 10px; margin-bottom:4px;">
+              <div class="assignee-pill-info">
+                <span class="ca-avatar" style="background:#e0e7ff; color:#4f46e5;">
+                  <i data-lucide="tag" style="width:12px;height:12px;"></i>
+                </span>
+                <div class="assignee-pill-text">
+                  <span class="assignee-pill-name" style="font-size:0.85rem;">${escapeHtml(cat.category_name)}</span>
+                  <div class="assignee-pill-blocks" style="margin-top:2px;">
+                    ${blocksHtml}
+                  </div>
+                </div>
+              </div>
+              <button type="button" class="btn-remove-assignee" style="font-size:0.8rem; font-weight:600; color:#ef4444;" title="Unassign ${escapeHtml(cat.category_name)}" onclick="confirmUnassignCategory(${userId}, ${cat.category_id}, '${escapeHtml(cat.category_name)}', '${escapeHtml(userName)}')">&times; Remove</button>
+            </div>
+          `;
+        });
+        currentContainer.innerHTML = html;
+      }
+
+      // Filter available categories for this user's department
+      const listEl = document.getElementById('mca-category-list');
+      const items = listEl.querySelectorAll('.mca-cat-item');
+      items.forEach(el => {
+        const itemDept = (el.getAttribute('data-dept') || '').trim();
+        const matchDept = !currentMcaUserDept || itemDept === currentMcaUserDept || itemDept.includes(currentMcaUserDept) || currentMcaUserDept.includes(itemDept);
+        el.style.display = matchDept ? 'flex' : 'none';
+        el.querySelector('input[type="checkbox"]').checked = false;
+      });
+
+      document.getElementById('mca-category-search').value = '';
+      clearAllMultiSelect('mca-block-select');
+      updateMcaCount();
+      overlay.classList.add('active');
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function closeManageUserCategoriesModal() {
+      const overlay = document.getElementById('manage-ca-modal-overlay');
+      if (overlay) overlay.classList.remove('active');
+    }
+
+    document.getElementById('manage-ca-modal-overlay')?.addEventListener('click', function(e) {
+      if (e.target === this) closeManageUserCategoriesModal();
+    });
+
+    function filterMcaCategories() {
+      const query = (document.getElementById('mca-category-search')?.value || '').toLowerCase().trim();
+      const items = document.querySelectorAll('.mca-cat-item');
+      let visibleCount = 0;
+      items.forEach(item => {
+        const itemDept = (item.getAttribute('data-dept') || '').toLowerCase().trim();
+        const itemName = (item.getAttribute('data-name') || '').toLowerCase().trim();
+        const matchDept = !currentMcaUserDept || itemDept === currentMcaUserDept || itemDept.includes(currentMcaUserDept) || currentMcaUserDept.includes(itemDept);
+        const matchQuery = !query || itemName.includes(query) || itemDept.includes(query);
+        if (matchDept && matchQuery) {
+          item.style.display = 'flex';
+          visibleCount++;
+        } else {
+          item.style.display = 'none';
+        }
+      });
+      const noRes = document.getElementById('mca-no-results');
+      if (noRes) noRes.style.display = visibleCount === 0 ? 'block' : 'none';
+    }
+
+    function mcaSelectAll() {
+      document.querySelectorAll('.mca-cat-item').forEach(item => {
+        if (item.style.display !== 'none') {
+          item.querySelector('input[type="checkbox"]').checked = true;
+        }
+      });
+      updateMcaCount();
+    }
+
+    function mcaClearAll() {
+      document.querySelectorAll('.mca-cat-item input[type="checkbox"]').forEach(cb => cb.checked = false);
+      updateMcaCount();
+    }
+
+    function updateMcaCount() {
+      const checked = document.querySelectorAll('#mca-category-list input[type="checkbox"]:checked').length;
+      const countEl = document.getElementById('mca-selected-count');
+      if (countEl) countEl.textContent = `${checked} selected`;
+      const btn = document.getElementById('mca-submit-btn');
+      if (btn) btn.disabled = checked === 0;
+    }
+  </script>
+
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>lucide.createIcons();</script>
+  <script src="{{ url_for('static', filename='js/smart_select.js') }}"></script>
   <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
 </body>
 </html>

@@ -33,12 +33,12 @@ def super_admin_dashboard():
         dept_stats=demo_db.ticket_stats_by_department(org_id=org_id),
         cat_stats=demo_db.ticket_stats_by_category(org_id=org_id),
         departments=live_departments(org_id),
-        page_title=f"{org_label} Super Admin Dashboard",
-        kicker="RBAC Control",
-        page_heading=f"{org_label} Super Admin Overview",
+        page_title="Super Admin Dashboard",
+        kicker="",
+        page_heading="Super Admin Overview",
         highlight_title="HOD Overview",
         highlight_note="",
-        primary_cta=("management.category_assignments", "Assignee Management"),
+        primary_cta=("management.category_assignments", "Assignee"),
         secondary_cta=("dashboards.super_admin_all_tickets", "View All Tickets"),
         **page_context("Super Admin"),
     )
@@ -72,7 +72,7 @@ def admin_dashboard():
         page_heading="Admin Panel",
         highlight_title="Recent Users",
         highlight_note="",
-        primary_cta=("management.category_assignments", "Assignee Management"),
+        primary_cta=("management.category_assignments", "Assignee"),
         secondary_cta=("dashboards.admin_all_tickets", "View Tickets"),
         **page_context("Admin"),
     )
@@ -95,7 +95,7 @@ def hod_dashboard():
         page_heading=f"{user['department']} HOD Dashboard",
         highlight_title="Category to Assignee Mapping",
         highlight_note="",
-        primary_cta=("management.management_category", "Assignee Management"),
+        primary_cta=("management.management_category", "Assignee"),
         secondary_cta=("dashboards.hod_all_tickets", "View Department Tickets"),
         **page_context("HOD"),
     )
@@ -157,12 +157,13 @@ def my_tickets():
 
 def render_all_tickets(role_title, endpoint_name):
     from app import get_demo_db, get_live_db
+    from app.helpers import active_category_departments
     demo_db = get_demo_db()
     live_db = get_live_db()
     user = current_user()
     filters = filters_from_request()
     tickets = demo_db.list_tickets(user, scope="all", filters=filters)
-    departments = live_departments()
+    departments = active_category_departments(demo_db)
     locations = live_db.fetch_locations() if live_db.enabled else []
     return render_template(
         "management_all_tickets.html",

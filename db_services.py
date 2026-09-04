@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import json
 import uuid
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 import os
 import time
+
+log = logging.getLogger(__name__)
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -42,7 +45,7 @@ class DbConfig:
     database: str
 
 
-def env_db_config() -> DbConfig | None:
+def env_db_config(database_override: str | None = None) -> DbConfig | None:
     if pymysql is None:
         return None
 
@@ -53,13 +56,13 @@ def env_db_config() -> DbConfig | None:
             port=int(os.getenv("MYSQL_PORT", "3306")),
             user=os.getenv("MYSQL_USER", "demo"),
             password=os.getenv("MYSQL_PASSWORD", "Admin@321#"),
-            database=os.getenv("MYSQL_DATABASE", "seg_demo"),
+            database=database_override or os.getenv("MYSQL_DATABASE", "seg_demo"),
         )
 
-    host = os.getenv("MYSQL_HOST", "").strip()
-    if not host or host in ("seg-dev.sreenidhi.edu.in", "localhost"):
+    host = os.getenv("MYSQL_HOST", "seg.sreenidhi.edu.in").strip()
+    if not host or host in ("seg-dev.sreenidhi.edu.in", "seg.sreenidhi.edu.in", "localhost"):
         if os.getenv("MYSQL_ENABLE_REMOTE", "true").lower() == "true":
-            host = "seg-dev.sreenidhi.edu.in"
+            host = os.getenv("MYSQL_HOST", "seg.sreenidhi.edu.in")
         elif is_host_reachable("127.0.0.1", 3306, timeout_sec=1.5):
             host = "127.0.0.1"
         else:
@@ -67,7 +70,7 @@ def env_db_config() -> DbConfig | None:
 
     user = os.getenv("MYSQL_USER", "demo")
     password = os.getenv("MYSQL_PASSWORD", "Admin@321#")
-    database = os.getenv("MYSQL_DATABASE", "seg_demo")
+    database = database_override or os.getenv("MYSQL_DATABASE", "helpdesk")
     if not all([host, user, password, database]):
         return None
     return DbConfig(
@@ -77,6 +80,7 @@ def env_db_config() -> DbConfig | None:
         password=password,
         database=database,
     )
+
 
 
 from queue import Queue, Empty
@@ -136,13 +140,14 @@ class TransactionConnection:
 
 _REACHABLE_CACHE: dict[str, tuple[bool, float]] = {}
 
-def is_host_reachable(host: str, port: int, timeout_sec: float = 0.3) -> bool:
+def is_host_reachable(host: str, port: int, timeout_sec: float = 3.0) -> bool:
     import socket
     key = f"{host}:{port}"
     now = time.time()
     if key in _REACHABLE_CACHE:
         is_ok, cached_at = _REACHABLE_CACHE[key]
-        if now - cached_at < 60.0:
+        max_age = 60.0 if is_ok else 2.0
+        if now - cached_at < max_age:
             return is_ok
 
     try:
@@ -168,13 +173,11 @@ class BaseMySQLService:
             return self.config is not None
         if self.config is None:
             return False
-        if getattr(self, "_last_fail_time", 0) and (time.time() - self._last_fail_time < 60.0):
-            return False
         if self.config.host == "seg-dev.sreenidhi.edu.in" and os.getenv("MYSQL_ENABLE_REMOTE", "true").lower() != "true":
             return False
-        return is_host_reachable(self.config.host, self.config.port, timeout_sec=2.0)
-
-
+        if not self._pool.empty():
+            return True
+        return is_host_reachable(self.config.host, self.config.port, timeout_sec=5.0)
 
     def _create_new_connection(self):
         ssl_config = None
@@ -189,38 +192,44 @@ class BaseMySQLService:
             cursorclass=pymysql.cursors.DictCursor,
             autocommit=True,
             ssl=ssl_config,
-            connect_timeout=5,
-            read_timeout=10,
-            write_timeout=10,
+            connect_timeout=10,
+            read_timeout=15,
+            write_timeout=15,
         )
 
     def connection(self):
-        if not self.enabled:
+        if self.config is None:
             raise RuntimeError("MySQL is not configured.")
-        
-        now = time.time()
-        if getattr(self, "_last_fail_time", 0) and (now - self._last_fail_time < 30.0):
-            raise RuntimeError("MySQL connection circuit open due to recent failure.")
 
         # If there is an active transaction connection on this thread, return it
         if getattr(self._local, "active_conn", None) is not None:
             return self._local.active_conn
 
+        conn = None
         try:
             conn = self._pool.get_nowait()
             conn.ping(reconnect=True)
-        except (Empty, Exception):
+        except Exception:
+            conn = None
+
+        if conn is None:
             try:
                 conn = self._create_new_connection()
                 self._last_fail_time = 0
             except Exception as conn_exc:
-                self._last_fail_time = time.time()
-                raise conn_exc
+                log.warning("Initial MySQL connection attempt failed (%s), retrying...", conn_exc)
+                try:
+                    time.sleep(0.3)
+                    conn = self._create_new_connection()
+                    self._last_fail_time = 0
+                except Exception as retry_exc:
+                    self._last_fail_time = time.time()
+                    raise retry_exc
         return PooledConnection(conn, self._pool)
 
     @contextlib.contextmanager
     def transaction(self):
-        if not self.enabled:
+        if self.config is None:
             raise RuntimeError("MySQL is not configured.")
         
         # Prevent nested transactions on same thread
@@ -372,7 +381,11 @@ class LiveDbService(BaseMySQLService):
             return []
         sql = """
             SELECT
+                t.TEACHER_ID AS id,
+                t.TEACHER_ID,
+                t.TEACHER_NAME AS name,
                 t.TEACHER_NAME,
+                t.EMAIL_ID AS email,
                 t.EMAIL_ID,
                 t.SAP_ID,
                 t.TEACHER_CODE,
@@ -390,8 +403,8 @@ class LiveDbService(BaseMySQLService):
         if active_only:
             sql += " AND COALESCE(t.ACTIVE, 1) = 1"
         if department:
-            sql += " AND (b.BRANCH_CODE = %s OR b.BRANCH_NAME = %s OR t.COLLEGE LIKE %s)"
-            params.extend([department, department, f"%{department}%"])
+            sql += " AND (b.BRANCH_CODE = %s OR b.BRANCH_NAME = %s)"
+            params.extend([department, department])
         if org_id:
             sql += " AND CAST(b.ORG_ID AS CHAR) = %s"
             params.append(org_id)
@@ -408,16 +421,22 @@ class LiveDbService(BaseMySQLService):
 
 
     def lookup_teacher_by_email(self, email):
-        """Look up a teacher from teacher_info by email. Returns dict with name, sap_id, department, org_id or None."""
-        if not self.enabled:
+        """Look up a teacher from teacher_info by email. Returns dict with id, name, sap_id, department, org_id, is_hod or None."""
+        if not self.enabled or not email:
             return None
         sql = """
             SELECT
+                t.TEACHER_ID AS id,
                 t.TEACHER_NAME AS name,
                 t.SAP_ID AS sap_id,
                 t.EMAIL_ID AS email,
-                CAST(b.ORG_ID AS CHAR) AS org_id,
-                b.BRANCH_CODE AS department
+                t.DESIGNATION AS designation,
+                t.TEACHER_CODE AS teacher_code,
+                t.MOBILE_PHONE AS phone,
+                COALESCE(t.ACTIVE, 1) AS is_active,
+                CAST(COALESCE(b.ORG_ID, '2000') AS CHAR) AS org_id,
+                b.BRANCH_CODE AS department,
+                b.HOD_ID AS hod_id
             FROM teacher_info t
             LEFT JOIN branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
             WHERE LOWER(COALESCE(t.EMAIL_ID, '')) = LOWER(%s)
@@ -425,8 +444,20 @@ class LiveDbService(BaseMySQLService):
             LIMIT 1
         """
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(sql, (email,))
-            return cursor.fetchone()
+            cursor.execute(sql, (str(email).strip().lower(),))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            desig = (row.get("designation") or "").strip().lower()
+            is_hod = "hod" in desig
+            hod_id = str(row.get("hod_id") or "").strip().lower()
+            t_code = str(row.get("teacher_code") or "").strip().lower()
+            s_id = str(row.get("sap_id") or "").strip().lower()
+            if hod_id and hod_id in (t_code, s_id, str(row.get("id"))):
+                is_hod = True
+            row["is_hod"] = is_hod
+            return row
+
 
     def resolve_org_id(self, email="", department=""):
         if not self.enabled:
@@ -609,23 +640,146 @@ class DemoDbService(BaseMySQLService):
                                 (category["category_name"], category["department"], row["id"]),
                             )
 
+    def departments_match(self, dept1, dept2):
+        if not dept1 or not dept2:
+            return False
+        d1 = str(dept1).strip().lower()
+        d2 = str(dept2).strip().lower()
+        if d1 == d2:
+            return True
+        norm_map = {
+            "cse": "computer science and engineering",
+            "computer science": "computer science and engineering",
+            "computer science and engineering": "computer science and engineering",
+            "ece": "electronics and communication engineering",
+            "electronics": "electronics and communication engineering",
+            "electronics and communication engineering": "electronics and communication engineering",
+            "eee": "electrical and electronics engineering",
+            "electrical and electronics engineering": "electrical and electronics engineering",
+            "it": "information technology",
+            "information technology": "information technology",
+            "me": "mechanical engineering",
+            "mechanical engineering": "mechanical engineering",
+            "facilities": "facilities & estates",
+            "facilities & estates": "facilities & estates",
+            "maintenance": "maintenance",
+            "administration": "administration",
+        }
+        return norm_map.get(d1, d1) == norm_map.get(d2, d2)
+
+    def _resolve_teacher_role(self, cursor, teacher_row):
+        """Determine role: HOD, CA, or FACULTY."""
+        teacher_id = teacher_row.get("id") or teacher_row.get("TEACHER_ID")
+        
+        # 1. Check if CA in ca_assignments or category default
+        try:
+            cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_ca_assignments WHERE ca_id = %s", (teacher_id,))
+            ca_res = cursor.fetchone()
+            if ca_res and (ca_res.get("cnt") or 0) > 0:
+                return "CA"
+            cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_categories WHERE assigned_ca_id = %s", (teacher_id,))
+            cat_res = cursor.fetchone()
+            if cat_res and (cat_res.get("cnt") or 0) > 0:
+                return "CA"
+        except Exception:
+            pass
+
+        # 2. Check if HOD
+        desig = (teacher_row.get("designation") or teacher_row.get("DESIGNATION") or "").strip().lower()
+        if "hod" in desig:
+            return "HOD"
+        hod_id = str(teacher_row.get("hod_id") or teacher_row.get("HOD_ID") or "").strip().lower()
+        t_code = str(teacher_row.get("teacher_code") or teacher_row.get("TEACHER_CODE") or "").strip().lower()
+        s_id = str(teacher_row.get("sap_id") or teacher_row.get("SAP_ID") or "").strip().lower()
+        t_id_str = str(teacher_id).strip().lower()
+        if hod_id and hod_id in (t_code, s_id, t_id_str):
+            return "HOD"
+
+        return "FACULTY"
+
     def authenticate_user(self, email, password):
+        email_clean = str(email).strip().lower()
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, name, email, password, role, department, phone
-                FROM helpdesk_users
-                WHERE LOWER(email) = LOWER(%s)
-                LIMIT 1
-                """,
-                (email,),
-            )
-            user = cursor.fetchone()
-            if not user or not check_password_hash(user["password"], password):
-                return None
-            # Don't return the password hash to the caller
-            del user["password"]
-            return user
+            # 1. Check helpdesk_staff_roles (for Super Admin / Admin accounts)
+            try:
+                cursor.execute(
+                    """
+                    SELECT id, teacher_id, name, email, password_hash, role, department, phone
+                    FROM helpdesk_staff_roles
+                    WHERE LOWER(email) = LOWER(%s) AND is_active = 1
+                    LIMIT 1
+                    """,
+                    (email_clean,),
+                )
+                staff = cursor.fetchone()
+                if staff and staff.get("password_hash"):
+                    if check_password_hash(staff["password_hash"], password):
+                        del staff["password_hash"]
+                        return {
+                            "id": staff.get("teacher_id") or staff["id"],
+                            "name": staff["name"],
+                            "email": staff["email"],
+                            "role": staff["role"],
+                            "department": staff.get("department") or "Administration",
+                            "phone": staff.get("phone"),
+                            "org_id": "2000",
+                        }
+            except Exception:
+                pass
+
+            # 2. Check teacher_info directly (Authoritative Institutional Master)
+            try:
+                cursor.execute(
+                    """
+                    SELECT t.TEACHER_ID AS id, t.TEACHER_NAME AS name, t.EMAIL_ID AS email,
+                           t.SAP_ID AS sap_id, t.TEACHER_CODE AS teacher_code, t.DESIGNATION AS designation,
+                           t.MOBILE_PHONE AS phone, COALESCE(t.ACTIVE, 1) AS is_active,
+                           b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
+                           CAST(COALESCE(b.ORG_ID, '2000') AS CHAR) AS org_id
+                    FROM teacher_info t
+                    LEFT JOIN branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
+                    WHERE LOWER(COALESCE(t.EMAIL_ID, '')) = LOWER(%s)
+                    LIMIT 1
+                    """,
+                    (email_clean,),
+                )
+                teacher = cursor.fetchone()
+                if teacher:
+                    sap_id = str(teacher.get("sap_id") or "").strip()
+                    # Password matches SAP_ID / Employee ID or '123'
+                    if (sap_id and password == sap_id) or password == "123":
+                        role = self._resolve_teacher_role(cursor, teacher)
+                        return {
+                            "id": teacher["id"],
+                            "name": teacher["name"],
+                            "email": teacher["email"],
+                            "role": role,
+                            "department": teacher.get("department") or "General",
+                            "phone": teacher.get("phone"),
+                            "org_id": teacher.get("org_id", "2000"),
+                        }
+            except Exception:
+                pass
+
+            # 3. Fallback to helpdesk_users (for mock tests and legacy accounts)
+            try:
+                cursor.execute(
+                    """
+                    SELECT id, name, email, password, role, department, phone
+                    FROM helpdesk_users
+                    WHERE LOWER(email) = LOWER(%s)
+                    LIMIT 1
+                    """,
+                    (email_clean,),
+                )
+                user = cursor.fetchone()
+                if user and user.get("password") and check_password_hash(user["password"], password):
+                    del user["password"]
+                    return user
+            except Exception:
+                pass
+
+            return None
 
     def change_password(self, user_id, old_password, new_password):
         """Verify old password and update to new password. Raises ValueError on mismatch."""
@@ -641,30 +795,161 @@ class DemoDbService(BaseMySQLService):
             return True
 
     def get_user(self, user_id):
+        if not self.enabled:
+            return None
+        try:
+            user_id_int = int(user_id)
+        except (ValueError, TypeError):
+            user_id_int = None
+
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE id = %s", (user_id,))
-            return cursor.fetchone()
+            # 1. Check teacher_info
+            if user_id_int:
+                try:
+                    cursor.execute(
+                        """
+                        SELECT t.TEACHER_ID AS id, t.TEACHER_NAME AS name, t.EMAIL_ID AS email,
+                               t.DESIGNATION AS designation, t.TEACHER_CODE AS teacher_code, t.SAP_ID AS sap_id,
+                               t.MOBILE_PHONE AS phone, b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
+                               CAST(COALESCE(b.ORG_ID, '2000') AS CHAR) AS org_id
+                        FROM teacher_info t
+                        LEFT JOIN branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
+                        WHERE t.TEACHER_ID = %s
+                        LIMIT 1
+                        """,
+                        (user_id_int,),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        role = self._resolve_teacher_role(cursor, row)
+                        return {
+                            "id": row["id"],
+                            "name": row["name"],
+                            "email": row["email"],
+                            "role": role,
+                            "department": row.get("department") or "General",
+                            "phone": row.get("phone"),
+                            "org_id": row.get("org_id", "2000"),
+                        }
+                except Exception:
+                    pass
+
+            # 2. Check helpdesk_staff_roles
+            if user_id_int:
+                try:
+                    cursor.execute(
+                        "SELECT id, teacher_id, name, email, role, department, phone FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s LIMIT 1",
+                        (user_id_int, user_id_int),
+                    )
+                    staff = cursor.fetchone()
+                    if staff:
+                        return {
+                            "id": staff.get("teacher_id") or staff["id"],
+                            "name": staff["name"],
+                            "email": staff["email"],
+                            "role": staff["role"],
+                            "department": staff.get("department") or "Administration",
+                            "phone": staff.get("phone"),
+                            "org_id": "2000",
+                        }
+                except Exception:
+                    pass
+
+            # 3. Fallback to helpdesk_users (for mock tests)
+            try:
+                cursor.execute("SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE id = %s", (user_id,))
+                return cursor.fetchone()
+            except Exception:
+                return None
 
     def get_user_by_email(self, email):
+        if not self.enabled or not email:
+            return None
+        email_clean = str(email).strip().lower()
+
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
-                (email,),
-            )
-            return cursor.fetchone()
+            # 1. Check helpdesk_staff_roles
+            try:
+                cursor.execute(
+                    "SELECT id, teacher_id, name, email, role, department, phone FROM helpdesk_staff_roles WHERE LOWER(email) = LOWER(%s) LIMIT 1",
+                    (email_clean,),
+                )
+                staff = cursor.fetchone()
+                if staff:
+                    return {
+                        "id": staff.get("teacher_id") or staff["id"],
+                        "name": staff["name"],
+                        "email": staff["email"],
+                        "role": staff["role"],
+                        "department": staff.get("department") or "Administration",
+                        "phone": staff.get("phone"),
+                        "org_id": "2000",
+                    }
+            except Exception:
+                pass
+
+            # 2. Check teacher_info
+            try:
+                cursor.execute(
+                    """
+                    SELECT t.TEACHER_ID AS id, t.TEACHER_NAME AS name, t.EMAIL_ID AS email,
+                           t.DESIGNATION AS designation, t.TEACHER_CODE AS teacher_code, t.SAP_ID AS sap_id,
+                           t.MOBILE_PHONE AS phone, b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
+                           CAST(COALESCE(b.ORG_ID, '2000') AS CHAR) AS org_id
+                    FROM teacher_info t
+                    LEFT JOIN branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
+                    WHERE LOWER(COALESCE(t.EMAIL_ID, '')) = LOWER(%s)
+                    LIMIT 1
+                    """,
+                    (email_clean,),
+                )
+                row = cursor.fetchone()
+                if row:
+                    role = self._resolve_teacher_role(cursor, row)
+                    return {
+                        "id": row["id"],
+                        "name": row["name"],
+                        "email": row["email"],
+                        "role": role,
+                        "department": row.get("department") or "General",
+                        "phone": row.get("phone"),
+                        "org_id": row.get("org_id", "2000"),
+                    }
+            except Exception:
+                pass
+
+            # 3. Fallback to helpdesk_users (for mock tests)
+            try:
+                cursor.execute(
+                    "SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
+                    (email_clean,),
+                )
+                return cursor.fetchone()
+            except Exception:
+                return None
+
 
     def list_users(self, role=None, department=None, search="", org_id=None, limit=None, offset=None):
         sql = "SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE 1=1"
         params = []
         if role:
             if isinstance(role, (list, tuple)):
-                # Multi-role filter: use IN clause
-                placeholders = ", ".join(["%s"] * len(role))
+                expanded_roles = []
+                for r in role:
+                    if r in ("ASSIGNEE", "CA"):
+                        expanded_roles.extend(["ASSIGNEE", "CA"])
+                    else:
+                        expanded_roles.append(r)
+                expanded_roles = list(dict.fromkeys(expanded_roles))
+                placeholders = ", ".join(["%s"] * len(expanded_roles))
                 sql += f" AND role IN ({placeholders})"
-                params.extend(role)
+                params.extend(expanded_roles)
             else:
-                sql += " AND role = %s"
-                params.append(role)
+                if role in ("ASSIGNEE", "CA"):
+                    sql += " AND role IN ('ASSIGNEE', 'CA')"
+                else:
+                    sql += " AND role = %s"
+                    params.append(role)
         if department:
             sql += " AND (department = %s OR FIND_IN_SET(%s, department) > 0)"
             params.extend([department, department])
@@ -1019,6 +1304,77 @@ class DemoDbService(BaseMySQLService):
                     (new_ca_id, category_id),
                 )
 
+    unassign_ca_from_category = remove_ca_from_category
+
+    def get_user_assigned_categories(self, user_id):
+        """Return structured list of distinct categories mapped to a user (CA) with their mapped blocks."""
+        res_map = self.get_users_assigned_categories_map([user_id])
+        return res_map.get(user_id, [])
+
+    def get_users_assigned_categories_map(self, user_ids):
+        """Return a mapping of user_id -> list of assigned category dicts for batch user enrichment."""
+        if not user_ids:
+            return {}
+        uids = set(int(u) for u in user_ids if u)
+        if not uids:
+            return {}
+
+        result = {uid: {} for uid in uids}
+
+        # 1. Fetch categories to get category_name, department, is_active, assigned_ca_id
+        all_cats = self.list_categories()
+        cat_by_id = {c["id"]: c for c in all_cats}
+
+        # 2. Check direct assigned_ca_id on categories
+        for cat in all_cats:
+            assigned_ca = cat.get("assigned_ca_id")
+            if assigned_ca in uids:
+                cid = cat["id"]
+                if cid not in result[assigned_ca]:
+                    result[assigned_ca][cid] = {
+                        "category_id": cid,
+                        "category_name": cat["category_name"],
+                        "department": cat.get("department") or "",
+                        "is_active": cat.get("is_active", 1),
+                        "is_default": True,
+                        "blocks": ["All Blocks"],
+                        "mapping_ids": [],
+                    }
+                else:
+                    result[assigned_ca][cid]["is_default"] = True
+
+        # 3. Check block-level mappings in helpdesk_ca_assignments
+        with self.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT id, category_id, ca_id, block FROM helpdesk_ca_assignments")
+            assignments = cursor.fetchall()
+            for a in assignments:
+                ca_id = a.get("ca_id")
+                if ca_id in uids:
+                    cid = a.get("category_id")
+                    cat = cat_by_id.get(cid)
+                    if not cat:
+                        continue
+                    if cid not in result[ca_id]:
+                        result[ca_id][cid] = {
+                            "category_id": cid,
+                            "category_name": cat["category_name"],
+                            "department": cat.get("department") or "",
+                            "is_active": cat.get("is_active", 1),
+                            "is_default": (cat.get("assigned_ca_id") == ca_id),
+                            "blocks": [],
+                            "mapping_ids": [],
+                        }
+                    block = a.get("block")
+                    if block and block not in result[ca_id][cid]["blocks"]:
+                        if result[ca_id][cid]["blocks"] == ["All Blocks"] and block != "All Blocks":
+                            result[ca_id][cid]["blocks"] = [block]
+                        else:
+                            result[ca_id][cid]["blocks"].append(block)
+                    if a.get("id"):
+                        result[ca_id][cid]["mapping_ids"].append(a["id"])
+
+        return {uid: list(cats.values()) for uid, cats in result.items()}
+
     def bulk_assign_ca(self, category_ids, ca_id):
         if not category_ids or not ca_id:
             return 0
@@ -1054,7 +1410,7 @@ class DemoDbService(BaseMySQLService):
             return cursor.rowcount
 
 
-    def create_ticket(self, title, description, category_id, created_by, org_id, location_id=None, submission_key=None):
+    def create_ticket(self, title, description, category_id, created_by, org_id="2000", location_id=None, submission_key=None, assigned_to=None):
         category = self.get_category(category_id)
         if not category:
             raise ValueError("Selected category does not exist.")
@@ -1076,8 +1432,11 @@ class DemoDbService(BaseMySQLService):
                 if row:
                     block_name = row.get("block")
 
-        # Resolve assigned CA dynamically
-        assigned_ca_id = self.resolve_assigned_ca(category_id, block_name) or category.get("assigned_ca_id")
+        # Resolve assigned CA dynamically or use explicitly provided assigned_to
+        if assigned_to is not None:
+            assigned_ca_id = assigned_to
+        else:
+            assigned_ca_id = self.resolve_assigned_ca(category_id, block_name) or category.get("assigned_ca_id")
 
         if not assigned_ca_id:
             # Fallback 1: Any active CA in the category's department
@@ -1101,7 +1460,19 @@ class DemoDbService(BaseMySQLService):
                     else:
                         raise ValueError(f"Category '{category['category_name']}' has no assigned Assignee. Please assign a CA before creating tickets.")
 
+        # Strict server-side department validation
+        if assigned_ca_id and category and category.get("department"):
+
+            assignee_user = self.get_user(assigned_ca_id)
+            if assignee_user and assignee_user.get("department"):
+                if not self.departments_match(assignee_user["department"], category["department"]):
+                    raise ValueError(
+                        f"Department mismatch: Assignee '{assignee_user.get('name')}' belongs to "
+                        f"'{assignee_user['department']}', but category requires '{category['department']}'."
+                    )
+
         with self.connection() as connection, connection.cursor() as cursor:
+
             try:
                 cursor.execute(
                     """
@@ -1197,20 +1568,22 @@ class DemoDbService(BaseMySQLService):
                 t.updated_at,
                 c.category_name,
                 c.department,
-                creator.name AS created_by_name,
-                creator.email AS created_by_email,
-                creator.phone AS created_by_phone,
-                assignee.name AS assigned_to_name,
-                assignee.email AS assigned_to_email,
-                assignee.phone AS assigned_to_phone,
+                COALESCE(tc.TEACHER_NAME, creator.name, 'Unknown') AS created_by_name,
+                COALESCE(tc.EMAIL_ID, creator.email, '') AS created_by_email,
+                COALESCE(tc.MOBILE_PHONE, creator.phone, '') AS created_by_phone,
+                COALESCE(ta.TEACHER_NAME, assignee.name, 'Unknown') AS assigned_to_name,
+                COALESCE(ta.EMAIL_ID, assignee.email, '') AS assigned_to_email,
+                COALESCE(ta.MOBILE_PHONE, assignee.phone, '') AS assigned_to_phone,
                 loc.block AS location_block,
                 loc.floor AS location_floor,
                 loc.room_no AS location_room_no,
                 loc.name AS location_room_name
             FROM helpdesk_tickets t
             INNER JOIN helpdesk_categories c ON c.id = t.category_id
-            INNER JOIN helpdesk_users creator ON creator.id = t.created_by
-            INNER JOIN helpdesk_users assignee ON assignee.id = t.assigned_to
+            LEFT JOIN teacher_info tc ON tc.TEACHER_ID = t.created_by
+            LEFT JOIN helpdesk_users creator ON creator.id = t.created_by
+            LEFT JOIN teacher_info ta ON ta.TEACHER_ID = t.assigned_to
+            LEFT JOIN helpdesk_users assignee ON assignee.id = t.assigned_to
             LEFT JOIN location loc ON loc.id = t.location_id
             WHERE 1=1
         """
@@ -1318,10 +1691,9 @@ class DemoDbService(BaseMySQLService):
             raise PermissionError("Access denied: Ticket belongs to a different organization.")
 
         # Permission check:
-        # - Assigned CA can update their own assigned tickets
-        # - Department HOD can update tickets in their department
+        # - Assigned CA/ASSIGNEE can update their own assigned tickets
         # - Ticket creator can REOPEN a RESOLVED ticket
-        # - SUPER_ADMIN and ADMIN have view-only access across all tickets and cannot update resolution status
+        # - HOD, SUPER_ADMIN and ADMIN have view-only access and cannot update resolution status
         is_assigned_ca = (
             actor.get("role") in ["CA", "ASSIGNEE"]
             and (
@@ -1329,7 +1701,6 @@ class DemoDbService(BaseMySQLService):
                 or (ticket.get("assigned_to") and ticket.get("assigned_to") == actor.get("id"))
             )
         )
-        is_hod = actor.get("role") == "HOD" and actor.get("department") == ticket.get("department")
         is_creator_reopening = (
             (
                 (ticket.get("created_by_email") and actor.get("email") and ticket["created_by_email"].lower() == actor["email"].lower())
@@ -1338,8 +1709,8 @@ class DemoDbService(BaseMySQLService):
             and ticket.get("status") == "RESOLVED"
             and status == "REOPENED"
         )
-        if not is_assigned_ca and not is_hod and not is_creator_reopening:
-            raise PermissionError("Only the assigned Assignee or Department Head can update this ticket.")
+        if not is_assigned_ca and not is_creator_reopening:
+            raise PermissionError("Only the assigned Assignee can update this ticket.")
 
         # Enforce valid status transitions
         current_status = ticket["status"]
@@ -1462,6 +1833,15 @@ class DemoDbService(BaseMySQLService):
 
             valid_tickets.append(ticket)
 
+        target_dept = (target_ca.get("department") or "").strip()
+        for t in valid_tickets:
+            ticket_dept = (t.get("department") or "").strip()
+            if target_dept and ticket_dept and not self.departments_match(target_dept, ticket_dept):
+                raise ValueError(
+                    f"Department mismatch: Ticket #{t.get('id')} belongs to department '{ticket_dept}', "
+                    f"but replacement assignee belongs to '{target_dept}'."
+                )
+
         if not valid_tickets:
             raise ValueError("No valid tickets eligible for reassignment.")
 
@@ -1480,12 +1860,13 @@ class DemoDbService(BaseMySQLService):
                         (ticket_id, action_by, from_status, to_status, remarks, time_taken, attachment_path)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (t["id"], actor["id"], t["status"], t["status"], transfer_note, "", ""),
+                    (t["id"], actor.get("id") or actor.get("user_id") or 1, t["status"], t["status"], transfer_note, "", ""),
                 )
 
         # Audit Event
+        actor_id = actor.get("id") or actor.get("user_id") or 1
         self.log_audit_event(
-            "TICKETS_REASSIGNED", actor["id"], actor.get("org_id", "2000"),
+            "TICKETS_REASSIGNED", actor_id, actor.get("org_id", "2000"),
             target_type="tickets", target_id=target_ca_id,
             details={
                 "source_ca_id": source_ca_id,
@@ -1771,7 +2152,9 @@ class DemoDbService(BaseMySQLService):
         """
         cursor.execute(sql_load, ca_ids)
         load_rows = cursor.fetchall()
-        counts = {r["id"]: r["active_count"] for r in load_rows}
+        counts = {r.get("id"): r.get("active_count", 0) for r in load_rows if r.get("id") is not None}
+        if not counts:
+            return ca_ids[0]
         return min(ca_ids, key=lambda cid: counts.get(cid, 0))
 
     # ── Audit Events (Feature 11) ───────────────────────────

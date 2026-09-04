@@ -161,8 +161,6 @@ def ticket_detail(ticket_id):
             (assigned_email and user_email and assigned_email.lower() == user_email.lower())
             or (ticket.get("assigned_to") and ticket.get("assigned_to") == user.get("id"))
         )
-    ) or (
-        user.get("role") == "HOD" and user.get("department") == ticket.get("department")
     )
     
     can_reopen = (
@@ -190,7 +188,7 @@ def ticket_detail(ticket_id):
 
 
 @tickets_bp.route("/authority/update-status/<int:ticket_id>", methods=["POST"])
-@role_required("ASSIGNEE", "CA", "HOD")
+@role_required("ASSIGNEE", "CA")
 def authority_update_status(ticket_id):
     from app import get_demo_db
     demo_db = get_demo_db()
@@ -321,12 +319,13 @@ def authority_my_tickets():
 @role_required("ASSIGNEE", "CA")
 def authority_assigned_tickets():
     from app import get_demo_db, get_live_db
+    from app.helpers import active_category_departments
     demo_db = get_demo_db()
     live_db = get_live_db()
     user = current_user()
     filters = filters_from_request()
     assigned_tickets = demo_db.list_tickets(user, scope="assigned", filters=filters)
-    departments = live_departments(user.get("org_id"))
+    departments = active_category_departments(demo_db, org_id=user.get("org_id"))
     locations = live_db.fetch_locations() if live_db.enabled else []
     return render_template(
         "management_all_tickets.html",

@@ -66,7 +66,7 @@ class MockDbState:
         categories = [
             {"id": 1, "category_name": "Internet", "department": "CSE", "assigned_ca_id": 4, "is_active": 1},
             {"id": 2, "category_name": "Projector", "department": "CSE", "assigned_ca_id": 4, "is_active": 1},
-            {"id": 3, "category_name": "Plumbing", "department": "Facilities", "assigned_ca_id": 6, "is_active": 1},
+            {"id": 3, "category_name": "Plumbing", "department": "Facilities", "assigned_ca_id": 5, "is_active": 1},
             {"id": 4, "category_name": "Electrical", "department": "Maintenance", "assigned_ca_id": 6, "is_active": 1},
         ]
         self.tables["helpdesk_categories"] = categories
@@ -81,20 +81,24 @@ class MockDbState:
         self.tables["location"] = locations
         self.next_ids["location"] = 4
 
-        # 5. Seed teacher_info for auto-provisioning
+        # 5. Seed teacher_info for institutional identity
         teachers = [
-            {"sap_id": "10001", "SAP_ID": "10001", "name": "Seeded Teacher", "TEACHER_NAME": "Seeded Teacher", "EMAIL_ID": "seeded@sreenidhi.edu.in", "email_id": "seeded@sreenidhi.edu.in", "MOBILE_PHONE": "9876543210", "ACTIVE": 1, "BRANCH_CODE": "CSE", "BRANCH_ID": 1, "ORG_ID": "2000", "org_id": "2000", "department": "CSE", "TEACHER_CODE": "TC001", "DESIGNATION": "Asst Prof"},
-            {"sap_id": "20001", "SAP_ID": "20001", "name": "SNU Teacher", "TEACHER_NAME": "SNU Teacher", "EMAIL_ID": "snuteacher@snu.edu.in", "email_id": "snuteacher@snu.edu.in", "MOBILE_PHONE": "9876543210", "ACTIVE": 1, "BRANCH_CODE": "CSE_SNU", "BRANCH_ID": 6, "ORG_ID": "3000", "org_id": "3000", "department": "CSE_SNU", "TEACHER_CODE": "TC002", "DESIGNATION": "Asst Prof"},
+            {"TEACHER_ID": 10, "id": 10, "sap_id": "10001", "SAP_ID": "10001", "name": "Seeded Teacher", "TEACHER_NAME": "Seeded Teacher", "EMAIL_ID": "seeded@sreenidhi.edu.in", "email_id": "seeded@sreenidhi.edu.in", "MOBILE_PHONE": "9876543210", "ACTIVE": 1, "BRANCH_CODE": "CSE", "BRANCH_ID": 1, "ORG_ID": "2000", "org_id": "2000", "department": "CSE", "TEACHER_CODE": "TC001", "DESIGNATION": "Asst Prof"},
+            {"TEACHER_ID": 11, "id": 11, "sap_id": "20001", "SAP_ID": "20001", "name": "SNU Teacher", "TEACHER_NAME": "SNU Teacher", "EMAIL_ID": "snuteacher@snu.edu.in", "email_id": "snuteacher@snu.edu.in", "MOBILE_PHONE": "9876543210", "ACTIVE": 1, "BRANCH_CODE": "CSE_SNU", "BRANCH_ID": 6, "ORG_ID": "3000", "org_id": "3000", "department": "CSE_SNU", "TEACHER_CODE": "TC002", "DESIGNATION": "Asst Prof"},
+            {"TEACHER_ID": 12, "id": 12, "sap_id": "10002", "SAP_ID": "10002", "name": "Dr. Ramesh HOD", "TEACHER_NAME": "Dr. Ramesh HOD", "EMAIL_ID": "hod.ece@sreenidhi.edu.in", "email_id": "hod.ece@sreenidhi.edu.in", "MOBILE_PHONE": "9876543211", "ACTIVE": 1, "BRANCH_CODE": "ECE", "BRANCH_ID": 2, "ORG_ID": "2000", "org_id": "2000", "department": "ECE", "TEACHER_CODE": "TC003", "DESIGNATION": "Professor & HOD"},
+            {"TEACHER_ID": 13, "id": 13, "sap_id": "10003", "SAP_ID": "10003", "name": "Suresh Faculty ECE", "TEACHER_NAME": "Suresh Faculty ECE", "EMAIL_ID": "faculty.ece@sreenidhi.edu.in", "email_id": "faculty.ece@sreenidhi.edu.in", "MOBILE_PHONE": "9876543212", "ACTIVE": 1, "BRANCH_CODE": "ECE", "BRANCH_ID": 2, "ORG_ID": "2000", "org_id": "2000", "department": "ECE", "TEACHER_CODE": "TC004", "DESIGNATION": "Assistant Professor"},
+            {"TEACHER_ID": 14, "id": 14, "sap_id": "10004", "SAP_ID": "10004", "name": "Priya CA CSE", "TEACHER_NAME": "Priya CA CSE", "EMAIL_ID": "priya.ca@sreenidhi.edu.in", "email_id": "priya.ca@sreenidhi.edu.in", "MOBILE_PHONE": "9876543213", "ACTIVE": 1, "BRANCH_CODE": "CSE", "BRANCH_ID": 1, "ORG_ID": "2000", "org_id": "2000", "department": "CSE", "TEACHER_CODE": "TC005", "DESIGNATION": "Assistant Professor"},
         ]
         self.tables["teacher_info"] = teachers
-        self.next_ids["teacher_info"] = 3
+        self.next_ids["teacher_info"] = 15
 
         # 6. Seed CA Assignments
         ca_assignments = [
             {"id": 1, "category_id": 1, "ca_id": 4, "block": "Block A"},
+            {"id": 2, "category_id": 1, "ca_id": 14, "block": "Block A"},
         ]
         self.tables["helpdesk_ca_assignments"] = ca_assignments
-        self.next_ids["helpdesk_ca_assignments"] = 2
+        self.next_ids["helpdesk_ca_assignments"] = 3
 
         # 7. Seed problem types
         problem_types = [
@@ -385,6 +389,19 @@ class MockCursor:
         # Handle ORDER BY, LIMIT, OFFSET if simple
         if "limit 1" in sql_lower_stripped:
             filtered_rows = filtered_rows[:1]
+
+        # Handle GROUP BY with COUNT for multi-CA least loaded routing
+        if "group by u.id" in sql_lower_stripped:
+            res = []
+            for cid in params:
+                cnt = sum(
+                    1 for t in self.state.tables["helpdesk_tickets"] 
+                    if t.get("assigned_to") == cid and t.get("status") in ('PENDING', 'IN_PROGRESS', 'REOPENED')
+                )
+                res.append({"id": cid, "active_count": cnt})
+            self._results = res
+            self.rowcount = len(res)
+            return
 
         # Handle SELECT COUNT(*)
         if "count(" in sql_lower_stripped:

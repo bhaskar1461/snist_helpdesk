@@ -105,5 +105,13 @@
   - Primary actions (`Submit Ticket`, `Create User`, `Apply`) must use primary gradient with Lucide icons.
   - Secondary actions (`Cancel`, `Back to Dashboard`, `Export`) must use bordered neutral styling.
 
+## Subsystem Boundaries & Attendance System Isolation
+- **Attendance Decoupling**: The QR Attendance subsystem (`qr_*` tables such as `qr_students`, `qr_teachers`, `qr_attendance_sessions`, `qr_attendance_records`, `qr_device_account_bindings`, etc.) resides in the shared database but is **STRICTLY OUT OF SCOPE** for `snist_helpdesk`. It is configured and managed exclusively by a separate, dedicated application.
+- **Zero Access Invariant**: `snist_helpdesk` must NEVER query, join, mutate, or depend on any `qr_*` tables or student attendance records. Application database users (`snist_helpdesk_user`) must have zero privileges on `qr_*` tables.
 
-
+## Live Database Production Invariants
+- **Operational Data Isolation**: The Helpdesk application owns and writes strictly to `helpdesk_*` tables (`helpdesk_tickets`, `helpdesk_users`, `helpdesk_categories`, `helpdesk_ca_assignments`, `helpdesk_ticket_activity`, `helpdesk_ticket_notes`, `helpdesk_audit_events`).
+- **Read-Only Institutional Authorities**: `teacher_info`, `branch_detail`, and `location` are upstream institutional tables and must be treated as **READ-ONLY**. The application must never execute `INSERT`, `UPDATE`, `DELETE`, `ALTER`, or `DROP` on these tables.
+- **Production Startup Safety**: In production or live connected environments, `INIT_DEMO_DB` must be set to `false` in `.env` to prevent `ensure_schema()` and `seed_defaults()` from attempting DDL or overwriting live users during application startup.
+- **Zero-Date Safe Queries**: Because the live database runs in MySQL 8 strict mode (`NO_ZERO_DATE`), any query touching legacy date fields in `teacher_info` or `sys_complaint` must handle `'0000-00-00'` gracefully using `NULLIF(column, '0000-00-00')` to avoid MySQL Error 1525.
+- **Department Normalization Dictionary**: `teacher_info.BRANCH_ID` (values 1–75) must be translated to `branch_detail.BRANCH_CODE` using `BRANCH_ID_TO_DEPT` mapping, as live `branch_detail.BRANCH_ID` values start at `50000062`.

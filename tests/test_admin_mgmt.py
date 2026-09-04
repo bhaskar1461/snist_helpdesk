@@ -9,43 +9,21 @@ class TestAdminMgmt(HelpdeskTestCase):
         # 1. HOD CSE logs in. HOD should only see and manage CSE users.
         self.login_as("hod@gmail.com")
         
-        # Verify page renders
+        # Verify page renders without Create User form
         response = self.client.get("/user-management")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"User Management", response.data)
+        self.assertIn(b"User Directory", response.data)
+        self.assertNotIn(b">Create User<", response.data)
         
-        # 2. HOD CSE creates a new Faculty user in ECE (Should be restricted / default to CSE)
-        # In HOD user-management routes, department is forced to HOD's department.
-        # Let's verify by posting a user payload.
+        # 2. Creating users via POST is disabled (405 Method Not Allowed)
         res_create = self.client.post("/user-management", data={
             "name": "CSE New Faculty",
             "email": "csenew@gmail.com",
             "password": "123",
             "role": "FACULTY",
-            "department": "ECE" # HOD tries to select ECE
+            "department": "ECE"
         }, follow_redirects=True)
-        self.assertEqual(res_create.status_code, 200)
-        
-        # CSE HOD's action should force creation in CSE, not ECE
-        created_user = next((u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["email"] == "csenew@gmail.com"), None)
-        self.assertIsNotNone(created_user)
-        self.assertEqual(created_user["department"], "CSE") # Forced to HOD's department
-
-        # 3. Super Admin logs in. Super Admin can manage anyone in any department.
-        self.logout()
-        self.login_as("admin@gmail.com")
-        res_sa_create = self.client.post("/user-management", data={
-            "name": "ECE New Faculty",
-            "email": "ecenew@gmail.com",
-            "password": "123",
-            "role": "FACULTY",
-            "department": "ECE" # Super admin specifies ECE
-        }, follow_redirects=True)
-        self.assertEqual(res_sa_create.status_code, 200)
-        
-        ece_user = next((u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["email"] == "ecenew@gmail.com"), None)
-        self.assertIsNotNone(ece_user)
-        self.assertEqual(ece_user["department"], "ECE")
+        self.assertEqual(res_create.status_code, 405)
 
     def test_user_update_delete(self):
         self.login_as("admin@gmail.com")

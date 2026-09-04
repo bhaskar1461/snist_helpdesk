@@ -190,17 +190,32 @@ class TestTickets(HelpdeskTestCase):
         }, follow_redirects=True)
         self.assertIn(b"Invalid status transition", resB.data)
 
-        # Case C: Access restriction - HOD trying to update status of ticket assigned to CA
-        # HOD CSE (Dr. Kavya) trying to update status of Maintenance ticket
+        # Case C: Access restriction - HOD trying to update status of ticket
+        # HOD CSE (Dr. Kavya) viewing CSE ticket and trying to update status
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"].append({
+            "id": 21,
+            "title": "Projector not working",
+            "description": "Lab 1",
+            "category_id": 1,
+            "created_by": 7,
+            "assigned_to": 4,
+            "status": "PENDING",
+            "org_id": "2000",
+            "location_id": 1
+        })
         self.logout()
         self.login_as("hod@gmail.com")
-        resC = self.client.post("/authority/update-status/20", data={
+        res_hod_detail = self.client.get("/tickets/21")
+        self.assertEqual(res_hod_detail.status_code, 200)
+        self.assertNotIn(b"Update Ticket Status", res_hod_detail.data)
+
+        resC = self.client.post("/authority/update-status/21", data={
             "status": "IN_PROGRESS",
             "remarks": "HOD accepts"
         }, follow_redirects=True)
         # HOD cannot update CA ticket status directly
         self.assertIn(b"You do not have access to that page", resC.data)
-        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "PENDING")
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][1]["status"], "PENDING")
 
         # Case D: Faculty trying to update status directly
         self.logout()

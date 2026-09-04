@@ -533,53 +533,8 @@ def login():
         password = request.form.get("password", "").strip()
 
         try:
-            # 1) Try demo_users first (existing accounts)
+            # Authenticate user directly (checks staff roles and authoritative teacher_info)
             user = demo_db.authenticate_user(email, password)
-
-            # 2) If not found and email is a valid Sreenidhi domain, try teacher_info
-            teacher_lookup_occurred = False
-            if not user and email.endswith(("@sreenidhi.edu.in", "@suh.edu.in", "@sreegroup.edu.in")):
-                # If the email already exists in demo_users, it means they have already been provisioned
-                # and simply entered an incorrect password. Avoid duplicate entry error.
-                if demo_db.get_user_by_email(email):
-                    record_login_attempt(ip)
-                    flash("Invalid email or password.", "error")
-                    return render_template("login.html")
-
-                teacher_lookup_occurred = True
-                try:
-                    teacher = live_db.lookup_teacher_by_email(email)
-                except Exception as e:
-                    log.warning("Live DB lookup failed: %s", e)
-                    teacher = None
-
-                if teacher and teacher.get("sap_id"):
-                    # Verify password against SAP ID
-                    sap_id = str(teacher["sap_id"]).strip()
-                    if password == sap_id:
-                        # Auto-provision into demo_users as FACULTY
-                        teacher_name = (teacher.get("name") or "User").strip()
-                        teacher_dept = (teacher.get("department") or "").strip() or "General"
-                        try:
-                            user_id = demo_db.create_user({
-                                "name": teacher_name,
-                                "email": email,
-                                "password": sap_id,  # stored as hash by create_user
-                                "role": "FACULTY",
-                                "department": teacher_dept,
-                            })
-                            user = {
-                                "id": user_id,
-                                "name": teacher_name,
-                                "email": email,
-                                "role": "FACULTY",
-                                "department": teacher_dept,
-                            }
-                            log.info("Auto-provisioned teacher %s (%s) as FACULTY.", teacher_name, email)
-                        except Exception as exc:
-                            log.error("Failed to auto-provision teacher %s: %s", email, exc)
-                            flash("Account setup failed. Please contact the administrator.", "error")
-                            return render_template("login.html")
         except Exception as db_err:
             log.error("Database error during login: %s", db_err)
             flash("Database temporarily unavailable. Please try again in a few moments.", "error")
@@ -739,9 +694,9 @@ def super_admin_dashboard():
         dept_stats=demo_db.ticket_stats_by_department(org_id=org_id),
         cat_stats=demo_db.ticket_stats_by_category(org_id=org_id),
         departments=live_departments(org_id),
-        page_title=f"{org_label} Super Admin Dashboard",
-        kicker="RBAC Control",
-        page_heading=f"{org_label} Super Admin Overview",
+        page_title="Super Admin Dashboard",
+        kicker="",
+        page_heading="Super Admin Overview",
         highlight_title="HOD Overview",
         highlight_note="",
         primary_cta=("user_management", "Manage Users"),
@@ -797,17 +752,18 @@ def hod_dashboard():
         page_heading=f"{user['department']} HOD Dashboard",
         highlight_title="Category to Assignee Mapping",
         highlight_note="",
-        primary_cta=("management_category", "Assignee Management"),
+        primary_cta=("management_category", "Assignee"),
         secondary_cta=("hod_all_tickets", "View Department Tickets"),
         **page_context("HOD"),
     )
 
 
 def render_all_tickets(role_title, endpoint_name):
+    from app.helpers import active_category_departments
     user = current_user()
     filters = filters_from_request()
     tickets = demo_db.list_tickets(user, scope="all", filters=filters)
-    departments = live_departments()
+    departments = active_category_departments(demo_db)
     return render_template(
         "management_all_tickets.html",
         tickets=tickets,
@@ -912,8 +868,14 @@ def ticket_detail(ticket_id):
     activity = demo_db.list_ticket_activity(ticket_id)
     # Determine next allowed transitions for status action
     next_statuses = list(demo_db.ALLOWED_TRANSITIONS.get(ticket["status"], set()))
-    # CA or HOD can update ticket status (SUPER_ADMIN has read-only view access)
-    can_update = (user["role"] in ["CA", "ASSIGNEE"] and ticket.get("assigned_to_email", "").lower() == user["email"].lower()) or (user["role"] == "HOD" and user.get("department") == ticket.get("department"))
+    # Only assigned CA/ASSIGNEE can update ticket status
+    can_update = (
+        user["role"] in ["CA", "ASSIGNEE"]
+        and (
+            ticket.get("assigned_to_email", "").lower() == user["email"].lower()
+            or (ticket.get("assigned_to") and ticket.get("assigned_to") == user.get("id"))
+        )
+    )
     # Ticket creator can REOPEN a resolved ticket
     can_reopen = (
         ticket["status"] == "RESOLVED"
@@ -931,7 +893,7 @@ def ticket_detail(ticket_id):
 
 
 @app.route("/authority/update-status/<int:ticket_id>", methods=["POST"])
-@role_required("CA", "ASSIGNEE", "HOD")
+@role_required("CA", "ASSIGNEE")
 def authority_update_status(ticket_id):
     user = current_user()
     status = request.form.get("status", "").strip().upper()
@@ -992,70 +954,10 @@ def reopen_ticket(ticket_id):
     return redirect(url_for("ticket_detail", ticket_id=ticket_id))
 
 
-@app.route("/user-management", methods=["GET", "POST"])
+@app.route("/user-management", methods=["GET"])
 @role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def user_management():
     user = current_user()
-    if request.method == "POST":
-        role = request.form.get("role", "").strip().upper()
-        if user["role"] == "HOD":
-            if role not in ("CA", "FACULTY"):
-                flash("Access denied: HOD can only create CA or FACULTY users.", "error")
-                return redirect(url_for("user_management"))
-            if role == "CA":
-                selected_depts = [d.strip() for d in request.form.getlist("department") if d.strip()]
-                if user["department"] not in selected_depts:
-                    selected_depts.append(user["department"])
-                department = ",".join(selected_depts)
-            else:
-                department = user["department"]
-        else:
-            if user["role"] != "SUPER_ADMIN" and role == "SUPER_ADMIN":
-                flash("Access denied: Only SUPER_ADMIN can create SUPER_ADMIN users.", "error")
-                return redirect(url_for("user_management"))
-            if role == "CA":
-                department = ",".join([d.strip() for d in request.form.getlist("department") if d.strip()])
-            else:
-                department = request.form.get("department", "").strip()
-
-        payload = {
-            "name": request.form.get("name", "").strip(),
-            "email": request.form.get("email", "").strip().lower(),
-            "password": request.form.get("password", "").strip() or "123",
-            "role": role,
-            "department": department,
-        }
-        if not all([payload["name"], payload["email"], payload["role"], payload["department"]]):
-            flash("All user fields are required.", "error")
-            return redirect(url_for("user_management"))
-        if len(payload["name"]) > 120:
-            flash("Name cannot exceed 120 characters.", "error")
-            return redirect(url_for("user_management"))
-        if len(payload["email"]) > 190:
-            flash("Email cannot exceed 190 characters.", "error")
-            return redirect(url_for("user_management"))
-        if not is_valid_email(payload["email"]):
-            flash("Please enter a valid email address.", "error")
-            return redirect(url_for("user_management"))
-        
-        # Enforce that the user resolves to the admin's organization
-        target_org = resolve_user_org(payload["email"], payload["department"])
-        if target_org != user["org_id"]:
-            flash(f"Access denied: User details do not resolve to your organization ({user['org_id']}).", "error")
-            return redirect(url_for("user_management"))
-
-        existing = demo_db.list_users(search=payload["email"])
-        if any(u["email"].lower() == payload["email"] for u in existing):
-            flash(f"A user with email '{payload['email']}' already exists.", "error")
-            return redirect(url_for("user_management"))
-        demo_db.create_user(payload)
-        demo_db.log_audit_event(
-            "USER_CREATED", user["id"], user["org_id"],
-            target_type="user", target_id=None,
-            details={"email": payload["email"], "role": payload["role"], "department": payload["department"]},
-        )
-        flash("Demo user created successfully.", "success")
-        return redirect(url_for("user_management"))
 
     search = request.args.get("q", "").strip()
     roles_filter = [r.upper() for r in request.args.getlist("role") if r.strip()]
@@ -1063,14 +965,15 @@ def user_management():
     
     if user["role"] == "HOD":
         department = user["department"]
-        roles_list = ["CA", "FACULTY"]
+        roles_list = ["ASSIGNEE", "FACULTY"]
     else:
-        roles_list = list(ROLE_MAP.keys()) if user["role"] == "SUPER_ADMIN" else [r for r in ROLE_MAP.keys() if r != "SUPER_ADMIN"]
+        # Present standard ASSIGNEE role and exclude legacy duplicate CA
+        roles_list = [r for r in ROLE_MAP.keys() if r != "CA"] if user["role"] == "SUPER_ADMIN" else [r for r in ROLE_MAP.keys() if r not in ("SUPER_ADMIN", "CA")]
 
     role_arg = roles_filter if len(roles_filter) > 1 else (roles_filter[0] if roles_filter else None)
     users = demo_db.list_users(role=role_arg, department=department, search=search, org_id=user["org_id"])
     if user["role"] == "HOD":
-        users = [u for u in users if u["role"] in ("CA", "FACULTY")]
+        users = [u for u in users if u["role"] in ("CA", "ASSIGNEE", "FACULTY")]
     
     page = safe_int(request.args.get("page", "1")) or 1
     per_page = 50
@@ -1080,19 +983,108 @@ def user_management():
     start_idx = (page - 1) * per_page
     paginated_users = users[start_idx:start_idx + per_page]
 
+    # Enrich users with their assigned categories and block mappings
+    user_ids = [u["id"] for u in paginated_users]
+    assigned_cats_map = demo_db.get_users_assigned_categories_map(user_ids) if hasattr(demo_db, 'get_users_assigned_categories_map') else {}
+    for u in paginated_users:
+        u["assigned_categories"] = assigned_cats_map.get(u["id"], [])
+
     departments = live_departments(user["org_id"])
+    from app.helpers import departments_match
+    if user["role"] == "HOD":
+        dept_categories = demo_db.list_categories(department=user["department"], org_id=user["org_id"], active_only=True)
+        candidate_faculties = demo_db.list_users(role=["CA", "ASSIGNEE"], department=user["department"], org_id=user["org_id"])
+        candidate_faculties = [u for u in candidate_faculties if u.get("role") in ("CA", "ASSIGNEE")]
+    else:
+        dept_categories = demo_db.list_categories(org_id=user["org_id"], active_only=True)
+        candidate_faculties = demo_db.list_users(role=["CA", "ASSIGNEE"], org_id=user["org_id"])
+        candidate_faculties = [u for u in candidate_faculties if u.get("role") in ("CA", "ASSIGNEE")]
+
+    # Compute departments that have active categories for the assignment modal
+    active_cat_depts = {c['department'].strip().lower() for c in dept_categories if c.get('department') and c.get('is_active') != 0}
+    modal_departments = []
+    seen_modal_codes = set()
+    for d in departments:
+        d_code = (d.get('code') or '').strip().lower()
+        d_name = (d.get('name') or '').strip().lower()
+        if any(departments_match(d_code, ad) or departments_match(d_name, ad) or d_code == ad for ad in active_cat_depts):
+            code = d.get('code') or d.get('name')
+            if code not in seen_modal_codes:
+                seen_modal_codes.add(code)
+                modal_departments.append(d)
+    for c in dept_categories:
+        if c.get('is_active') != 0 and c.get('department'):
+            c_dept = c['department'].strip()
+            if not any(departments_match(m.get('code', ''), c_dept) or departments_match(m.get('name', ''), c_dept) or (m.get('code', '') or '').lower() == c_dept.lower() for m in modal_departments):
+                modal_departments.append({'code': c_dept, 'name': c_dept, 'org_id': user['org_id']})
+
+    raw_blocks = demo_db.list_blocks(org_id=user["org_id"]) if hasattr(demo_db, 'list_blocks') else []
+    blocks = [b.get("block_name", b) if isinstance(b, dict) else b for b in raw_blocks]
+
+    user_stats = {
+        "total": total_users,
+        "cas": len([u for u in users if u.get("role") in ("CA", "ASSIGNEE")]),
+        "faculty": len([u for u in users if u.get("role") in ("FACULTY", "USER")]),
+        "departments": len(departments) if departments else 0,
+    }
+
     return render_template(
         "user_management.html",
         users=paginated_users,
         total_users=total_users,
+        stats=user_stats,
         page=page,
         total_pages=total_pages,
         per_page=per_page,
         departments=departments,
+        modal_departments=modal_departments,
+        categories=dept_categories,
+        candidate_faculties=candidate_faculties,
+        blocks=blocks,
         filters={"q": search, "role": roles_filter[0] if len(roles_filter) == 1 else "", "roles": roles_filter, "department": department or ""},
         roles=roles_list,
         **page_context("User Management"),
     )
+
+
+@app.route("/user-management/unassign-category", methods=["POST"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def unassign_ca_category():
+    user = current_user()
+    ca_id = safe_int(request.form.get("ca_id"))
+    category_id = safe_int(request.form.get("category_id"))
+    redirect_url = request.form.get("redirect_to") or url_for("user_management")
+
+    if not ca_id or not category_id:
+        flash("Invalid request parameters.", "error")
+        return redirect(redirect_url)
+
+    target_ca = demo_db.get_user(ca_id)
+    target_cat = demo_db.get_category(category_id)
+    if not target_ca or not target_cat:
+        flash("CA or Category not found.", "error")
+        return redirect(redirect_url)
+
+    if user["role"] == "HOD":
+        if target_ca.get("department") != user["department"] or target_cat.get("department") != user["department"]:
+            flash("You can only manage category assignments within your own department.", "error")
+            return redirect(redirect_url)
+
+    try:
+        demo_db.remove_ca_from_category(category_id, ca_id)
+        demo_db.log_audit_event(
+            "CA_UNASSIGNED_FROM_CATEGORY",
+            user["id"],
+            user["org_id"],
+            target_type="ca_assignment",
+            target_id=ca_id,
+            details={"category_id": category_id, "category_name": target_cat.get("category_name")},
+        )
+        flash(f"Successfully unassigned '{target_cat.get('category_name')}' from {target_ca.get('name')}.", "success")
+    except Exception as e:
+        flash(f"Failed to unassign category: {e}", "error")
+
+    return redirect(redirect_url)
 
 
 @app.route("/user-management/<int:user_id>/update", methods=["POST"])
@@ -1110,72 +1102,53 @@ def update_user(user_id):
         flash("Access denied: User belongs to a different organization.", "error")
         return redirect(url_for("user_management"))
 
+    new_role = request.form.get("role", "").strip().upper()
+    if not new_role:
+        flash("Role is required.", "error")
+        return redirect(url_for("user_management"))
+
     if user["role"] == "HOD":
         target_depts = [d.strip() for d in target_user["department"].split(",")]
         if user["department"] not in target_depts:
             flash("Access denied: You can only modify users in your own department.", "error")
             return redirect(url_for("user_management"))
-        if target_user["role"] not in ("CA", "FACULTY"):
-            flash("Access denied: You can only modify CA or FACULTY users.", "error")
+        if target_user["role"] not in ("CA", "ASSIGNEE", "FACULTY"):
+            flash("Access denied: You can only modify CA or USER users.", "error")
             return redirect(url_for("user_management"))
         
-        role = request.form.get("role", "").strip().upper()
-        if role not in ("CA", "FACULTY"):
-            flash("Access denied: You can only assign CA or FACULTY role.", "error")
+        if new_role not in ("CA", "ASSIGNEE", "FACULTY"):
+            flash("Access denied: You can only assign CA or USER role.", "error")
             return redirect(url_for("user_management"))
             
-        if role == "CA":
-            selected_depts = [d.strip() for d in request.form.getlist("department") if d.strip()]
-            if user["department"] not in selected_depts:
-                selected_depts.append(user["department"])
-            department = ",".join(selected_depts)
-        else:
-            department = user["department"]
+        name = target_user["name"]
+        email = target_user["email"]
+        department = target_user["department"]
     else:
-        role = request.form.get("role", "").strip().upper()
         if user["role"] != "SUPER_ADMIN":
             if target_user["role"] == "SUPER_ADMIN":
                 flash("Access denied: Cannot modify SUPER_ADMIN users.", "error")
                 return redirect(url_for("user_management"))
-            if role == "SUPER_ADMIN":
+            if new_role == "SUPER_ADMIN":
                 flash("Access denied: Cannot assign SUPER_ADMIN role.", "error")
                 return redirect(url_for("user_management"))
 
-        if role == "CA":
-            department = ",".join([d.strip() for d in request.form.getlist("department") if d.strip()])
-        else:
-            department = request.form.get("department", "").strip()
+        name = request.form.get("name", "").strip() or target_user["name"]
+        email = request.form.get("email", "").strip().lower() or target_user["email"]
+        department = request.form.get("department", "").strip() or target_user["department"]
 
-    password = request.form.get("password", "").strip()
     payload = {
-        "name": request.form.get("name", "").strip() or target_user["name"],
-        "email": request.form.get("email", "").strip().lower() or target_user["email"],
-        "role": role or target_user["role"],
-        "department": department or target_user["department"],
+        "name": name,
+        "email": email,
+        "role": new_role,
+        "department": department,
     }
-    if password:
+    password = request.form.get("password", "").strip()
+    if password and user["role"] == "SUPER_ADMIN":
         payload["password"] = password
-    if not all([payload["name"], payload["email"], payload["role"], payload["department"]]):
-        flash("All user fields are required.", "error")
-        return redirect(url_for("user_management"))
-    if len(payload["name"]) > 120:
-        flash("Name cannot exceed 120 characters.", "error")
-        return redirect(url_for("user_management"))
-    if len(payload["email"]) > 190:
-        flash("Email cannot exceed 190 characters.", "error")
-        return redirect(url_for("user_management"))
-    if not is_valid_email(payload["email"]):
-        flash("Please enter a valid email address.", "error")
-        return redirect(url_for("user_management"))
-
-    # Enforce that the updated details still resolve to the admin's organization
-    new_org = resolve_user_org(payload["email"], payload["department"])
-    if new_org != user["org_id"]:
-        flash(f"Access denied: Updated details do not resolve to your organization ({user['org_id']}).", "error")
-        return redirect(url_for("user_management"))
 
     demo_db.update_user(user_id, payload)
-    flash("Demo user updated.", "success")
+    display_role = "USER" if new_role == "FACULTY" else new_role
+    flash(f"User role updated to {display_role} successfully.", "success")
     return redirect(url_for("user_management"))
 
 

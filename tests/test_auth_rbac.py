@@ -71,19 +71,22 @@ class TestAuthRbac(HelpdeskTestCase):
         self.assertIn(b"Too many failed login attempts", response.data)
 
     def test_auto_provisioning_flow(self):
-        # Check that user 'seeded@sreenidhi.edu.in' does not exist in demo_users initially
+        # Verify that user 'seeded@sreenidhi.edu.in' does not exist in helpdesk_users
         GLOBAL_DB_STATE.tables["helpdesk_users"] = [u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["email"] != "seeded@sreenidhi.edu.in"]
         
         # Try to login with email = 'seeded@sreenidhi.edu.in' and password = '10001' (SAP_ID from teacher_info)
         response = self.client.post("/", data={"email": "seeded@sreenidhi.edu.in", "password": "10001"}, follow_redirects=True)
         self.assertEqual(response.status_code, 200) # Returns dashboard on success
         
-        # Verify user was automatically created in the database and logged in
+        # In new architecture: NO duplicate record is created in helpdesk_users table!
         created_user = next((u for u in GLOBAL_DB_STATE.tables["helpdesk_users"] if u["email"] == "seeded@sreenidhi.edu.in"), None)
-        self.assertIsNotNone(created_user)
-        self.assertEqual(created_user["role"], "FACULTY")
-        self.assertEqual(created_user["name"], "Seeded Teacher")
-        self.assertEqual(created_user["department"], "CSE")
+        self.assertIsNone(created_user)
+
+        # But the user session is properly populated directly from teacher_info
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess["role"], "FACULTY")
+            self.assertEqual(sess["user_name"], "Seeded Teacher")
+            self.assertEqual(sess["department"], "CSE")
 
     def test_organization_resolution(self):
         from app import resolve_user_org

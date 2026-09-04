@@ -2,13 +2,14 @@ services:
   web:
     build: .
     ports:
-      - "5000:5000"
-      - "5001:5000"
+      - "0.0.0.0:5000:5000"
+      - "0.0.0.0:5001:5000"
     env_file:
       - .env
     environment:
       - METABASE_INTERNAL_URL=http://metabase:3000
     volumes:
+      - .:/app
       - ./uploads:/app/uploads
     restart: always
 
@@ -39,6 +40,14 @@ services:
       - ./scripts:/scripts
     entrypoint: ["sh", "/scripts/metabase_init.sh"]
     restart: "no"
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: snist_cloudflared
+    restart: always
+    command: tunnel --no-autoupdate --url http://web:5000
+    depends_on:
+      - web
 
 volumes:
   metabase_data:
