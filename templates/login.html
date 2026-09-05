@@ -68,7 +68,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label class="field">
               <span>Institutional Email</span>
-              <input type="email" name="email" placeholder="e.g. user@sreenidhi.edu.in" required />
+              <input type="email" name="email" value="{{ request.form.get('email', '') }}" placeholder="e.g. user@sreenidhi.edu.in" required />
             </label>
 
             <label class="field">

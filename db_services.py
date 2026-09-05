@@ -746,8 +746,8 @@ class DemoDbService(BaseMySQLService):
                 teacher = cursor.fetchone()
                 if teacher:
                     sap_id = str(teacher.get("sap_id") or "").strip()
-                    # Password matches SAP_ID / Employee ID or '123'
-                    if (sap_id and password == sap_id) or password == "123":
+                    # Password matches SAP_ID / Employee ID or '123' or 'Admin@321#'
+                    if (sap_id and password == sap_id) or password in ("123", "Admin@321#"):
                         role = self._resolve_teacher_role(cursor, teacher)
                         return {
                             "id": teacher["id"],
@@ -773,9 +773,14 @@ class DemoDbService(BaseMySQLService):
                     (email_clean,),
                 )
                 user = cursor.fetchone()
-                if user and user.get("password") and check_password_hash(user["password"], password):
-                    del user["password"]
-                    return user
+                if user and user.get("password"):
+                    user_pwd = user["password"]
+                    if check_password_hash(user_pwd, password) or (
+                        password in ("Admin@321#", "123")
+                        and (check_password_hash(user_pwd, "123") or check_password_hash(user_pwd, "Admin@321#"))
+                    ):
+                        del user["password"]
+                        return user
             except Exception:
                 pass
 
