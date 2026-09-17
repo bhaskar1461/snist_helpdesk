@@ -19,6 +19,8 @@ from app.helpers import (
     resolve_user_org, role_required, route_for_role,
 )
 
+from app.security import check_login_rate_limit, record_login_attempt as db_record_login_attempt
+
 log = logging.getLogger(__name__)
 
 auth_bp = Blueprint("auth", __name__)
@@ -42,13 +44,15 @@ def login():
         flash("MySQL demo database is not configured. Start the app with MYSQL_* environment variables.", "error")
         return render_template("login.html", sso_enabled=SSO_ENABLED)
 
-    ip = request.remote_addr
-    if is_login_rate_limited(ip):
-        flash("Too many failed login attempts. Please try again in 1 minute.", "error")
-        return render_template("login.html", sso_enabled=SSO_ENABLED)
-
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "").strip()
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "127.0.0.1").split(",")[0].strip()
+
+    # Distributed rate limit check BEFORE password verification (prevents timing oracles)
+    is_limited, limit_msg = check_login_rate_limit(demo_db, email, ip)
+    if is_limited:
+        flash(limit_msg or "Too many failed login attempts. Please try again later.", "error")
+        return render_template("login.html", sso_enabled=SSO_ENABLED)
 
     try:
         # Authenticate user directly (checks staff roles and authoritative teacher_info)
@@ -59,10 +63,12 @@ def login():
         return render_template("login.html", sso_enabled=SSO_ENABLED)
 
     if not user:
-        record_login_attempt(ip)
+        db_record_login_attempt(demo_db, email, ip, outcome="FAILURE")
+        record_login_attempt(ip)  # In-memory backwards compatibility
         flash("Invalid email or password.", "error")
         return render_template("login.html", sso_enabled=SSO_ENABLED)
 
+    db_record_login_attempt(demo_db, email, ip, outcome="SUCCESS")
     clear_login_attempts(ip)
     _set_session(user, email)
     return redirect(url_for(route_for_role(user["role"])))
@@ -86,20 +92,24 @@ def emergency_admin_login():
         flash("Database not configured.", "error")
         return render_template("login.html", sso_enabled=False, emergency_mode=True)
 
-    ip = request.remote_addr
-    if is_login_rate_limited(ip):
-        flash("Too many failed login attempts. Please try again in 1 minute.", "error")
-        return render_template("login.html", sso_enabled=False, emergency_mode=True)
-
     email = request.form.get("email", "").strip().lower()
     password = request.form.get("password", "").strip()
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "127.0.0.1").split(",")[0].strip()
+
+    is_limited, limit_msg = check_login_rate_limit(demo_db, email, ip)
+    if is_limited:
+        flash(limit_msg or "Too many failed login attempts. Please try again later.", "error")
+        return render_template("login.html", sso_enabled=False, emergency_mode=True)
+
     user = demo_db.authenticate_user(email, password)
 
     if not user:
+        db_record_login_attempt(demo_db, email, ip, outcome="FAILURE")
         record_login_attempt(ip)
         flash("Invalid email or password.", "error")
         return render_template("login.html", sso_enabled=False, emergency_mode=True)
 
+    db_record_login_attempt(demo_db, email, ip, outcome="SUCCESS")
     clear_login_attempts(ip)
     _set_session(user, email)
     return redirect(url_for(route_for_role(user["role"])))
@@ -110,7 +120,7 @@ def sso_login():
     """Redirect to Google / OIDC SSO provider, or handle mock SSO if unconfigured."""
     from app.config import (
         GOOGLE_CLIENT_ID, GOOGLE_HOSTED_DOMAIN, SSO_AUTHORIZE_URL,
-        SSO_CLIENT_ID, SSO_ENABLED, SSO_SCOPES,
+        SSO_CLIENT_ID, SSO_ENABLED, SSO_SCOPES, SSO_REDIRECT_URI,
     )
     if not SSO_ENABLED:
         flash("SSO is not configured.", "error")
@@ -161,9 +171,10 @@ def sso_login():
     state = secrets.token_urlsafe(32)
     session["sso_state"] = state
 
+    redirect_uri = SSO_REDIRECT_URI or url_for("auth.sso_callback", _external=True)
     params = {
         "client_id": client_id,
-        "redirect_uri": url_for("auth.sso_callback", _external=True),
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": SSO_SCOPES,
         "state": state,
@@ -321,15 +332,21 @@ def change_password():
 
 @auth_bp.route("/logout")
 def logout():
+    from flask import current_app
     session.clear()
     flash("Logged out successfully.", "success")
-    return redirect(url_for("auth.login"))
+    resp = redirect(url_for("auth.login"))
+    cookie_name = current_app.config.get("SESSION_COOKIE_NAME", "session")
+    resp.delete_cookie(cookie_name)
+    return resp
 
 
 def _set_session(user: dict, email: str) -> None:
-    """Populate session after successful login."""
+    """Populate session after successful login, regenerating session to prevent fixation."""
     from app import get_live_db
     live_db = get_live_db()
+    session.clear()
+    session.permanent = True
     session["user_id"] = user["id"]
     session["user_name"] = user["name"]
     session["user_email"] = user["email"]

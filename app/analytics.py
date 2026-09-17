@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import logging
 
 from flask import Blueprint, jsonify, render_template, request
@@ -25,10 +26,10 @@ def analytics_dashboard():
     #   fall back to METABASE_SITE_URL (localhost) for non-Docker setups.
     metabase_enabled = False
     candidate_urls = [
+        METABASE_SITE_URL,
         METABASE_INTERNAL_URL,
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        METABASE_SITE_URL,
     ]
     for health_url in candidate_urls:
         if not health_url or not METABASE_SECRET_KEY:
@@ -134,9 +135,13 @@ def api_metabase_embed():
         return jsonify({"error": "Metabase is not configured."}), 503
 
     dashboard_key = request.args.get("dashboard", "overview")
-    raw_id = METABASE_DASHBOARD_IDS.get(dashboard_key)
-    overview_id = METABASE_DASHBOARD_IDS.get("overview")
-    dashboard_id = raw_id if (raw_id and raw_id > 0) else (overview_id if (overview_id and overview_id > 0) else 2)
+    dashboard_map = {
+        "overview": int(os.getenv("METABASE_DASHBOARD_OVERVIEW", "4")),
+        "department": int(os.getenv("METABASE_DASHBOARD_DEPARTMENT", "4")),
+        "trends": int(os.getenv("METABASE_DASHBOARD_TRENDS", "2")),
+        "ca_performance": int(os.getenv("METABASE_DASHBOARD_CA_PERF", "3")),
+    }
+    dashboard_id = dashboard_map.get(dashboard_key) or dashboard_map.get("overview", 4)
 
     try:
         import jwt

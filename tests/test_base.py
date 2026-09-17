@@ -25,9 +25,13 @@ class MockDbState:
             "helpdesk_categories": [],
             "helpdesk_tickets": [],
             "helpdesk_ticket_activity": [],
+            "helpdesk_ticket_notes": [],
             "helpdesk_ca_assignments": [],
+            "helpdesk_staff_roles": [],
             "helpdesk_problem_types": [],
             "helpdesk_audit_events": [],
+            "helpdesk_login_attempts": [],
+            "helpdesk_attachments": [],
             "branch_detail": [],
             "teacher_info": [],
             "location": []
@@ -64,10 +68,10 @@ class MockDbState:
 
         # 3. Seed default categories
         categories = [
-            {"id": 1, "category_name": "Internet", "department": "CSE", "assigned_ca_id": 4, "is_active": 1},
-            {"id": 2, "category_name": "Projector", "department": "CSE", "assigned_ca_id": 4, "is_active": 1},
-            {"id": 3, "category_name": "Plumbing", "department": "Facilities", "assigned_ca_id": 5, "is_active": 1},
-            {"id": 4, "category_name": "Electrical", "department": "Maintenance", "assigned_ca_id": 6, "is_active": 1},
+            {"id": 1, "category_name": "Internet", "department": "CSE", "assigned_ca_id": 4, "is_active": 1, "org_id": "2000"},
+            {"id": 2, "category_name": "Projector", "department": "CSE", "assigned_ca_id": 4, "is_active": 1, "org_id": "2000"},
+            {"id": 3, "category_name": "Plumbing", "department": "Facilities", "assigned_ca_id": 5, "is_active": 1, "org_id": "2000"},
+            {"id": 4, "category_name": "Electrical", "department": "Maintenance", "assigned_ca_id": 6, "is_active": 1, "org_id": "2000"},
         ]
         self.tables["helpdesk_categories"] = categories
         self.next_ids["helpdesk_categories"] = 5
@@ -94,19 +98,25 @@ class MockDbState:
 
         # 6. Seed CA Assignments
         ca_assignments = [
-            {"id": 1, "category_id": 1, "ca_id": 4, "block": "Block A"},
-            {"id": 2, "category_id": 1, "ca_id": 14, "block": "Block A"},
+            {"id": 1, "category_id": 1, "ca_id": 4, "block": "Block A", "org_id": "2000"},
+            {"id": 2, "category_id": 1, "ca_id": 14, "block": "Block A", "org_id": "2000"},
         ]
         self.tables["helpdesk_ca_assignments"] = ca_assignments
         self.next_ids["helpdesk_ca_assignments"] = 3
 
         # 7. Seed problem types
         problem_types = [
-            {"id": 1, "category_id": 1, "problem_name": "WiFi Down", "is_active": 1},
-            {"id": 2, "category_id": 1, "problem_name": "Slow Speed", "is_active": 1},
+            {"id": 1, "category_id": 1, "problem_name": "WiFi Down", "is_active": 1, "org_id": "2000"},
+            {"id": 2, "category_id": 1, "problem_name": "Slow Speed", "is_active": 1, "org_id": "2000"},
         ]
         self.tables["helpdesk_problem_types"] = problem_types
         self.next_ids["helpdesk_problem_types"] = 3
+
+        # 8. Seed login attempts & attachments
+        self.tables["helpdesk_login_attempts"] = []
+        self.next_ids["helpdesk_login_attempts"] = 1
+        self.tables["helpdesk_attachments"] = []
+        self.next_ids["helpdesk_attachments"] = 1
 
 GLOBAL_DB_STATE = MockDbState()
 
@@ -117,6 +127,12 @@ class MockCursor:
         self.rowcount = 0
         self._results = []
         self._index = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
     def execute(self, sql, params=None):
         params = params or ()
@@ -153,22 +169,25 @@ class MockCursor:
                 if keyw in where_clause_lower:
                     where_clause_lower = where_clause_lower[:where_clause_lower.index(keyw)].strip()
 
-            sub_target = "c.department in (select branch_code from branch_detail where cast(org_id as char) = %s)"
-            if sub_target in where_clause_lower:
-                sub_pos = where_clause_lower.index(sub_target)
-                param_idx = where_clause_lower[:sub_pos].count("%s")
-                if param_idx < len(where_params):
-                    target_org = str(where_params[param_idx])
-                    valid_branches = {
-                        b.get("BRANCH_CODE") or b.get("department_code")
-                        for b in self.state.tables["branch_detail"]
-                        if str(b.get("ORG_ID") or b.get("org_id")) == target_org
-                    }
-                    row_dept = row.get("department") or row.get("department_code") or row.get("BRANCH_CODE")
-                    if row_dept not in valid_branches:
-                        return False
-                    where_clause_lower = where_clause_lower[:sub_pos] + where_clause_lower[sub_pos + len(sub_target):]
-                    where_params = where_params[:param_idx] + where_params[param_idx+1:]
+            for sub_target in [
+                "c.department in (select branch_code from branch_detail where cast(org_id as char) = %s)",
+                "u.department in (select branch_code from branch_detail where cast(org_id as char) = %s)"
+            ]:
+                if sub_target in where_clause_lower:
+                    sub_pos = where_clause_lower.index(sub_target)
+                    param_idx = where_clause_lower[:sub_pos].count("%s")
+                    if param_idx < len(where_params):
+                        target_org = str(where_params[param_idx])
+                        valid_branches = {
+                            b.get("BRANCH_CODE") or b.get("department_code")
+                            for b in self.state.tables["branch_detail"]
+                            if str(b.get("ORG_ID") or b.get("org_id")) == target_org
+                        }
+                        row_dept = row.get("department") or row.get("department_code") or row.get("BRANCH_CODE")
+                        if row_dept not in valid_branches:
+                            return False
+                        where_clause_lower = where_clause_lower[:sub_pos] + where_clause_lower[sub_pos + len(sub_target):]
+                        where_params = where_params[:param_idx] + where_params[param_idx+1:]
 
             if "is_archived" in where_clause_lower:
                 if "is_archived, 0) = 0" in where_clause_lower or "is_archived = 0" in where_clause_lower:
@@ -226,6 +245,10 @@ class MockCursor:
                         if row_val is None and col == "email_id":
                             row_val = row.get("EMAIL_ID")
                         
+                        if col == "org_id" and ("org_id is null" in where_clause_lower or "org_id = ''" in where_clause_lower):
+                            if row_val is None or str(row_val) == "" or str(row_val).lower() == str(val).lower():
+                                continue
+
                         if row_val is not None:
                             if f"{col} !=" in where_clause_lower or f"{col}!=" in where_clause_lower:
                                 if str(row_val) == str(val):
@@ -277,9 +300,9 @@ class MockCursor:
 
                     # Generate new ID if not present
                     if "id" not in row_data:
-                        new_id = self.state.next_ids[table_name]
+                        new_id = self.state.next_ids.get(table_name, 1)
                         row_data["id"] = new_id
-                        self.state.next_ids[table_name] += 1
+                        self.state.next_ids[table_name] = new_id + 1
                         self.lastrowid = new_id
                     else:
                         self.lastrowid = row_data["id"]
@@ -292,7 +315,7 @@ class MockCursor:
                     if "updated_at" not in row_data:
                         row_data["updated_at"] = "2026-07-07 12:00:00"
 
-                    self.state.tables[table_name].append(row_data)
+                    self.state.tables.setdefault(table_name, []).append(row_data)
                     self.rowcount = 1
             return
 
@@ -370,12 +393,26 @@ class MockCursor:
                 table_name = t
                 break
             
-        if "show tables" in sql_lower_stripped:
-            self._results = []
-            self.rowcount = 0
+        if "show index" in sql_lower_stripped:
+            self._results = [{"Key_name": "uq_activity_dedup"}]
+            self.rowcount = len(self._results)
             return
 
-        rows = self.state.tables[table_name]
+        if "show tables" in sql_lower_stripped:
+            col_name = "Tables_in_helpdesk (helpdesk_%)"
+            if "like 'helpdesk_%'" in sql_lower_stripped or 'like "helpdesk_%"' in sql_lower_stripped:
+                self._results = [{col_name: t} for t in sorted(self.state.tables.keys()) if t.startswith("helpdesk_")]
+            else:
+                self._results = [{col_name: t} for t in sorted(self.state.tables.keys())]
+            self.rowcount = len(self._results)
+            return
+
+        if sql_lower_stripped == "select 1" or sql_lower_stripped.startswith("select 1 "):
+            self._results = [{"1": 1}]
+            self.rowcount = 1
+            return
+
+        rows = self.state.tables.get(table_name, []) if table_name else []
         filtered_rows = []
 
         if "where" in sql_lower_stripped:
@@ -401,6 +438,24 @@ class MockCursor:
                 res.append({"id": cid, "active_count": cnt})
             self._results = res
             self.rowcount = len(res)
+            return
+
+        # Handle helpdesk_login_attempts count
+        if table_name == "helpdesk_login_attempts" and "count(" in sql_lower_stripped:
+            identifier_val = str(params[0]).lower() if len(params) > 0 else ""
+            is_ip = "ip_address =" in sql_lower_stripped
+            cnt = 0
+            for r in self.state.tables.get("helpdesk_login_attempts", []):
+                if str(r.get("outcome", "")).upper() != "FAILURE":
+                    continue
+                if is_ip:
+                    if str(r.get("ip_address", "")) == identifier_val:
+                        cnt += 1
+                else:
+                    if str(r.get("identifier", "")).lower() == identifier_val:
+                        cnt += 1
+            self._results = [{"total": cnt, "count": cnt, "cnt": cnt}]
+            self.rowcount = 1
             return
 
         # Handle SELECT COUNT(*)

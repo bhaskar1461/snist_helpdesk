@@ -12,8 +12,7 @@ from flask_wtf.csrf import CSRFProtect
 
 from app.config import (
     BASE_DIR, DEFAULT_DEMO_CATEGORIES, DEFAULT_DEMO_USERS,
-    MIGRATION_V2_PATH, MIGRATION_V3_PATH, MIGRATION_V5_PATH, MIGRATION_V6_PATH,
-    SCHEMA_PATH, get_flask_config,
+    get_flask_config,
 )
 from app.helpers import resolve_user_org
 
@@ -38,7 +37,7 @@ def create_app(testing=False):
     global _demo_db, _live_db
 
     # Load .env before anything else
-    load_dotenv(BASE_DIR / ".env")
+    load_dotenv(BASE_DIR / ".env", override=True)
 
     app = Flask(
         __name__,
@@ -51,6 +50,35 @@ def create_app(testing=False):
     # CSRF protection
     _csrf.init_app(app)
 
+    import sys
+    is_check_only = os.getenv("RUN_STARTUP_CHECKS_ONLY", "0").strip() in ("1", "true")
+    force_checks = os.getenv("FORCE_STARTUP_CHECKS", "0").strip() in ("1", "true")
+    is_testing_env = (
+        (
+            testing
+            or app.config.get("TESTING")
+            or "unittest" in sys.modules
+            or "pytest" in sys.modules
+            or os.getenv("TESTING", "false").lower() == "true"
+            or os.getenv("SKIP_STARTUP_CHECKS", "0").strip() in ("1", "true")
+        )
+        and not force_checks
+    )
+
+    # ── Startup Configuration Validation ─────────────────────────────
+    if not is_testing_env or is_check_only:
+        from app.config_validator import validate_config, format_issues_panel
+        cfg_issues = validate_config()
+        cfg_errors = [i for i in cfg_issues if i["level"] == "ERROR"]
+        cfg_warnings = [i for i in cfg_issues if i["level"] == "WARNING"]
+        for w in cfg_warnings:
+            log.warning("Configuration warning [%s]: %s (Fix: %s)", w["check"], w["message"], w.get("fix", ""))
+        if cfg_errors and not is_check_only:
+            panel = format_issues_panel(cfg_errors, "STARTUP CONFIGURATION VALIDATION FAILED")
+            sys.stderr.write(panel + "\n")
+            sys.stderr.flush()
+            raise SystemExit(1)
+
     # ── Database Services ───────────────────────────────────────────
     from db_services import DemoDbService, LiveDbService, DbConfig
 
@@ -58,21 +86,53 @@ def create_app(testing=False):
     user = os.getenv("MYSQL_USER", "demo")
     password = os.getenv("MYSQL_PASSWORD", "Admin@321#")
     database = os.getenv("MYSQL_DATABASE", "seg_demo")
-    import sys
-    is_testing_env = testing or app.config.get("TESTING") or "unittest" in sys.modules or os.getenv("TESTING", "false").lower() == "true"
     port = int(os.getenv("MYSQL_PORT", "3306"))
     db_config = DbConfig(host=host, port=port, user=user, password=password, database=database) if all([host, user, password, database]) else None
-
 
     _live_db = LiveDbService(db_config)
     _demo_db = DemoDbService(db_config)
 
-    # ── Initialize Database Schema ──────────────────────────────────
-    if not is_testing_env and os.getenv("INIT_DEMO_DB", "true").lower() == "true" and _demo_db.enabled:
+    # ── Check-Only Mode (Pre-deployment verification) ─────────────────
+    if is_check_only:
+        from app.config_validator import validate_config, format_issues_panel
+        from app.startup_checks import check_database, format_readiness_panel
+        print("=" * 80)
+        print(" RUNNING PRE-DEPLOYMENT STARTUP CHECKS (CHECK-ONLY MODE)")
+        print("=" * 80)
+        cfg_issues = validate_config()
+        if cfg_issues:
+            print(format_issues_panel(cfg_issues, "CONFIGURATION VALIDATION REPORT"))
+        db_report = check_database(db_service=_demo_db)
+        print(format_readiness_panel(db_report, "DATABASE READINESS REPORT"))
+        has_cfg_errors = any(i["level"] == "ERROR" for i in cfg_issues)
+        if has_cfg_errors or db_report.get("has_failure"):
+            print("\n[FAILED] PRE-DEPLOYMENT CHECKS ENCOUNTERED BLOCKING ERRORS.")
+            raise SystemExit(1)
+        else:
+            print("\n[PASSED] ALL CONFIGURATION AND DATABASE READINESS CHECKS PASSED.")
+            raise SystemExit(0)
+
+    # ── Optional Demo Data Seeder (Development Only) ───────────────
+    # Schema DDL is managed exclusively via scripts/migrate.py.
+    # Automatic DDL execution at web-worker startup is strictly eliminated.
+    if not is_testing_env and os.getenv("INIT_DEMO_DB", "false").lower() == "true" and _demo_db.enabled:
         try:
             _init_database_schema(_demo_db)
         except Exception as exc:
-            log.error("Database initialization failed: %s", exc)
+            log.error("Database seed failed: %s", exc)
+
+    # ── Startup Database Readiness Validation (non-testing only) ─────
+    if not is_testing_env and db_config and _demo_db.enabled:
+        from app.startup_checks import check_database, format_readiness_panel
+        db_report = check_database(db_service=_demo_db)
+        for c in db_report.get("checks", []):
+            if c.get("status") == "WARN":
+                app.logger.warning("Database readiness warning [%s]: %s (Fix: %s)", c["check"], c["detail"], c.get("fix", ""))
+        if db_report.get("has_failure"):
+            panel = format_readiness_panel(db_report, "STARTUP DATABASE READINESS CHECK FAILED")
+            sys.stderr.write(panel + "\n")
+            sys.stderr.flush()
+            raise SystemExit(1)
 
     # ── Register Blueprints ─────────────────────────────────────────
     from app.auth import auth_bp
@@ -81,6 +141,7 @@ def create_app(testing=False):
     from app.dashboards import dashboards_bp
     from app.analytics import analytics_bp
     from app.api import api_bp
+    from app.health import health_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(tickets_bp)
@@ -88,6 +149,16 @@ def create_app(testing=False):
     app.register_blueprint(dashboards_bp)
     app.register_blueprint(analytics_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(health_bp)
+    _csrf.exempt(health_bp)
+    _csrf.exempt(api_bp)
+
+    @app.route("/metrics", methods=["GET"])
+    def root_metrics():
+        from app.health import prometheus_metrics
+        return prometheus_metrics()
+
+    _csrf.exempt(root_metrics)
 
     # ── Context Processors ──────────────────────────────────────────
     @app.context_processor
@@ -95,6 +166,34 @@ def create_app(testing=False):
         from app.helpers import current_user
         curr_user = current_user()
         return {"current_user": curr_user, "user": curr_user}
+
+    # ── Security Headers ────────────────────────────────────────────
+    @app.after_request
+    def apply_security_headers(response):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=(), payment=()"
+
+        # Derive minimal Content-Security-Policy
+        from app.config import METABASE_SITE_URL, METABASE_INTERNAL_URL
+        mb_sources = {s.strip() for s in (METABASE_SITE_URL, METABASE_INTERNAL_URL, "https://metabase.1sports.app", "http://localhost:3000", "http://localhost:3002") if s and s.strip()}
+        frame_sources = "'self' " + " ".join(sorted(mb_sources))
+
+        csp = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://unpkg.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "img-src 'self' data: blob:; "
+            f"frame-src {frame_sources}; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self' https://accounts.google.com;"
+        )
+        response.headers["Content-Security-Policy"] = csp
+        return response
 
     # ── Error Handlers ──────────────────────────────────────────────
 
@@ -125,164 +224,108 @@ def create_app(testing=False):
                                error_message="Something went wrong. Please try again later."), 500
 
 
-    # ── Static File Serving (attachments) ───────────────────────────
+    # ── Legacy Static File Serving Shim (30-day redirect with IDOR check) ──
     @app.route("/uploads/<path:filename>")
     def download_attachment(filename):
-        from flask import send_from_directory
-        from werkzeug.utils import secure_filename
+        """Legacy attachment route shim: validates authentication and participant authorization, then redirects (302) to canonical route."""
+        from flask import abort, redirect, request, url_for
         from app.config import UPLOAD_DIR
-        safe_name = secure_filename(filename)
-        return send_from_directory(str(UPLOAD_DIR), safe_name)
+        from app.helpers import current_user
+        from app.security import can_user_access_ticket_attachment, validate_attachment_path
+
+        user = current_user()
+        if not user:
+            return redirect(url_for("auth.login", next=request.url))
+
+        demo_db = get_demo_db()
+        ticket_id = demo_db.get_attachment_ticket_id(filename) if demo_db else None
+        if not ticket_id:
+            abort(404)
+
+        ticket = demo_db.get_ticket(ticket_id)
+        if not ticket:
+            abort(404)
+
+        if not can_user_access_ticket_attachment(user, ticket):
+            abort(404)
+
+        safe_file_path = validate_attachment_path(filename, UPLOAD_DIR)
+        if not safe_file_path:
+            abort(404)
+
+        return redirect(url_for("tickets.download_attachment", ticket_id=ticket_id, filename=filename), code=302)
 
     log.info("Application factory complete. Blueprints: auth, tickets, management, dashboards, analytics, api.")
     return app
 
 
 def _init_database_schema(demo_db):
-    """Initialize base schema, run migrations, and seed default data."""
-    import hashlib
+    """
+    Deprecated: Schema DDL creation and migration are managed exclusively via scripts/migrate.py.
+    Runtime schema mutation is strictly eliminated.
+    This function only performs starter reference data seeding if tables already exist and are empty (dev only).
+    """
+    log.warning("Runtime schema DDL is deprecated and disabled. Apply schema changes via 'python scripts/migrate.py up'.")
+    if not demo_db or not demo_db.enabled:
+        return
 
     from werkzeug.security import generate_password_hash
 
-    with demo_db.connection() as connection, connection.cursor() as cursor:
-        # ── Base Schema ─────────────────────────────────────────────
-        if SCHEMA_PATH.is_file():
-            sql_text = SCHEMA_PATH.read_text(encoding="utf-8")
-            for stmt in sql_text.split(";"):
-                stmt = stmt.strip()
-                if stmt:
-                    try:
-                        cursor.execute(stmt)
-                    except Exception as exc:
-                        if "REFERENCES command denied" in str(exc) or "1142" in str(exc):
-                            import re
-                            fallback = re.sub(r',?\s*CONSTRAINT\s+[\w`]+\s+FOREIGN\s+KEY\s*\([^)]+\)\s*REFERENCES\s+[\w`.]+\s*\([^)]+\)(?:\s+ON\s+(?:DELETE|UPDATE)\s+[A-Z\s]+)*', '', stmt, flags=re.IGNORECASE)
-                            fallback = re.sub(r',?\s*FOREIGN\s+KEY\s*\([^)]+\)\s*REFERENCES\s+[\w`.]+\s*\([^)]+\)(?:\s+ON\s+(?:DELETE|UPDATE)\s+[A-Z\s]+)*', '', fallback, flags=re.IGNORECASE)
-                            fallback = re.sub(r',\s*(\n?\s*\))', r'\1', fallback)
-                            try:
-                                cursor.execute(fallback)
-                            except Exception as inner_exc:
-                                log.warning("Warning executing fallback statement in base schema: %s", inner_exc)
-                        else:
-                            log.warning("Warning executing statement in base schema: %s", exc)
+    try:
+        with demo_db.connection() as connection, connection.cursor() as cursor:
+            # Check if helpdesk_users exists before querying
+            cursor.execute("SHOW TABLES LIKE 'helpdesk_users'")
+            if not cursor.fetchone():
+                log.warning("helpdesk_users table does not exist. Run 'python scripts/migrate.py up' to initialize schema.")
+                return
 
-        # ── Migration V2 ───────────────────────────────────────────
-        if MIGRATION_V2_PATH.is_file():
-            v2_text = MIGRATION_V2_PATH.read_text(encoding="utf-8")
-            for stmt in v2_text.split(";"):
-                stmt = stmt.strip()
-                if stmt:
-                    try:
-                        cursor.execute(stmt)
-                    except Exception:
-                        pass  # Table may already exist
-
-        # ── Migration V3 ───────────────────────────────────────────
-        if MIGRATION_V3_PATH.is_file():
-            v3_text = MIGRATION_V3_PATH.read_text(encoding="utf-8")
-            for stmt in v3_text.split(";"):
-                stmt = stmt.strip()
-                if stmt:
-                    try:
-                        cursor.execute(stmt)
-                    except Exception:
-                        pass  # Table may already exist
-
-        # ── Migration V5: Dedup Keys ───────────────────────────────
-        if MIGRATION_V5_PATH.is_file():
-            v5_text = MIGRATION_V5_PATH.read_text(encoding="utf-8")
-            for stmt in v5_text.split(";"):
-                stmt = stmt.strip()
-                if stmt and not stmt.startswith("--"):
-                    try:
-                        cursor.execute(stmt)
-                    except Exception:
-                        pass  # Column/index may already exist
-
-        # ── Migration V6: Rename Tables to Production helpdesk_* ─────
-        if MIGRATION_V6_PATH.is_file():
-            v6_text = MIGRATION_V6_PATH.read_text(encoding="utf-8")
-            for stmt in v6_text.split(";"):
-                stmt = stmt.strip()
-                if stmt and not stmt.startswith("--"):
-                    try:
-                        cursor.execute(stmt)
-                    except Exception:
-                        pass  # Table rename procedure may already have run
-
-        # ── Ensure phone column exists in helpdesk_users ───────────────
-        try:
-            cursor.execute("ALTER TABLE helpdesk_users ADD COLUMN phone VARCHAR(32) NULL")
-        except Exception:
-            pass
-
-        # ── Normalize Legacy Department IDs to Standard Codes ───────
-        try:
-            branch_map = {
-                "1": "EEE", "2": "ME", "3": "ECE", "4": "CSE", "5": "IT", "6": "Bio-Tech",
-                "7": "S&H", "8": "MCA", "9": "ECM", "10": "S&H", "11": "MBA", "12": "S&H",
-                "13": "CDC", "14": "EPE", "15": "EPE", "16": "DSCE", "17": "VLSI", "18": "Administration",
-                "19": "Software Engineering", "20": "CAD/CAM", "21": "Bio-Tech", "22": "MCA",
-                "23": "Thermal Engineering", "24": "Computer Science", "25": "Administration",
-                "26": "Marketing", "27": "Administration", "28": "Administration", "29": "Administration",
-                "30": "Library", "31": "EDC", "32": "TDTC", "33": "Accounts", "34": "CDC",
-                "35": "Facilities", "36": "Administration", "37": "Nano Tech", "38": "CNIS",
-                "39": "ICT", "40": "Accounts", "41": "Exam", "42": "CSE", "43": "Health Center",
-                "44": "Electrical", "45": "HR", "46": "Estate", "47": "Stores", "48": "CDC",
-                "49": "Training", "50": "Marketing", "51": "Stores", "52": "1Sports", "53": "SAP",
-                "54": "Security", "55": "Administration", "56": "Administration", "57": "Electrical",
-                "58": "CSE-AIML", "59": "IOT", "60": "Cyber Security", "61": "Administration",
-                "62": "1Sports", "63": "Library", "64": "Training", "65": "Civil Engineering",
-                "66": "Civil Engineering", "67": "AIML", "68": "Data Science", "69": "Security",
-                "70": "Estate", "71": "Operations", "72": "1Sports", "73": "Admissions",
-                "74": "Physical Education", "75": "Administration", "700": "Facilities", "701": "SAP"
-            }
-            for bid, dcode in branch_map.items():
-                cursor.execute("UPDATE helpdesk_users SET department = %s WHERE department = %s", (dcode, bid))
-        except Exception:
-            pass
-
-        # ── CA Assignments Table ────────────────────────────────────
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS helpdesk_ca_assignments (
-                id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                category_id INT UNSIGNED NOT NULL,
-                ca_id INT UNSIGNED NOT NULL,
-                block VARCHAR(120) NOT NULL DEFAULT '',
-                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                UNIQUE KEY uq_ca_category_block (category_id, ca_id, block),
-                KEY idx_ca_assignments_ca (ca_id),
-                KEY idx_ca_assignments_category (category_id)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        """)
-
-        # ── Seed Default Users ──────────────────────────────────────
-        cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_users")
-        if cursor.fetchone()["cnt"] == 0:
-            for u in DEFAULT_DEMO_USERS:
-                hashed = generate_password_hash(u["password"])
-                cursor.execute(
-                    "INSERT INTO helpdesk_users (name, email, password, role, department) VALUES (%s, %s, %s, %s, %s)",
-                    (u["name"], u["email"], hashed, u["role"], u["department"]),
-                )
-            log.info("Seeded %d default demo users.", len(DEFAULT_DEMO_USERS))
-
-        # ── Seed Default Categories ─────────────────────────────────
-        cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_categories")
-        if cursor.fetchone()["cnt"] == 0:
-            for c in DEFAULT_DEMO_CATEGORIES:
-                cursor.execute(
-                    "SELECT id FROM helpdesk_users WHERE email = %s LIMIT 1",
-                    (c["authority_email"],),
-                )
-                ca_row = cursor.fetchone()
-                if ca_row:
+            # ── Seed Default Users (if empty) ───────────────────────────
+            cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_users")
+            if cursor.fetchone()["cnt"] == 0:
+                for u in DEFAULT_DEMO_USERS:
+                    hashed = generate_password_hash(u["password"])
                     cursor.execute(
-                        "INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id) VALUES (%s, %s, %s)",
-                        (c["category_name"], c["department"], ca_row["id"]),
+                        "INSERT INTO helpdesk_users (name, email, password, role, department) VALUES (%s, %s, %s, %s, %s)",
+                        (u["name"], u["email"], hashed, u["role"], u["department"]),
                     )
-            log.info("Seeded %d default demo categories.", len(DEFAULT_DEMO_CATEGORIES))
+                log.info("Seeded %d default demo users.", len(DEFAULT_DEMO_USERS))
+
+            # ── Seed Default Categories (if empty) ──────────────────────
+            cursor.execute("SHOW TABLES LIKE 'helpdesk_categories'")
+            if cursor.fetchone():
+                cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_categories")
+                if cursor.fetchone()["cnt"] == 0:
+                    for c in DEFAULT_DEMO_CATEGORIES:
+                        cursor.execute(
+                            "SELECT id FROM helpdesk_users WHERE email = %s LIMIT 1",
+                            (c["authority_email"],),
+                        )
+                        ca_row = cursor.fetchone()
+                        if ca_row:
+                            cursor.execute(
+                                "INSERT INTO helpdesk_categories (category_name, department, assigned_ca_id) VALUES (%s, %s, %s)",
+                                (c["category_name"], c["department"], ca_row["id"]),
+                            )
+                    log.info("Seeded %d default demo categories.", len(DEFAULT_DEMO_CATEGORIES))
+    except Exception as exc:
+        log.warning("Data seeding skipped or encountered error: %s", exc)
+
+
+def _verify_database_startup(demo_db):
+    """
+    Fail-fast startup validation to ensure database connectivity, SELECT access
+    to institutional tables/views, and the existence of core helpdesk_* tables.
+    """
+    if not demo_db or not demo_db.config:
+        return
+    import sys
+    from app.startup_checks import check_database, format_readiness_panel
+    report = check_database(db_service=demo_db)
+    if report.get("has_failure"):
+        panel = format_readiness_panel(report, "STARTUP DATABASE READINESS CHECK FAILED")
+        sys.stderr.write(panel + "\n")
+        sys.stderr.flush()
+        raise RuntimeError("Database startup readiness checks failed. See details above.")
 
 
 # Module-level exports for package import compatibility

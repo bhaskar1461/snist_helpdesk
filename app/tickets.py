@@ -220,6 +220,17 @@ def authority_update_status(ticket_id):
         attachment_name = f"{ticket_id}-{int(datetime.now().timestamp())}-{safe_name}"
         attachment.save(str(UPLOAD_DIR / attachment_name))
         attachment_path = attachment_name
+        try:
+            demo_db.record_attachment(
+                ticket_id=ticket_id,
+                stored_filename=attachment_name,
+                original_filename=attachment.filename,
+                uploaded_by=user.get("id"),
+                file_size=size,
+                mime_type=getattr(attachment, "content_type", None),
+            )
+        except Exception as exc:
+            log.warning("Could not record attachment metadata: %s", exc)
 
     try:
         demo_db.update_ticket_status(ticket_id, actor=user, status=status, remarks=remarks,
@@ -231,6 +242,42 @@ def authority_update_status(ticket_id):
     except ValueError as exc:
         flash(str(exc), "error")
     return redirect(url_for("tickets.ticket_detail", ticket_id=ticket_id))
+
+
+@tickets_bp.route("/tickets/<int:ticket_id>/attachment/<path:filename>")
+def download_attachment(ticket_id: int, filename: str):
+    """Securely serve ticket attachments with participant authorization and traversal defense."""
+    from flask import abort, send_file
+    from app import get_demo_db
+    from app.config import UPLOAD_DIR
+    from app.security import can_user_access_ticket_attachment, validate_attachment_path
+
+    user = current_user()
+    if not user:
+        return redirect(url_for("auth.login", next=request.url))
+
+    demo_db = get_demo_db()
+    ticket = demo_db.get_ticket(ticket_id)
+    if not ticket:
+        abort(404)
+
+    # 1. Authorization check: participant, HOD for dept, or Admin
+    if not can_user_access_ticket_attachment(user, ticket):
+        abort(404)  # 404 to avoid leaking file existence
+
+    # 2. Path traversal defense
+    safe_file_path = validate_attachment_path(filename, UPLOAD_DIR)
+    if not safe_file_path:
+        abort(404)
+
+    # 3. Verify attachment belongs to this ticket
+    file_ticket_id = demo_db.get_attachment_ticket_id(filename)
+    if file_ticket_id is not None and file_ticket_id != ticket_id:
+        abort(404)
+
+    resp = send_file(safe_file_path, as_attachment=False)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @tickets_bp.route("/tickets/<int:ticket_id>/reopen", methods=["POST"])

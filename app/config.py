@@ -22,7 +22,8 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 # ── File Uploads ─────────────────────────────────────────────────────
 ALLOWED_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "gif", "doc", "docx", "xls", "xlsx"}
-MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+UPLOAD_MAX_MB = int(os.getenv("UPLOAD_MAX_MB", "10"))
+MAX_UPLOAD_SIZE = UPLOAD_MAX_MB * 1024 * 1024  # 10 MB default
 
 # ── Validation ───────────────────────────────────────────────────────
 EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
@@ -92,9 +93,9 @@ SSO_DEFAULT_ROLE = os.getenv("SSO_DEFAULT_ROLE", "FACULTY")
 EMERGENCY_ADMIN_ENABLED = os.getenv("EMERGENCY_ADMIN_ENABLED", "true").lower() == "true"
 
 # ── Metabase Configuration ──────────────────────────────────────────
-METABASE_SITE_URL = os.getenv("METABASE_SITE_URL", "https://metabase.1sports.app")
+METABASE_SITE_URL = os.getenv("METABASE_SITE_URL", "https://metabase.example.edu.in")
 METABASE_INTERNAL_URL = os.getenv("METABASE_INTERNAL_URL", "http://localhost:3000")
-METABASE_SECRET_KEY = os.getenv("METABASE_SECRET_KEY", "b6c0144720edd6f7369910c70c66e0519ac0386c2b9d173434c57332a048e685")
+METABASE_SECRET_KEY = os.getenv("METABASE_SECRET_KEY", "")
 METABASE_DASHBOARD_IDS = {
     "overview": int(os.getenv("METABASE_DASHBOARD_OVERVIEW", "4")),
     "department": int(os.getenv("METABASE_DASHBOARD_DEPARTMENT", "4")),
@@ -107,12 +108,13 @@ METABASE_DASHBOARD_IDS = {
 def get_flask_config():
     """Return Flask configuration dict."""
     _secret = os.getenv("SECRET_KEY") or "c69fc621e47743c584ea00c3d51053bb09a2e6659f0f9b6e828453ea1a4155b2"
+    lifetime_hours = int(os.getenv("PERMANENT_SESSION_LIFETIME_HOURS", "8"))
     return {
         "SECRET_KEY": _secret,
         "SESSION_COOKIE_HTTPONLY": True,
         "SESSION_COOKIE_SAMESITE": "Lax",
         "SESSION_COOKIE_SECURE": os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true",
-        "PERMANENT_SESSION_LIFETIME": timedelta(minutes=30),
+        "PERMANENT_SESSION_LIFETIME": timedelta(hours=lifetime_hours),
         "MAX_CONTENT_LENGTH": MAX_UPLOAD_SIZE,
     }
 

@@ -86,10 +86,25 @@ mysql -u <username> -p <database_name> < sql/production_schema.sql
 ```
 This sets up all `helpdesk_*` tables, indexes, foreign keys, and double-submit `submission_key` deduplication constraints.
 
-### Automatic Migrations
-The application automatically executes database migrations (`v2` through `v6`) on startup.
-- **Migration V5**: Adds `submission_key` to `helpdesk_tickets` and unique indexes on activity/notes for deduplication.
-- **Migration V6**: Safely renames existing `demo_*` tables to production `helpdesk_*` names.
+### Deterministic Database Migrations (Phase 7)
+Database migrations are strictly separated from application startup. Runtime DDL is completely eliminated.
+Schema versioning and migrations are executed independently via `scripts/migrate.py` under MySQL advisory locks (`GET_LOCK('helpdesk_migration', 0)`) with SHA-256 integrity checksums:
+
+```bash
+# Check current migration status across all files:
+python scripts/migrate.py status
+
+# Inspect planned statements without applying:
+python scripts/migrate.py --dry-run up
+
+# Apply all pending migrations sequentially:
+python scripts/migrate.py up
+
+# Roll back the most recently applied migration (if -- DOWN section exists):
+python scripts/migrate.py down
+```
+- **Migration History**: Tracked in `helpdesk_schema_migrations` with execution duration, SHA-256 hash, and timestamps.
+- **Baseline Protection**: Rollback of core baseline migrations (`0001`–`0006`) is blocked unless explicitly passed `--force`.
 
 ### Legacy Database Migration
 To migrate historical data from legacy dumps (e.g. `sreenidhi.sys_administrators` and `sreenidhi.sys_complaint`):

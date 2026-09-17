@@ -22,3 +22,17 @@ sreenidhi_*.sql.gz
 # Sample / test files
 mrs_soni_kumari.*
 pic.jpeg
+
+# Local documents, binaries, and test outputs
+HWiNFOPortable/
+*.exe
+*.pdf
+*.csv
+backups/
+scripts/output/
+sql/backup_*.sql
+Bhaskar_Sharma_*.html
+mou.html
+pilot_results.html
+propsel.html
+

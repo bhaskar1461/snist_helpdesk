@@ -257,6 +257,19 @@
       color: #3730a3;
     }
 
+    .escalated-pill {
+      background: #fee2e2;
+      color: #b91c1c;
+      font-weight: 700;
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      white-space: nowrap;
+    }
+
     .ticket-title-wrap {
       max-width: 320px;
     }
@@ -508,9 +521,16 @@
                     {% endif %}
                   </td>
                   <td>
-                    <span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">
-                      {{ ticket.status|replace('_', ' ') }}
-                    </span>
+                    <div style="display:flex; flex-direction:column; align-items:flex-start; gap:4px;">
+                      <span class="status-pill {{ ticket.status|lower|replace('_', '-') }}">
+                        {{ ticket.status|replace('_', ' ') }}
+                      </span>
+                      {% if ticket.is_escalated %}
+                        <span class="escalated-pill" title="Overdue (>24h)">
+                          <i data-lucide="alert-triangle" style="width:11px;height:11px;"></i> Overdue
+                        </span>
+                      {% endif %}
+                    </div>
                   </td>
                   <td>
                     <div class="user-cell">

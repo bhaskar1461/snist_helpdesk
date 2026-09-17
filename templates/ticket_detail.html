@@ -401,6 +401,120 @@
       align-items: center;
       gap: 4px;
     }
+
+    /* ── Attachment Modal Preview ─────────────────────────────────────── */
+    .attachment-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      animation: modalFadeIn 0.15s ease-out;
+    }
+
+    @keyframes modalFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .attachment-modal-content {
+      background: #ffffff;
+      border-radius: 12px;
+      max-width: 960px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+    }
+
+    .attachment-modal-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #ffffff;
+    }
+
+    .attachment-modal-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      color: var(--slate-900);
+      font-size: 0.95rem;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    .attachment-modal-body {
+      padding: 20px;
+      overflow: auto;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f8fafc;
+      min-height: 350px;
+    }
+
+    .attachment-modal-body img {
+      max-width: 100%;
+      max-height: 72vh;
+      object-fit: contain;
+      border-radius: 6px;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+    }
+
+    .attachment-modal-body iframe {
+      width: 100%;
+      height: 72vh;
+      border: none;
+      border-radius: 6px;
+      background: #ffffff;
+    }
+
+    .btn-close-modal {
+      background: none;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      transition: all 0.15s;
+    }
+
+    .btn-close-modal:hover {
+      background: #f1f5f9;
+      color: #0f172a;
+    }
+
+    .btn-preview-attachment {
+      background: #eef2ff;
+      color: var(--primary);
+      border: 1px solid #c7d2fe;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s;
+    }
+
+    .btn-preview-attachment:hover {
+      background: #e0e7ff;
+      color: var(--primary-hover);
+    }
   </style>
 </head>
 <body>
@@ -473,7 +587,7 @@
                       <a href="tel:{{ ticket.assigned_to_phone }}" class="contact-link call-action" title="Call Assignee">
                         <i data-lucide="phone-call" style="width:13px;height:13px;color:var(--primary);"></i>
                         <span>{{ ticket.assigned_to_phone }}</span>
-                        <span class="call-badge">Call CA</span>
+                        <span class="call-badge" data-action="Call CA">Call Assignee</span>
                       </a>
                     {% else %}
                       <small style="color:var(--slate-400); font-size:0.75rem; margin-top:2px;">No phone registered</small>
@@ -601,8 +715,14 @@
                       <div style="font-size:0.75rem; color:var(--slate-600); margin-top:4px;">⏱ Time: {{ event.time_taken }}</div>
                     {% endif %}
                     {% if event.attachment_path %}
-                      <div style="font-size:0.75rem; color:var(--primary); margin-top:4px;">
-                        📎 <a href="/uploads/{{ event.attachment_path }}" target="_blank" style="color:var(--primary); text-decoration:underline;">View Attachment</a>
+                      {% set att_url = url_for('tickets.download_attachment', ticket_id=ticket.id, filename=event.attachment_path) %}
+                      <div style="font-size:0.75rem; margin-top:6px; display:inline-flex; align-items:center; gap:8px;">
+                        <button type="button" onclick="previewAttachment('{{ att_url }}', '{{ event.attachment_path }}')" class="btn-preview-attachment" title="Preview attachment in browser">
+                          <i data-lucide="eye" style="width:12px;height:12px;"></i> Preview
+                        </button>
+                        <a href="{{ att_url }}" download style="color:var(--slate-600); text-decoration:underline; font-size:0.75rem; display:inline-flex; align-items:center; gap:3px;">
+                          <i data-lucide="download" style="width:12px;height:12px;"></i> Download
+                        </a>
                       </div>
                     {% endif %}
                   </div>
@@ -655,8 +775,75 @@
       </div>
     </main>
   </div>
+  <!-- Attachment Preview Modal -->
+  <div id="attachmentModal" class="attachment-modal" style="display:none;" onclick="if(event.target===this) closeAttachmentModal()">
+    <div class="attachment-modal-content">
+      <div class="attachment-modal-header">
+        <div class="attachment-modal-title">
+          <i data-lucide="file-text" style="width:18px;height:18px;color:var(--primary);"></i>
+          <span id="attachmentModalFileName">Attachment Preview</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <a id="attachmentModalDownload" href="#" class="btn-update" style="padding:6px 12px; font-size:0.8rem; text-decoration:none;" download>
+            <i data-lucide="download" style="width:14px;height:14px;"></i> Download
+          </a>
+          <button type="button" class="btn-close-modal" onclick="closeAttachmentModal()" aria-label="Close Preview">
+            <i data-lucide="x" style="width:18px;height:18px;"></i>
+          </button>
+        </div>
+      </div>
+      <div id="attachmentModalBody" class="attachment-modal-body"></div>
+    </div>
+  </div>
+
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>lucide.createIcons();</script>
   <script src="{{ url_for('static', filename='js/sidebar.js') }}"></script>
+  <script>
+    function previewAttachment(url, filename) {
+      const modal = document.getElementById('attachmentModal');
+      const modalTitle = document.getElementById('attachmentModalFileName');
+      const modalDownload = document.getElementById('attachmentModalDownload');
+      const modalBody = document.getElementById('attachmentModalBody');
+
+      modalTitle.textContent = filename || 'Attachment Preview';
+      modalDownload.href = url;
+      modalDownload.setAttribute('download', filename || 'attachment');
+
+      const ext = (filename || '').split('.').pop().toLowerCase();
+      const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+
+      if (imageExts.includes(ext)) {
+        modalBody.innerHTML = '<img src="' + url + '" alt="' + (filename || 'Attachment') + '">';
+      } else if (ext === 'pdf') {
+        modalBody.innerHTML = '<iframe src="' + url + '"></iframe>';
+      } else {
+        modalBody.innerHTML = [
+          '<div style="text-align:center; padding: 2.5rem 1rem;">',
+          '  <i data-lucide="file" style="width:48px;height:48px;color:#94a3b8;margin-bottom:12px;"></i>',
+          '  <p style="margin:0;font-weight:600;color:var(--slate-800);">Direct preview is not supported for this file type (' + ext.toUpperCase() + ').</p>',
+          '  <p style="margin:6px 0 16px;font-size:0.85rem;color:var(--slate-500);">Please download the file to inspect it locally.</p>',
+          '  <a href="' + url + '" download class="btn-update" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;">',
+          '    <i data-lucide="download" style="width:14px;height:14px;"></i> Download File',
+          '  </a>',
+          '</div>'
+        ].join('\n');
+      }
+      modal.style.display = 'flex';
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function closeAttachmentModal() {
+      const modal = document.getElementById('attachmentModal');
+      if (modal) {
+        modal.style.display = 'none';
+        document.getElementById('attachmentModalBody').innerHTML = '';
+      }
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeAttachmentModal();
+    });
+  </script>
 </body>
 </html>

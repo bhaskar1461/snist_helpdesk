@@ -61,26 +61,10 @@ def resolve_and_promote_ca(demo_db, live_db, assigned_ca_id_str, target_dept, ac
         if teacher_dept and not departments_match(teacher_dept, target_dept, org_id):
             raise ValueError(f"Reference user '{teacher.get('TEACHER_NAME', 'Teacher')}' belongs to department '{teacher_dept_display}', not '{target_dept_display}'.")
 
-        sap_id = str(teacher.get("sap_id", "123")).strip()
-        existing = demo_db.get_user_by_email(teacher["email"])
-        if existing:
-            check_and_promote_ca(demo_db, existing["id"], target_dept, actor_id, org_id)
-            return existing["id"]
-
-        new_user_id = demo_db.create_user({
-            "name": teacher["name"],
-            "email": teacher["email"],
-            "password": sap_id,
-            "role": "CA",
-            "department": target_dept,
-        })
-        demo_db.log_audit_event(
-            "CA_PROMOTED", actor_id, org_id,
-            target_type="user", target_id=new_user_id,
-            details={"promoted_name": teacher["name"], "department": target_dept},
-        )
-        flash(f"Promoted reference user {teacher['name']} to Assignee for {target_dept}.", "success")
-        return new_user_id
+        # Under institutional architecture, existing teacher_info is the source of truth.
+        # Zero duplicate teacher rows in helpdesk_users. The teacher's TEACHER_ID is used directly.
+        # CA role is resolved dynamically via ca_assignments.
+        return teacher["id"]
     else:
         ca_id = safe_int(assigned_ca_id_str)
         if ca_id <= 0:
@@ -572,12 +556,7 @@ def category_assignments():
 
 
 
-    try:
-        locations = live_db.fetch_locations()
-    except Exception as exc:
-        log.error("Failed to fetch locations: %s", exc)
-        locations = []
-    blocks = sorted(list(set(loc["block"] for loc in locations if loc.get("block"))))
+    blocks = demo_db.list_blocks(org_id=user["org_id"])
 
     # Calculate summary statistics
     try:
@@ -953,7 +932,14 @@ def user_management():
     users = demo_db.list_users(role=role_arg, department=department, search=search, org_id=user["org_id"])
     if user["role"] == "HOD":
         users = [u for u in users if u["role"] in ("CA", "ASSIGNEE", "FACULTY")]
-    
+
+    # Always exclude dummy test accounts
+    users = [u for u in users if not (u.get("email") or "").lower().endswith(".ca@gmail.com")]
+
+    domain_filter = request.args.get("domain", "institutional").strip().lower()
+    if domain_filter == "institutional":
+        users = [u for u in users if (u.get("email") or "").lower().endswith(("@sreenidhi.edu.in", "@snist.edu.in", "@snu.edu.in")) or (u.get("email") or "").lower() in ("admin@gmail.com", "campus.admin@gmail.com")]
+
     # Server-side pagination to prevent browser freezing on large user directories
     page = safe_int(request.args.get("page", "1")) or 1
     per_page = 50
@@ -997,8 +983,7 @@ def user_management():
             if not any(departments_match(m.get('code', ''), c_dept) or departments_match(m.get('name', ''), c_dept) or (m.get('code', '') or '').lower() == c_dept.lower() for m in modal_departments):
                 modal_departments.append({'code': c_dept, 'name': c_dept, 'org_id': user['org_id']})
 
-    raw_blocks = demo_db.list_blocks(org_id=user["org_id"]) if hasattr(demo_db, 'list_blocks') else []
-    blocks = [b.get("block_name", b) if isinstance(b, dict) else b for b in raw_blocks]
+    blocks = demo_db.list_blocks(org_id=user["org_id"])
 
     user_stats = {
         "total": total_users,

@@ -14,9 +14,13 @@ if os.getenv("BYPASS_SMS_WHATSAPP_LOGS", "false").lower() == "true":
 # ── SMS (BulkSMS HTTP API) ──────────────────────────────────────────────
 
 def _send_sms_sync(phone_number, message):
-    api_key = os.getenv("SMS_API_KEY", "c69fc621-e477-43c5-84ea-d9d94108d7cc")
+    api_key = os.getenv("SMS_API_KEY", "")
     sender = os.getenv("SMS_SENDER", "SNISTA")
     test_number = os.getenv("SMS_TEST_NUMBER")
+
+    if not api_key:
+        logger.warning("SMS_API_KEY not configured. Skipping SMS.")
+        return
 
     target_number = test_number if test_number else phone_number
     if not target_number:
@@ -112,8 +116,12 @@ def _build_whatsapp_allocation_payload(target_number, ca_name, ticket_id, catego
 def _send_whatsapp_allocation_sync(target_number, ca_name, ticket_id, category_name, priority, department):
     """Send a WhatsApp allocation notification via the Unified Messaging Platform."""
     api_url = os.getenv("WHATSAPP_API_URL", "https://103.229.250.150/unified/v2/send")
-    client_id = os.getenv("WHATSAPP_CLIENT_ID", "sreenidhiclgbepfs44jy504")
-    client_password = os.getenv("WHATSAPP_CLIENT_PASSWORD", "wm84r8yhj9mzp9m1yrm78fqhpmzb8on0")
+    client_id = os.getenv("WHATSAPP_CLIENT_ID", "")
+    client_password = os.getenv("WHATSAPP_CLIENT_PASSWORD", "")
+
+    if not client_id or not client_password:
+        logger.warning("WhatsApp credentials not configured. Skipping WhatsApp notification.")
+        return
 
     payload = _build_whatsapp_allocation_payload(
         target_number, ca_name, ticket_id, category_name, priority, department

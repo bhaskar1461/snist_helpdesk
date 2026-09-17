@@ -262,9 +262,30 @@ def list_categories():
 @api_bp.route("/tickets/<int:ticket_id>/attachment/<path:filename>")
 @role_required("FACULTY", "CA", "HOD", "ADMIN", "SUPER_ADMIN")
 def download_attachment(ticket_id, filename):
-    """Serve ticket attachment files."""
-    from flask import send_from_directory
+    """Serve ticket attachment files with strict IDOR access control and traversal defense."""
+    from flask import abort, send_file
+    from app import get_demo_db
     from app.config import UPLOAD_DIR
-    from werkzeug.utils import secure_filename
-    safe_name = secure_filename(filename)
-    return send_from_directory(str(UPLOAD_DIR), safe_name)
+    from app.helpers import current_user
+    from app.security import can_user_access_ticket_attachment, validate_attachment_path
+
+    user = current_user()
+    demo_db = get_demo_db()
+    ticket = demo_db.get_ticket(ticket_id)
+    if not ticket:
+        abort(404)
+
+    if not can_user_access_ticket_attachment(user, ticket):
+        abort(404)
+
+    safe_file_path = validate_attachment_path(filename, UPLOAD_DIR)
+    if not safe_file_path:
+        abort(404)
+
+    file_ticket_id = demo_db.get_attachment_ticket_id(filename)
+    if file_ticket_id is not None and file_ticket_id != ticket_id:
+        abort(404)
+
+    resp = send_file(safe_file_path, as_attachment=False)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp

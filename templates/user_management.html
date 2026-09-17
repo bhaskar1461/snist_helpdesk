@@ -1207,22 +1207,23 @@
                   <button type="button" class="btn-bulk-clear-all" onclick="clearAllMultiSelect('aca-block-select')">Clear All</button>
                 </div>
               </div>
-              <div class="options-scroll-list">
+              <div class="options-scroll-list" style="max-height: 180px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 4px;">
                 {% for b in blocks %}
-                  <label class="option-item" data-value="{{ b }}">
-                    <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('aca-block-select')">
-                    <span class="option-label-text">{{ b }}</span>
+                  <label class="option-item" data-value="{{ b }}" style="display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: 0.82rem; cursor: pointer; transition: all 0.12s;">
+                    <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('aca-block-select')" style="accent-color: var(--primary); width: 15px; height: 15px; cursor: pointer;">
+                    <span class="option-label-text" style="font-weight: 500; color: #1e293b;">{{ b }}</span>
                   </label>
                 {% endfor %}
               </div>
-              <div class="dropdown-footer-summary">
-                <span class="footer-count">0 of {{ blocks|length }} selected</span>
+              <div class="dropdown-footer-summary" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 4px 2px;">
+                <span style="font-size: 0.75rem; color: #64748b;">Leave unselected for All Blocks</span>
+                <span class="footer-count" style="font-size: 0.78rem; font-weight: 600; color: var(--primary);">0 of {{ blocks|length }} selected</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--slate-100);">
+        <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 14px; border-top: 1px solid var(--slate-100); position: sticky; bottom: 0; background: #fff; z-index: 5; margin-top: 8px;">
           <button type="button" class="btn-table-action btn-cancel" onclick="closeAssignCaModal()" style="padding: 8px 16px;">Cancel</button>
           <button type="submit" class="btn-table-action btn-save" id="aca-submit-btn" disabled style="padding: 8px 18px; font-weight: 600;">
             <i data-lucide="check" style="width: 14px; height: 14px;"></i> Assign Categories
@@ -1334,22 +1335,23 @@
                   <button type="button" class="btn-bulk-clear-all" onclick="clearAllMultiSelect('mca-block-select')">Clear All</button>
                 </div>
               </div>
-              <div class="options-scroll-list">
+              <div class="options-scroll-list" style="max-height: 180px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; padding: 4px;">
                 {% for b in blocks %}
-                  <label class="option-item" data-value="{{ b }}">
-                    <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('mca-block-select')">
-                    <span class="option-label-text">{{ b }}</span>
+                  <label class="option-item" data-value="{{ b }}" style="display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc; font-size: 0.82rem; cursor: pointer; transition: all 0.12s;">
+                    <input type="checkbox" name="blocks" value="{{ b }}" onchange="updateMultiSelectState('mca-block-select')" style="accent-color: var(--primary); width: 15px; height: 15px; cursor: pointer;">
+                    <span class="option-label-text" style="font-weight: 500; color: #1e293b;">{{ b }}</span>
                   </label>
                 {% endfor %}
               </div>
-              <div class="dropdown-footer-summary">
-                <span class="footer-count">0 of {{ blocks|length }} selected</span>
+              <div class="dropdown-footer-summary" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 4px 2px;">
+                <span style="font-size: 0.75rem; color: #64748b;">Leave unselected for All Blocks</span>
+                <span class="footer-count" style="font-size: 0.78rem; font-weight: 600; color: var(--primary);">0 of {{ blocks|length }} selected</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--slate-100);">
+        <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 14px; border-top: 1px solid var(--slate-100); position: sticky; bottom: 0; background: #fff; z-index: 5; margin-top: 8px;">
           <button type="button" class="btn-table-action btn-cancel" onclick="closeManageUserCategoriesModal()" style="padding: 8px 16px;">Cancel</button>
           <button type="submit" class="btn-table-action btn-save" id="mca-submit-btn" disabled style="padding: 8px 18px; font-weight: 600;">
             <i data-lucide="check" style="width: 14px; height: 14px;"></i> Save Assignments
