@@ -22,11 +22,25 @@ def sync_accounts():
         cursorclass=pymysql.cursors.DictCursor
     )
 
+    inst_db = os.getenv("MYSQL_INSTITUTIONAL_DATABASE", "seg_demo")
+
     try:
         with conn.cursor() as cur:
-            print("=== Step 1: Fetching sys_administrators from sreenidhi ===")
-            cur.execute("SELECT * FROM sreenidhi.sys_administrators")
-            sys_admins = cur.fetchall()
+            print("=== Step 1: Fetching sys_administrators ===")
+            sys_admins = None
+            for query in [
+                f"SELECT * FROM `{inst_db}`.sys_administrators",
+                "SELECT * FROM sys_administrators",
+                "SELECT * FROM sreenidhi.sys_administrators",
+            ]:
+                try:
+                    cur.execute(query)
+                    sys_admins = cur.fetchall()
+                    break
+                except Exception:
+                    continue
+            if sys_admins is None:
+                sys_admins = []
             print(f"Found {len(sys_admins)} administrators.")
 
             # Load all teachers for fast matching by code, sap, email

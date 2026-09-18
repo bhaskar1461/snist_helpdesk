@@ -1,11 +1,16 @@
 import os
 import pymysql
+from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash
+
+load_dotenv()
 
 DB_HOST = os.getenv("MYSQL_HOST", "seg.sreenidhi.edu.in")
 DB_USER = os.getenv("MYSQL_USER", "demo")
 DB_PASS = os.getenv("MYSQL_PASSWORD", "")
 DB_PORT = int(os.getenv("MYSQL_PORT", "3306"))
+DB_NAME = os.getenv("MYSQL_DATABASE", "helpdesk")
+INST_DB = os.getenv("MYSQL_INSTITUTIONAL_DATABASE", "seg_demo")
 
 DEFAULT_STAFF = [
     {"name": "Super Admin", "email": "admin@gmail.com", "role": "SUPER_ADMIN", "department": "Administration", "password": "Admin@321#"},
@@ -53,16 +58,27 @@ DEFAULT_PROBLEMS = {
 }
 
 def seed():
-    conn = pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database="helpdesk", port=DB_PORT)
+    conn = pymysql.connect(host=DB_HOST, user=DB_USER, password=DB_PASS, database=DB_NAME, port=DB_PORT)
     with conn.cursor() as cur:
         # 1. Staff roles
         print("Seeding helpdesk_staff_roles...")
         for s in DEFAULT_STAFF:
             pwd_hash = generate_password_hash(s["password"]) if s["password"] else None
-            # Find teacher_id from sreenidhi.teacher_info if exists
-            cur.execute("SELECT TEACHER_ID FROM sreenidhi.teacher_info WHERE LOWER(EMAIL_ID) = LOWER(%s) LIMIT 1", (s["email"],))
-            t_row = cur.fetchone()
-            teacher_id = t_row[0] if t_row else None
+            # Find teacher_id from local view or institutional database
+            teacher_id = None
+            for query in [
+                ("SELECT TEACHER_ID FROM teacher_info WHERE LOWER(EMAIL_ID) = LOWER(%s) LIMIT 1", (s["email"],)),
+                (f"SELECT TEACHER_ID FROM `{INST_DB}`.teacher_info WHERE LOWER(EMAIL_ID) = LOWER(%s) LIMIT 1", (s["email"],)),
+                ("SELECT TEACHER_ID FROM sreenidhi.teacher_info WHERE LOWER(EMAIL_ID) = LOWER(%s) LIMIT 1", (s["email"],)),
+            ]:
+                try:
+                    cur.execute(query[0], query[1])
+                    t_row = cur.fetchone()
+                    if t_row:
+                        teacher_id = t_row[0]
+                        break
+                except Exception:
+                    continue
             
             cur.execute("""
                 INSERT INTO helpdesk_staff_roles (teacher_id, name, email, password_hash, role, department)

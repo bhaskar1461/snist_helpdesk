@@ -336,6 +336,41 @@ class MigrationRunner:
 
         return True
 
+    def repair(self, target: Optional[str] = None) -> bool:
+        """Recalculate checksums and re-apply drifted migrations."""
+        self.ensure_tracking_table()
+        statuses = self.status()
+        drifted = [s for s in statuses if s["state"] == "DRIFTED"]
+        if not drifted:
+            print("No drifted migrations detected.")
+            return True
+
+        user = getpass.getuser()
+        for s in drifted:
+            if target and not s["name"].startswith(target):
+                continue
+            name = s["name"]
+            path = s["path"]
+            full_sql, up_sql, _ = parse_migration_file(path)
+            checksum = compute_checksum(full_sql)
+            statements = split_sql_statements(up_sql)
+            print(f"Repairing drifted migration: {name} ({len(statements)} statement(s))...")
+            start_time = time.time()
+            with self.conn.cursor() as cur:
+                for idx, stmt in enumerate(statements, 1):
+                    try:
+                        cur.execute(stmt)
+                    except pymysql.Error as exc:
+                        print(f"  [REPAIR FAILED] {name} at statement #{idx}: {exc}")
+                        return False
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                cur.execute(
+                    "UPDATE helpdesk_schema_migrations SET checksum = %s, execution_ms = %s, applied_by = %s WHERE migration_name = %s",
+                    (checksum, elapsed_ms, f"{user} (repaired)", name),
+                )
+            print(f"  [OK] Successfully repaired {name} and synchronized checksum.")
+        return True
+
 
 def print_status_table(status_list: List[Dict]) -> None:
     """Format and print the migration status table."""
@@ -422,6 +457,11 @@ def main():
     p_boot.add_argument("--assume-applied", required=True, nargs="+", help="Migration names, prefixes, or ranges (e.g., 0001..0005)")
     p_boot.add_argument("--env", default="prod", choices=["prod", "staging"], help="Target environment")
 
+    # repair command
+    p_repair = subparsers.add_parser("repair", help="Recalculate checksums and re-apply drifted migrations")
+    p_repair.add_argument("--target", type=str, help="Target specific migration name or prefix (e.g., 0006)")
+    p_repair.add_argument("--env", default="prod", choices=["prod", "staging"], help="Target environment")
+
     args = parser.parse_args()
     is_dry_run = getattr(args, "dry_run", False) or ("--dry-run" in sys.argv)
 
@@ -434,7 +474,7 @@ def main():
     runner = MigrationRunner(conn)
 
     # 1. Acquire advisory lock for write commands
-    if args.command in ("up", "down", "bootstrap") and not is_dry_run:
+    if args.command in ("up", "down", "bootstrap", "repair") and not is_dry_run:
         print("Acquiring migration advisory lock ('helpdesk_migration')...")
         if not runner.acquire_lock(timeout_sec=0):
             print(
@@ -530,6 +570,13 @@ def main():
             if not success:
                 sys.exit(1)
             print("\nBootstrap complete.")
+
+        elif args.command == "repair":
+            print("Repairing drifted migration(s)...")
+            success = runner.repair(target=getattr(args, "target", None))
+            if not success:
+                sys.exit(1)
+            print("\nRepair complete.")
 
     finally:
         runner.release_lock()

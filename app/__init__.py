@@ -36,8 +36,8 @@ def create_app(testing=False):
     """Create and configure the Flask application."""
     global _demo_db, _live_db
 
-    # Load .env before anything else
-    load_dotenv(BASE_DIR / ".env", override=True)
+    # Load .env before anything else (preserve existing env vars)
+    load_dotenv(BASE_DIR / ".env", override=False)
 
     app = Flask(
         __name__,
@@ -85,7 +85,7 @@ def create_app(testing=False):
     host = os.getenv("MYSQL_HOST", "seg-dev.sreenidhi.edu.in")
     user = os.getenv("MYSQL_USER", "demo")
     password = os.getenv("MYSQL_PASSWORD", "Admin@321#")
-    database = os.getenv("MYSQL_DATABASE", "seg_demo")
+    database = os.getenv("MYSQL_DATABASE", "helpdesk")
     port = int(os.getenv("MYSQL_PORT", "3306"))
     db_config = DbConfig(host=host, port=port, user=user, password=password, database=database) if all([host, user, password, database]) else None
 
