@@ -21,11 +21,36 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import pymysql
-from dotenv import load_dotenv
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 MIGRATIONS_DIR = BASE_DIR / "sql" / "migrations"
+
+try:
+    import pymysql
+    from dotenv import load_dotenv
+except ModuleNotFoundError as exc:
+    # Attempt transparent re-exec into project virtualenv if invoked via system Python
+    if "MIGRATE_REEXEC" not in os.environ:
+        os.environ["MIGRATE_REEXEC"] = "1"
+        for venv_name in ["venv", ".venv"]:
+            for py_bin in ["bin/python3", "bin/python", "Scripts/python.exe"]:
+                candidate = BASE_DIR / venv_name / py_bin
+                if candidate.exists() and str(candidate.resolve()) != str(Path(sys.executable).resolve()):
+                    os.execv(str(candidate), [str(candidate), str(Path(__file__).resolve())] + sys.argv[1:])
+
+    print(
+        f"\n[ERROR] Missing required Python dependency: {exc.name}\n\n"
+        "Please run this script using your virtual environment:\n"
+        "  source venv/bin/activate   # or: source .venv/bin/activate\n"
+        f"  python3 {' '.join(sys.argv)}\n\n"
+        "Or invoke the virtual environment Python directly:\n"
+        f"  ./venv/bin/python3 {' '.join(sys.argv)}\n"
+        f"  # or: ./.venv/bin/python3 {' '.join(sys.argv)}\n\n"
+        "Or install missing dependencies into the active environment:\n"
+        "  pip install pymysql python-dotenv\n"
+        "  # or: pip install -r requirements.txt\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 TRACKING_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS helpdesk_schema_migrations (
