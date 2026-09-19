@@ -375,6 +375,7 @@ class MockCursor:
             status = ("status" in sql_lower_stripped) or ("status" in col_to_check)
             problem_type_id = ("problem_type_id" in sql_lower_stripped) or ("problem_type_id" in col_to_check)
             is_archived = ("is_archived" in sql_lower_stripped) or ("is_archived" in col_to_check)
+            org_id = ("org_id" in sql_lower_stripped) or ("org_id" in col_to_check.lower())
 
             if is_active:
                 self._results = [{"Field": "is_active", "Type": "tinyint(1)"}]
@@ -384,6 +385,8 @@ class MockCursor:
                 self._results = [{"Field": "problem_type_id", "Type": "int(10) unsigned"}]
             elif is_archived:
                 self._results = [{"Field": "is_archived", "Type": "tinyint(1)"}]
+            elif org_id:
+                self._results = [{"Field": "ORG_ID", "Type": "varchar(255)"}]
             self.rowcount = len(self._results)
             return
 
@@ -492,15 +495,18 @@ class MockCursor:
             new_row = {}
             if select_cols and "*" not in select_part:
                 for expr, alias in select_cols:
-                    words = re.findall(r"\b[a-zA-Z_0-9]+\b", expr)
-                    val = None
-                    for w in words:
-                        for k, v in row.items():
-                            if k.lower() == w.lower():
-                                val = v
+                    if (expr.startswith("'") and expr.endswith("'")) or (expr.startswith('"') and expr.endswith('"')):
+                        val = expr[1:-1]
+                    else:
+                        words = re.findall(r"\b[a-zA-Z_0-9]+\b", expr)
+                        val = None
+                        for w in words:
+                            for k, v in row.items():
+                                if k.lower() == w.lower():
+                                    val = v
+                                    break
+                            if val is not None:
                                 break
-                        if val is not None:
-                            break
                     new_row[alias] = val
             else:
                 new_row = copy.deepcopy(row)

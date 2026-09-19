@@ -412,15 +412,45 @@ class BaseMySQLService:
     @property
     def inst_prefix(self) -> str:
         inst = os.getenv("MYSQL_INSTITUTIONAL_DATABASE", "").strip()
-        if not inst:
-            return ""
-        if hasattr(self, "config") and self.config and self.config.database == inst:
+        if not inst or inst.lower() == "helpdesk":
             return ""
         if self._inst_fallback:
             return ""
-        if os.getenv("TESTING", "false").lower() == "true" and not getattr(self, "_force_prefix", False):
+        if getattr(self, "_force_prefix", False):
+            return f"`{inst}`."
+        if hasattr(self, "config") and self.config and (self.config.database == inst or self.config.database == "helpdesk"):
+            return ""
+        if os.getenv("TESTING", "false").lower() == "true":
             return ""
         return f"`{inst}`."
+
+    def _branch_has_org_id_col(self, cursor=None) -> bool:
+        """Check if branch_detail table has ORG_ID column."""
+        if not hasattr(self, "_cached_branch_has_org_id"):
+            if os.getenv("TESTING", "false").lower() == "true" and not getattr(self, "_force_prefix", False):
+                self._cached_branch_has_org_id = True
+                return True
+            try:
+                if cursor is not None:
+                    cursor.execute(f"SHOW COLUMNS FROM {self.inst_prefix}branch_detail LIKE 'ORG_ID'")
+                    self._cached_branch_has_org_id = cursor.fetchone() is not None
+                else:
+                    with self.connection() as conn, conn.cursor() as cur:
+                        cur.execute(f"SHOW COLUMNS FROM {self.inst_prefix}branch_detail LIKE 'ORG_ID'")
+                        self._cached_branch_has_org_id = cur.fetchone() is not None
+            except Exception:
+                self._cached_branch_has_org_id = False
+        return self._cached_branch_has_org_id
+
+    def _branch_org_id_sql(self, cursor=None) -> str:
+        """Return SQL fragment for branch_detail.ORG_ID, safely falling back to '2000' if absent."""
+        return "CAST(b.ORG_ID AS CHAR)" if self._branch_has_org_id_col(cursor) else "'2000'"
+
+    def _branch_dept_subquery(self, org_param_placeholder: str = "%s") -> str:
+        """Return subquery to match departments belonging to an org_id."""
+        if self._branch_has_org_id_col():
+            return f"SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE CAST(ORG_ID AS CHAR) = {org_param_placeholder}"
+        return f"SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE COALESCE(BRANCH_CODE, '') <> ''"
 
     @property
     def enabled(self) -> bool:
@@ -723,12 +753,13 @@ class LiveDbService(BaseMySQLService):
     def fetch_departments(self, include_archived=True):
         if not self.enabled:
             return []
+        org_col = f"{self._branch_org_id_sql()} AS org_id,"
         sql = f"""
             SELECT DISTINCT
                 b.BRANCH_ID,
                 b.BRANCH_CODE AS department_code,
                 b.BRANCH_NAME AS department_name,
-                CAST(b.ORG_ID AS CHAR) AS org_id,
+                {org_col}
                 b.HOD_ID
         """
         # Check if is_archived column exists and include it
@@ -1097,22 +1128,27 @@ class DemoDbService(BaseMySQLService):
         }
         return norm_map.get(d1, d1) == norm_map.get(d2, d2)
 
-    def _resolve_teacher_role(self, cursor, teacher_row, ca_ids=None):
+    def _resolve_teacher_role(self, cursor, teacher_row, ca_ids=None, staff_roles_map=None):
         """Determine role: SUPER_ADMIN, ADMIN, HOD, CA, or FACULTY."""
         teacher_id = teacher_row.get("id") or teacher_row.get("TEACHER_ID")
         email = (teacher_row.get("email") or teacher_row.get("EMAIL_ID") or "").strip().lower()
 
         # 0. Check if explicitly assigned an elevated staff role (SUPER_ADMIN, ADMIN, etc.)
-        try:
-            cursor.execute(
-                "SELECT role FROM helpdesk_staff_roles WHERE (LOWER(email) = %s OR teacher_id = %s) AND is_active = 1 LIMIT 1",
-                (email, teacher_id),
-            )
-            staff = cursor.fetchone()
-            if staff and staff.get("role") and staff["role"] in ("SUPER_ADMIN", "ADMIN"):
-                return staff["role"]
-        except Exception:
-            pass
+        if staff_roles_map is not None:
+            elevated = staff_roles_map.get(email) or (staff_roles_map.get(teacher_id) if teacher_id else None)
+            if elevated in ("SUPER_ADMIN", "ADMIN"):
+                return elevated
+        else:
+            try:
+                cursor.execute(
+                    "SELECT role FROM helpdesk_staff_roles WHERE (LOWER(email) = %s OR teacher_id = %s) AND is_active = 1 LIMIT 1",
+                    (email, teacher_id),
+                )
+                staff = cursor.fetchone()
+                if staff and staff.get("role") and staff["role"] in ("SUPER_ADMIN", "ADMIN"):
+                    return staff["role"]
+            except Exception:
+                pass
 
         # 1. Check if CA in ca_assignments or category default
         if ca_ids is not None:
@@ -1182,7 +1218,7 @@ class DemoDbService(BaseMySQLService):
                            t.SAP_ID AS sap_id, t.TEACHER_CODE AS teacher_code, t.DESIGNATION AS designation,
                            t.MOBILE_PHONE AS phone, COALESCE(t.ACTIVE, 1) AS is_active,
                            b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
-                           CAST(COALESCE(b.ORG_ID, '2000') AS CHAR) AS org_id
+                           {self._branch_org_id_sql(cursor)} AS org_id
                     FROM {self.inst_prefix}teacher_info t
                     LEFT JOIN {self.inst_prefix}branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
                     WHERE LOWER(COALESCE(t.EMAIL_ID, '')) = LOWER(%s)
@@ -1280,7 +1316,7 @@ class DemoDbService(BaseMySQLService):
                         SELECT t.TEACHER_ID AS id, t.TEACHER_NAME AS name, t.EMAIL_ID AS email,
                                t.DESIGNATION AS designation, t.TEACHER_CODE AS teacher_code, t.SAP_ID AS sap_id,
                                t.MOBILE_PHONE AS phone, b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
-                               CAST(COALESCE(b.ORG_ID, '2000') AS CHAR) AS org_id
+                               {self._branch_org_id_sql(cursor)} AS org_id
                         FROM {self.inst_prefix}teacher_info t
                         LEFT JOIN {self.inst_prefix}branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
                         WHERE t.TEACHER_ID = %s
@@ -1364,7 +1400,7 @@ class DemoDbService(BaseMySQLService):
                     SELECT t.TEACHER_ID AS id, t.TEACHER_NAME AS name, t.EMAIL_ID AS email,
                            t.DESIGNATION AS designation, t.TEACHER_CODE AS teacher_code, t.SAP_ID AS sap_id,
                            t.MOBILE_PHONE AS phone, b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
-                           CAST(COALESCE(b.ORG_ID, '2000') AS CHAR) AS org_id
+                           {self._branch_org_id_sql(cursor)} AS org_id
                     FROM {self.inst_prefix}teacher_info t
                     LEFT JOIN {self.inst_prefix}branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
                     WHERE LOWER(COALESCE(t.EMAIL_ID, '')) = LOWER(%s)
@@ -1418,6 +1454,15 @@ class DemoDbService(BaseMySQLService):
                 # Index staff by lowercase email and teacher_id to prevent duplicates
                 staff_by_email = {str(s.get("email") or "").strip().lower(): s for s in staff_users if s.get("email")}
                 staff_by_tid = {s.get("teacher_id"): s for s in staff_users if s.get("teacher_id")}
+                staff_roles_map = {}
+                for s in staff_users:
+                    s_role = s.get("role")
+                    if s.get("email"):
+                        staff_roles_map[str(s["email"]).strip().lower()] = s_role
+                    if s.get("teacher_id"):
+                        staff_roles_map[s["teacher_id"]] = s_role
+                    if s.get("id"):
+                        staff_roles_map[s["id"]] = s_role
 
                 # 2. Institutional teachers from teacher_info
                 target_roles = [role] if isinstance(role, str) else list(role or [])
@@ -1429,7 +1474,7 @@ class DemoDbService(BaseMySQLService):
                                t.MOBILE_PHONE AS phone, t.DESIGNATION AS designation,
                                b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
                                t.TEACHER_CODE AS teacher_code, t.SAP_ID AS sap_id,
-                               CAST(COALESCE(b.ORG_ID, '2000') AS CHAR) AS org_id
+                               {self._branch_org_id_sql(cursor)} AS org_id
                         FROM {self.inst_prefix}teacher_info t
                         LEFT JOIN {self.inst_prefix}branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
                         WHERE (COALESCE(t.ACTIVE, 1) = 1 OR t.TEACHER_ID IN (SELECT ca_id FROM helpdesk_ca_assignments) OR t.TEACHER_ID IN (SELECT assigned_ca_id FROM helpdesk_categories WHERE assigned_ca_id IS NOT NULL))
@@ -1465,7 +1510,7 @@ class DemoDbService(BaseMySQLService):
                                 matched_staff["name"] = t["name"]
                             continue
 
-                        t_role = self._resolve_teacher_role(cursor, t, ca_ids=ca_ids)
+                        t_role = self._resolve_teacher_role(cursor, t, ca_ids=ca_ids, staff_roles_map=staff_roles_map)
                         users.append({
                             "id": t["id"],
                             "name": t["name"],
@@ -1546,13 +1591,21 @@ class DemoDbService(BaseMySQLService):
             # Find which branch_codes belong to this org_id
             branch_codes = set()
             with connection.cursor() as cursor:
-                cursor.execute(
-                    f"SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE CAST(ORG_ID AS CHAR) = %s",
-                    (org_id,)
-                )
-                for r in cursor.fetchall():
-                    if r.get("BRANCH_CODE"):
-                        branch_codes.add(r["BRANCH_CODE"])
+                if self._branch_has_org_id_col(cursor):
+                    cursor.execute(
+                        f"SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE CAST(ORG_ID AS CHAR) = %s",
+                        (org_id,)
+                    )
+                    for r in cursor.fetchall():
+                        if r.get("BRANCH_CODE"):
+                            branch_codes.add(r["BRANCH_CODE"])
+                elif org_id == "2000":
+                    cursor.execute(
+                        f"SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE COALESCE(BRANCH_CODE, '') <> ''"
+                    )
+                    for r in cursor.fetchall():
+                        if r.get("BRANCH_CODE"):
+                            branch_codes.add(r["BRANCH_CODE"])
 
         filtered_users = []
         for u in users:
@@ -1685,8 +1738,11 @@ class DemoDbService(BaseMySQLService):
             sql += " AND c.assigned_ca_id = %s"
             params.append(ca_id)
         if org_id:
-            sql += f" AND c.department IN (SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
-            params.append(org_id)
+            sql += f" AND c.department IN ({self._branch_dept_subquery()})"
+            if self._branch_has_org_id_col():
+                params.append(org_id)
+            elif org_id != "2000":
+                sql += " AND 1=0"
         if search:
             like = f"%{search}%"
             sql += " AND (c.category_name LIKE %s OR t.TEACHER_NAME LIKE %s OR s.name LIKE %s)"
@@ -2664,8 +2720,11 @@ class DemoDbService(BaseMySQLService):
             sql += " AND c.department = %s"
             params.append(department)
         if org_id:
-            sql += f" AND c.department IN (SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
-            params.append(org_id)
+            sql += f" AND c.department IN ({self._branch_dept_subquery()})"
+            if self._branch_has_org_id_col():
+                params.append(org_id)
+            elif org_id != "2000":
+                sql += " AND 1=0"
 
         sql += " GROUP BY c.id, c.category_name, c.department ORDER BY ticket_count DESC"
         with self.connection() as connection, connection.cursor() as cursor:
@@ -2692,8 +2751,11 @@ class DemoDbService(BaseMySQLService):
             WHERE 1=1
         """
         if org_id:
-            sql += f" AND c.department IN (SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
-            params.append(org_id)
+            sql += f" AND c.department IN ({self._branch_dept_subquery()})"
+            if self._branch_has_org_id_col():
+                params.append(org_id)
+            elif org_id != "2000":
+                sql += " AND 1=0"
 
         sql += """
             GROUP BY c.department
@@ -2756,8 +2818,11 @@ class DemoDbService(BaseMySQLService):
             target_org = org_id or "2000"
             params = [target_org, target_org]
             if org_id:
-                sql += " AND CAST(b.ORG_ID AS CHAR) = %s"
-                params.append(org_id)
+                if self._branch_has_org_id_col():
+                    sql += " AND CAST(b.ORG_ID AS CHAR) = %s"
+                    params.append(org_id)
+                elif org_id != "2000":
+                    sql += " AND 1=0"
 
             sql += """
                 GROUP BY t.TEACHER_ID, t.TEACHER_NAME, t.EMAIL_ID, b.BRANCH_CODE
@@ -2783,8 +2848,11 @@ class DemoDbService(BaseMySQLService):
         target_org = org_id or "2000"
         params = [target_org, target_org]
         if org_id:
-            sql += f" AND u.department IN (SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
-            params.append(org_id)
+            sql += f" AND u.department IN ({self._branch_dept_subquery()})"
+            if self._branch_has_org_id_col():
+                params.append(org_id)
+            elif org_id != "2000":
+                sql += " AND 1=0"
 
         sql += """
             GROUP BY u.id, u.name, u.email, u.department
@@ -2840,8 +2908,11 @@ class DemoDbService(BaseMySQLService):
             sql += " AND c.department = %s"
             params.append(department)
         if org_id:
-            sql += f" AND c.department IN (SELECT BRANCH_CODE FROM {self.inst_prefix}branch_detail WHERE CAST(ORG_ID AS CHAR) = %s)"
-            params.append(org_id)
+            sql += f" AND c.department IN ({self._branch_dept_subquery()})"
+            if self._branch_has_org_id_col():
+                params.append(org_id)
+            elif org_id != "2000":
+                sql += " AND 1=0"
         if search:
             like = f"%{search}%"
             sql += " AND (c.category_name LIKE %s OR t.TEACHER_NAME LIKE %s OR s.name LIKE %s OR a.block LIKE %s)"
