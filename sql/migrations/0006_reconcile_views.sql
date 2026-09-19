@@ -81,13 +81,13 @@ FROM sreenidhi.teacher_info;
 CREATE OR REPLACE VIEW branch_detail AS
 SELECT 
   BRANCH_ID,
-  BRANCH_CODE,
   BRANCH_NAME,
-  department_name,
+  BRANCH_CODE,
+  LEVEL,
   HOD_ID,
-  is_archived,
-  created_at,
-  updated_at,
+  course,
+  HR_Level,
+  SAP_BRANCH_ID,
   '2000' AS ORG_ID
 FROM sreenidhi.branch_detail;
 

@@ -34,7 +34,7 @@ except ModuleNotFoundError as exc:
         for venv_name in ["venv", ".venv"]:
             for py_bin in ["bin/python3", "bin/python", "Scripts/python.exe"]:
                 candidate = BASE_DIR / venv_name / py_bin
-                if candidate.exists() and str(candidate.resolve()) != str(Path(sys.executable).resolve()):
+                if candidate.is_file():
                     os.execv(str(candidate), [str(candidate), str(Path(__file__).resolve())] + sys.argv[1:])
 
     print(
