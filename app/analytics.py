@@ -8,7 +8,7 @@ import logging
 from flask import Blueprint, jsonify, render_template, request
 
 from app.config import METABASE_DASHBOARD_IDS, METABASE_INTERNAL_URL, METABASE_SECRET_KEY, METABASE_SITE_URL
-from app.helpers import current_user, live_departments, page_context, role_required
+from app.helpers import active_category_departments, current_user, live_departments, page_context, role_required
 
 log = logging.getLogger(__name__)
 
@@ -18,8 +18,10 @@ analytics_bp = Blueprint("analytics", __name__)
 @analytics_bp.route("/analytics")
 @role_required("HOD", "ADMIN", "SUPER_ADMIN")
 def analytics_dashboard():
+    from app import get_demo_db
+    demo_db = get_demo_db()
     user = current_user()
-    departments = live_departments(user["org_id"])
+    departments = active_category_departments(demo_db, user["org_id"])
 
     # Bulletproof Metabase check:
     #   Use METABASE_INTERNAL_URL (Docker service name) for health checks,
@@ -148,9 +150,14 @@ def api_metabase_embed():
         import time
 
         user = current_user()
+        department = user["department"] if user.get("role") == "HOD" else (request.args.get("department") or "").strip()
+        params = {}
+        if department:
+            params["department"] = department
+
         payload = {
             "resource": {"dashboard": dashboard_id},
-            "params": {},
+            "params": params,
             "exp": int(time.time()) + (10 * 60),  # 10 minute expiry
         }
 

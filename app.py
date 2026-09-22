@@ -683,6 +683,7 @@ ORG_LABELS = {"2000": "SNIST", "3000": "SNU"}
 @app.route("/super-admin/dashboard")
 @role_required("SUPER_ADMIN")
 def super_admin_dashboard():
+    from app.helpers import active_category_departments, departments_with_active_hods
     user = current_user()
     org_id = user["org_id"]
     org_label = ORG_LABELS.get(org_id, org_id)
@@ -693,7 +694,8 @@ def super_admin_dashboard():
         highlights=demo_db.hod_overview(org_id=org_id),
         dept_stats=demo_db.ticket_stats_by_department(org_id=org_id),
         cat_stats=demo_db.ticket_stats_by_category(org_id=org_id),
-        departments=live_departments(org_id),
+        departments=active_category_departments(demo_db, org_id=org_id),
+        impersonation_departments=departments_with_active_hods(demo_db, org_id=org_id),
         page_title="Super Admin Dashboard",
         kicker="",
         page_heading="Super Admin Overview",
@@ -708,6 +710,7 @@ def super_admin_dashboard():
 @app.route("/admin/dashboard")
 @role_required("ADMIN")
 def admin_dashboard():
+    from app.helpers import active_category_departments, departments_with_active_hods
     user = current_user()
     summary = demo_db.dashboard_summary(user)
     users = demo_db.list_users()
@@ -725,7 +728,8 @@ def admin_dashboard():
         "management_dashboard.html",
         summary=summary,
         highlights=highlights,
-        departments=live_departments(user["org_id"]),
+        departments=active_category_departments(demo_db, org_id=user["org_id"]),
+        impersonation_departments=departments_with_active_hods(demo_db, org_id=user["org_id"]),
         page_title="Admin Dashboard",
         kicker="Administration",
         page_heading="Admin Panel",
@@ -1870,13 +1874,15 @@ def add_security_headers(response):
 @app.route("/impersonate-hod", methods=["POST"])
 @role_required("SUPER_ADMIN", "ADMIN")
 def impersonate_hod():
+    from app.helpers import active_category_departments
     department = request.form.get("department", "").strip()
     if not department:
         flash("Department is required to impersonate HOD.", "error")
         return redirect(url_for(route_for_role(session["role"])))
     session["acting_role"] = "HOD"
     session["acting_department"] = department
-    session["available_departments"] = [d["code"] for d in live_departments(session.get("org_id") or resolve_user_org(session["user_email"], session["department"]))]
+    user_org = session.get("org_id") or resolve_user_org(session["user_email"], session["department"])
+    session["available_departments"] = [d["code"] for d in active_category_departments(demo_db, org_id=user_org)]
     # Audit: impersonation start
     demo_db.log_audit_event(
         "IMPERSONATION_START", session["user_id"],

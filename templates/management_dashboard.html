@@ -470,8 +470,8 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <select name="department" required class="impersonate-select">
             <option value="">— Select Department to Act As —</option>
-            {% for d in departments %}
-              <option value="{{ d.code }}">{{ d.code }} — {{ d.name }}</option>
+            {% for d in (impersonation_departments or departments) %}
+              <option value="{{ d.code }}">{% if d.name and d.name.strip().lower() != d.code.strip().lower() %}{{ d.code }} — {{ d.name }}{% else %}{{ d.code }}{% endif %}</option>
             {% endfor %}
           </select>
           <button type="submit" class="impersonate-btn">

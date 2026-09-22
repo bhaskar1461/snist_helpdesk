@@ -1133,11 +1133,11 @@ class DemoDbService(BaseMySQLService):
         teacher_id = teacher_row.get("id") or teacher_row.get("TEACHER_ID")
         email = (teacher_row.get("email") or teacher_row.get("EMAIL_ID") or "").strip().lower()
 
-        # 0. Check if explicitly assigned an elevated staff role (SUPER_ADMIN, ADMIN, etc.)
+        # 0. Check if explicitly assigned an elevated staff role (SUPER_ADMIN, ADMIN, HOD, CA, FACULTY)
         if staff_roles_map is not None:
             elevated = staff_roles_map.get(email) or (staff_roles_map.get(teacher_id) if teacher_id else None)
-            if elevated in ("SUPER_ADMIN", "ADMIN"):
-                return elevated
+            if elevated and elevated in ("SUPER_ADMIN", "ADMIN", "HOD", "CA", "FACULTY", "ASSIGNEE"):
+                return "CA" if elevated == "ASSIGNEE" else elevated
         else:
             try:
                 cursor.execute(
@@ -1145,8 +1145,8 @@ class DemoDbService(BaseMySQLService):
                     (email, teacher_id),
                 )
                 staff = cursor.fetchone()
-                if staff and staff.get("role") and staff["role"] in ("SUPER_ADMIN", "ADMIN"):
-                    return staff["role"]
+                if staff and staff.get("role") and staff["role"] in ("SUPER_ADMIN", "ADMIN", "HOD", "CA", "FACULTY", "ASSIGNEE"):
+                    return "CA" if staff["role"] == "ASSIGNEE" else staff["role"]
             except Exception:
                 pass
 
@@ -1334,6 +1334,7 @@ class DemoDbService(BaseMySQLService):
                             "role": role,
                             "department": row.get("department") or "General",
                             "phone": row.get("phone"),
+                            "is_active": 1 if row.get("is_active") is None else int(row.get("is_active")),
                             "org_id": row.get("org_id", "2000"),
                         }
                 except Exception:
@@ -1343,7 +1344,7 @@ class DemoDbService(BaseMySQLService):
             if user_id_int:
                 try:
                     cursor.execute(
-                        "SELECT id, teacher_id, name, email, role, department, phone FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s LIMIT 1",
+                        "SELECT id, teacher_id, name, email, role, department, phone, COALESCE(is_active, 1) AS is_active FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s LIMIT 1",
                         (user_id_int, user_id_int),
                     )
                     staff = cursor.fetchone()
@@ -1355,6 +1356,7 @@ class DemoDbService(BaseMySQLService):
                             "role": staff["role"],
                             "department": staff.get("department") or "Administration",
                             "phone": staff.get("phone"),
+                            "is_active": 1 if staff.get("is_active") is None else int(staff.get("is_active")),
                             "org_id": "2000",
                         }
                 except Exception:
@@ -1362,8 +1364,11 @@ class DemoDbService(BaseMySQLService):
 
             # 3. Fallback to helpdesk_users (for mock tests)
             try:
-                cursor.execute("SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE id = %s", (user_id,))
-                return cursor.fetchone()
+                cursor.execute("SELECT id, name, email, role, department, phone, COALESCE(is_active, 1) AS is_active, created_at FROM helpdesk_users WHERE id = %s", (user_id,))
+                user_res = cursor.fetchone()
+                if user_res:
+                    user_res["is_active"] = 1 if user_res.get("is_active") is None else int(user_res.get("is_active"))
+                return user_res
             except Exception:
                 return None
 
@@ -1376,7 +1381,7 @@ class DemoDbService(BaseMySQLService):
             # 1. Check helpdesk_staff_roles
             try:
                 cursor.execute(
-                    "SELECT id, teacher_id, name, email, role, department, phone FROM helpdesk_staff_roles WHERE LOWER(email) = LOWER(%s) LIMIT 1",
+                    "SELECT id, teacher_id, name, email, role, department, phone, COALESCE(is_active, 1) AS is_active FROM helpdesk_staff_roles WHERE LOWER(email) = LOWER(%s) LIMIT 1",
                     (email_clean,),
                 )
                 staff = cursor.fetchone()
@@ -1388,6 +1393,7 @@ class DemoDbService(BaseMySQLService):
                         "role": staff["role"],
                         "department": staff.get("department") or "Administration",
                         "phone": staff.get("phone"),
+                        "is_active": 1 if staff.get("is_active") is None else int(staff.get("is_active")),
                         "org_id": "2000",
                     }
             except Exception:
@@ -1399,7 +1405,7 @@ class DemoDbService(BaseMySQLService):
                     f"""
                     SELECT t.TEACHER_ID AS id, t.TEACHER_NAME AS name, t.EMAIL_ID AS email,
                            t.DESIGNATION AS designation, t.TEACHER_CODE AS teacher_code, t.SAP_ID AS sap_id,
-                           t.MOBILE_PHONE AS phone, b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
+                           t.MOBILE_PHONE AS phone, COALESCE(t.ACTIVE, 1) AS is_active, b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
                            {self._branch_org_id_sql(cursor)} AS org_id
                     FROM {self.inst_prefix}teacher_info t
                     LEFT JOIN {self.inst_prefix}branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
@@ -1418,6 +1424,7 @@ class DemoDbService(BaseMySQLService):
                         "role": role,
                         "department": row.get("department") or "General",
                         "phone": row.get("phone"),
+                        "is_active": 1 if row.get("is_active") is None else int(row.get("is_active")),
                         "org_id": row.get("org_id", "2000"),
                     }
             except Exception:
@@ -1426,10 +1433,13 @@ class DemoDbService(BaseMySQLService):
             # 3. Fallback to helpdesk_users (for mock tests)
             try:
                 cursor.execute(
-                    "SELECT id, name, email, role, department, phone, created_at FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
+                    "SELECT id, name, email, role, department, phone, COALESCE(is_active, 1) AS is_active, created_at FROM helpdesk_users WHERE LOWER(email) = LOWER(%s) LIMIT 1",
                     (email_clean,),
                 )
-                return cursor.fetchone()
+                user_res = cursor.fetchone()
+                if user_res:
+                    user_res["is_active"] = 1 if user_res.get("is_active") is None else int(user_res.get("is_active"))
+                return user_res
             except Exception:
                 return None
 
@@ -1682,18 +1692,40 @@ class DemoDbService(BaseMySQLService):
             except Exception:
                 pass
 
-            # 2. Try updating in helpdesk_staff_roles (for production staff accounts)
+            # 2. Try updating or inserting into helpdesk_staff_roles (for production staff accounts)
             try:
-                staff_fields = list(fields)
-                staff_params = list(params)
-                if "password" in payload and payload["password"]:
-                    staff_fields.append("password_hash = %s")
-                    staff_params.append(generate_password_hash(payload["password"]))
-                staff_params.append(user_id)
-                staff_params.append(user_id)
-                cursor.execute(f"UPDATE helpdesk_staff_roles SET {', '.join(staff_fields)} WHERE id = %s OR teacher_id = %s", tuple(staff_params))
-            except Exception:
-                pass
+                cursor.execute("SELECT id FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s LIMIT 1", (user_id, user_id))
+                existing_staff = cursor.fetchone()
+
+                if existing_staff:
+                    staff_fields = list(fields)
+                    staff_params = list(params)
+                    if "password" in payload and payload["password"]:
+                        staff_fields.append("password_hash = %s")
+                        staff_params.append(generate_password_hash(payload["password"]))
+                    staff_params.append(existing_staff["id"])
+                    cursor.execute(f"UPDATE helpdesk_staff_roles SET {', '.join(staff_fields)} WHERE id = %s", tuple(staff_params))
+                else:
+                    # User only existed in teacher_info or helpdesk_users without a staff_roles entry
+                    user_obj = self.get_user(user_id) or {}
+                    name = payload.get("name") or user_obj.get("name") or ""
+                    email = payload.get("email") or user_obj.get("email") or ""
+                    role = payload.get("role") or user_obj.get("role") or "FACULTY"
+                    department = payload.get("department") or user_obj.get("department") or "General"
+                    phone = payload.get("phone") or user_obj.get("phone") or ""
+                    pwd_hash = generate_password_hash(payload["password"]) if payload.get("password") else None
+
+                    cursor.execute("""
+                        INSERT INTO helpdesk_staff_roles (teacher_id, name, email, role, department, phone, password_hash, is_active)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, 1)
+                        ON DUPLICATE KEY UPDATE
+                            role = VALUES(role),
+                            department = VALUES(department),
+                            phone = VALUES(phone),
+                            password_hash = COALESCE(VALUES(password_hash), password_hash)
+                    """, (user_id, name, email, role, department, phone, pwd_hash))
+            except Exception as e:
+                log.debug("Staff role update/upsert error: %s", e)
 
     def delete_user(self, user_id):
         with self.connection() as connection, connection.cursor() as cursor:
@@ -2561,8 +2593,27 @@ class DemoDbService(BaseMySQLService):
 
     def get_ca_open_tickets(self, ca_id: int, department: str = None, org_id: str = None) -> list:
         """Fetch all active open tickets assigned to a specific CA (PENDING, IN_PROGRESS, ON_HOLD, REOPENED)."""
-        sql = self.ticket_query_base() + " AND t.assigned_to = %s AND t.status IN ('PENDING', 'IN_PROGRESS', 'ON_HOLD', 'REOPENED')"
-        params = [ca_id]
+        teacher_id = None
+        staff_role_id = None
+        try:
+            with self.connection() as connection, connection.cursor() as cursor:
+                cursor.execute("SELECT id, teacher_id FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s LIMIT 1", (ca_id, ca_id))
+                row = cursor.fetchone()
+                if row:
+                    staff_role_id = row.get("id")
+                    teacher_id = row.get("teacher_id")
+        except Exception:
+            pass
+
+        ca_ids = {ca_id}
+        if staff_role_id:
+            ca_ids.add(staff_role_id)
+        if teacher_id:
+            ca_ids.add(teacher_id)
+
+        placeholders = ", ".join(["%s"] * len(ca_ids))
+        sql = self.ticket_query_base() + f" AND t.assigned_to IN ({placeholders}) AND t.status IN ('PENDING', 'IN_PROGRESS', 'ON_HOLD', 'REOPENED')"
+        params = list(ca_ids)
         if department:
             sql += " AND LOWER(c.department) = LOWER(%s)"
             params.append(department)
@@ -2616,6 +2667,12 @@ class DemoDbService(BaseMySQLService):
             if actor_dept and target_dept and actor_dept != target_dept:
                 raise PermissionError("Replacement Assignee must belong to your department.")
 
+        source_ids = {source_ca_id}
+        if source_ca.get("teacher_id"):
+            source_ids.add(source_ca["teacher_id"])
+        if source_ca.get("id"):
+            source_ids.add(source_ca["id"])
+
         # 3. Validate Each Selected Ticket
         valid_tickets = []
         for t_id in ticket_ids:
@@ -2627,7 +2684,7 @@ class DemoDbService(BaseMySQLService):
             if not ticket:
                 raise ValueError(f"Ticket #{tid} not found.")
 
-            if ticket.get("assigned_to") != source_ca_id:
+            if ticket.get("assigned_to") not in source_ids:
                 raise ValueError(f"Ticket #{tid} is not currently assigned to {source_ca.get('name')}.")
 
             if ticket.get("status") in ["RESOLVED"]:
@@ -2659,8 +2716,8 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             for t in valid_tickets:
                 cursor.execute(
-                    "UPDATE helpdesk_tickets SET assigned_to = %s WHERE id = %s AND assigned_to = %s",
-                    (target_ca_id, t["id"], source_ca_id),
+                    "UPDATE helpdesk_tickets SET assigned_to = %s WHERE id = %s",
+                    (target_ca_id, t["id"]),
                 )
                 cursor.execute(
                     """
@@ -2764,6 +2821,110 @@ class DemoDbService(BaseMySQLService):
         with self.connection() as connection, connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.fetchall()
+
+    def ca_performance_stats(self, org_id: str = None, department: str = None) -> list:
+        """Compute performance metrics for each Assignee (CA)."""
+        sql = f"""
+            SELECT 
+                COALESCE(s.id, t.TEACHER_ID, u.id) AS ca_id,
+                COALESCE(s.name, t.TEACHER_NAME, u.name, 'Unknown Assignee') AS name,
+                COALESCE(s.email, t.EMAIL_ID, u.email, '') AS email,
+                COALESCE(s.department, u.department, 'ICT') AS department,
+                COUNT(tk.id) AS total_assigned,
+                SUM(CASE WHEN tk.status = 'RESOLVED' THEN 1 ELSE 0 END) AS total_resolved,
+                SUM(CASE WHEN tk.status IN ('PENDING', 'IN_PROGRESS', 'ON_HOLD', 'REOPENED') THEN 1 ELSE 0 END) AS active_tickets,
+                ROUND(AVG(CASE WHEN tk.status = 'RESOLVED' AND tk.updated_at IS NOT NULL 
+                         THEN TIMESTAMPDIFF(HOUR, tk.created_at, tk.updated_at) 
+                         ELSE NULL END), 1) AS avg_resolution_hours
+            FROM helpdesk_tickets tk
+            LEFT JOIN helpdesk_staff_roles s ON (tk.assigned_to = s.id OR tk.assigned_to = s.teacher_id)
+            LEFT JOIN {self.inst_prefix}teacher_info t ON tk.assigned_to = t.TEACHER_ID
+            LEFT JOIN helpdesk_users u ON tk.assigned_to = u.id
+            WHERE tk.assigned_to IS NOT NULL
+        """
+        params = []
+        if org_id:
+            sql += " AND tk.org_id = %s"
+            params.append(org_id)
+        if department:
+            sql += " AND (LOWER(COALESCE(s.department, u.department, '')) = LOWER(%s) OR tk.category_id IN (SELECT id FROM helpdesk_categories WHERE LOWER(department) = LOWER(%s)))"
+            params.extend([department, department])
+
+        sql += """
+            GROUP BY ca_id, name, email, department
+            HAVING total_assigned > 0
+            ORDER BY total_resolved DESC, total_assigned DESC
+        """
+        with self.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+            for r in rows:
+                r["avg_resolution_hours"] = float(r.get("avg_resolution_hours") or 0.0)
+                r["total_assigned"] = int(r.get("total_assigned") or 0)
+                r["total_resolved"] = int(r.get("total_resolved") or 0)
+                r["active_tickets"] = int(r.get("active_tickets") or 0)
+            return rows
+
+    def ticket_trends(self, org_id: str = None, department: str = None, period: str = "monthly") -> list:
+        """Compute creation and resolution trends over time."""
+        date_format = "%Y-%m" if period == "monthly" else "%Y-%u" if period == "weekly" else "%Y-%m-%d"
+        sql = f"""
+            SELECT 
+                DATE_FORMAT(created_at, '{date_format}') AS period,
+                COUNT(*) AS created,
+                SUM(CASE WHEN status = 'RESOLVED' THEN 1 ELSE 0 END) AS resolved
+            FROM helpdesk_tickets
+            WHERE created_at IS NOT NULL
+        """
+        params = []
+        if org_id:
+            sql += " AND org_id = %s"
+            params.append(org_id)
+        if department:
+            sql += " AND category_id IN (SELECT id FROM helpdesk_categories WHERE LOWER(department) = LOWER(%s))"
+            params.append(department)
+
+        sql += " GROUP BY period ORDER BY period DESC LIMIT 12"
+        with self.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+            for r in rows:
+                r["created"] = int(r.get("created") or 0)
+                r["resolved"] = int(r.get("resolved") or 0)
+            return list(reversed(rows))
+
+    def resolution_time_stats(self, org_id: str = None, department: str = None) -> list:
+        """Compute average resolution turnaround times by category."""
+        sql = """
+            SELECT 
+                c.category_name AS category,
+                c.department AS department,
+                COUNT(tk.id) AS resolved_count,
+                ROUND(AVG(TIMESTAMPDIFF(HOUR, tk.created_at, tk.updated_at)), 1) AS avg_hours,
+                ROUND(MIN(TIMESTAMPDIFF(HOUR, tk.created_at, tk.updated_at)), 1) AS min_hours,
+                ROUND(MAX(TIMESTAMPDIFF(HOUR, tk.created_at, tk.updated_at)), 1) AS max_hours
+            FROM helpdesk_tickets tk
+            INNER JOIN helpdesk_categories c ON tk.category_id = c.id
+            WHERE tk.status = 'RESOLVED' AND tk.created_at IS NOT NULL AND tk.updated_at IS NOT NULL
+        """
+        params = []
+        if org_id:
+            sql += " AND tk.org_id = %s"
+            params.append(org_id)
+        if department:
+            sql += " AND LOWER(c.department) = LOWER(%s)"
+            params.append(department)
+
+        sql += " GROUP BY c.id, c.category_name, c.department ORDER BY avg_hours ASC"
+        with self.connection() as conn, conn.cursor() as cur:
+            cur.execute(sql, tuple(params))
+            rows = cur.fetchall()
+            for r in rows:
+                r["resolved_count"] = int(r.get("resolved_count") or 0)
+                r["avg_hours"] = float(r.get("avg_hours") or 0.0)
+                r["min_hours"] = float(r.get("min_hours") or 0.0)
+                r["max_hours"] = float(r.get("max_hours") or 0.0)
+            return rows
 
     def dashboard_summary(self, viewer):
         sql = """

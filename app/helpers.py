@@ -337,10 +337,46 @@ def departments_match(dept1: str, dept2: str, org_id: str = "2000") -> bool:
             return True
     return False
 
+DEPT_DISPLAY_NAMES = {
+    "CSE": "Computer Science and Engineering",
+    "ECE": "Electronics and Communication Engineering",
+    "EEE": "Electrical and Electronics Engineering",
+    "ME": "Mechanical Engineering",
+    "CE": "Civil Engineering",
+    "IT": "Information Technology",
+    "AIML": "Artificial Intelligence & Machine Learning",
+    "Bio-Tech": "Biotechnology",
+    "Facilities": "Facilities & Estates",
+    "HCM": "Human Capital Management",
+    "ICT": "Information & Communication Technology",
+    "LSM": "Lab Support & Maintenance",
+    "MM": "Materials Management",
+    "Maintenance": "Maintenance & Repairs",
+    "PM": "Project Management",
+    "SAP": "SAP Operations",
+    "Transport": "Transport & Logistics",
+    "Administration": "Administration",
+    "Library": "Library",
+    "Accounts": "Accounts & Finance",
+    "Security": "Campus Security",
+}
+
 def active_category_departments(demo_db, org_id=None):
     active_categories = demo_db.list_categories(active_only=True)
     seen = set()
     departments = []
+
+    live_depts_map = {}
+    try:
+        for ld in live_departments(org_id):
+            c = (ld.get("code") or "").strip()
+            n = (ld.get("name") or "").strip()
+            if c and n and n.lower() != c.lower():
+                clean_name = n.title() if n.isupper() else n
+                live_depts_map[c.upper()] = clean_name
+    except Exception:
+        pass
+
     for cat in active_categories:
         dept = (cat.get("department") or "").strip()
         if not dept:
@@ -352,12 +388,56 @@ def active_category_departments(demo_db, org_id=None):
         if org_id and cat_org != str(org_id):
             continue
         seen.add(display_dept.upper())
+
+        full_name = (
+            live_depts_map.get(display_dept.upper())
+            or DEPT_DISPLAY_NAMES.get(display_dept)
+            or DEPT_DISPLAY_NAMES.get(display_dept.upper())
+            or display_dept
+        )
+
         departments.append({
             "code": display_dept,
-            "name": display_dept,
+            "name": full_name,
             "org_id": cat_org
         })
     return sorted(departments, key=lambda d: d["code"])
+
+def departments_with_active_hods(demo_db, org_id: str = None) -> list:
+    """Return only departments that have an active HOD assigned."""
+    try:
+        hod_list = demo_db.list_users(role="HOD", org_id=org_id)
+    except Exception:
+        hod_list = []
+
+    active_depts = set()
+    for u in hod_list:
+        dept = (u.get("department") or "").strip()
+        if dept and u.get("is_active", 1) == 1:
+            display_dept = "Facilities" if dept.lower() in ("facilities", "fecilities") else dept
+            active_depts.add(display_dept)
+
+    live_depts_map = {}
+    try:
+        for ld in live_departments(org_id):
+            c = (ld.get("code") or "").strip()
+            n = (ld.get("name") or "").strip()
+            if c and n and n.lower() != c.lower():
+                clean_name = n.title() if n.isupper() else n
+                live_depts_map[c.upper()] = clean_name
+    except Exception:
+        pass
+
+    out = []
+    for dept_code in sorted(active_depts):
+        display_name = (
+            live_depts_map.get(dept_code.upper())
+            or DEPT_DISPLAY_NAMES.get(dept_code)
+            or DEPT_DISPLAY_NAMES.get(dept_code.upper())
+            or dept_code
+        )
+        out.append({"code": dept_code, "name": display_name})
+    return out
 
 def live_departments(org_id=None):
     global _DEPT_CACHE, _DEPT_CACHE_TIME

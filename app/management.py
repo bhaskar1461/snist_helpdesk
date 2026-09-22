@@ -637,7 +637,7 @@ def category_assignments():
         users=promoteable_users,
         categories_json_str=json.dumps(categories_json_safe),
         users_json_str=json.dumps(users_json_safe),
-        departments=depts_list,
+        departments=modal_departments,
         modal_departments=modal_departments,
         blocks=blocks,
         filters=filters,

@@ -183,6 +183,11 @@ def sso_login():
                     flash(f"Access restricted: The account ({email}) is not registered in the SNIST staff directory. Please contact the administrator.", "error")
                     return redirect(url_for("auth.login"))
 
+            if user.get("is_active") == 0 or user.get("ACTIVE") == 0:
+                session.clear()
+                flash("Access restricted: Your institutional account is marked inactive in the staff directory. Please contact the administrator.", "error")
+                return redirect(url_for("auth.login"))
+
             _set_session(user, email)
             flash(f"Signed in via Google SSO ({email}).", "success")
             return redirect(url_for(route_for_role(user["role"])))
@@ -320,6 +325,11 @@ def sso_callback():
                     "error",
                 )
                 return redirect(url_for("auth.login"))
+
+        if user.get("is_active") == 0 or user.get("ACTIVE") == 0:
+            session.clear()
+            flash("Access restricted: Your institutional account is marked inactive in the staff directory. Please contact the administrator.", "error")
+            return redirect(url_for("auth.login"))
 
         _set_session(user, email)
         return redirect(url_for(route_for_role(user["role"])))

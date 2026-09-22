@@ -8,8 +8,9 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 
 from app.config import ORG_LABELS
 from app.helpers import (
-    current_user, filters_from_request, live_departments, page_context,
-    role_required, route_for_role,
+    active_category_departments, current_user, departments_with_active_hods,
+    filters_from_request, live_departments, page_context, role_required,
+    route_for_role,
 )
 
 log = logging.getLogger(__name__)
@@ -32,7 +33,8 @@ def super_admin_dashboard():
         highlights=demo_db.hod_overview(org_id=org_id),
         dept_stats=demo_db.ticket_stats_by_department(org_id=org_id),
         cat_stats=demo_db.ticket_stats_by_category(org_id=org_id),
-        departments=live_departments(org_id),
+        departments=active_category_departments(demo_db, org_id=org_id),
+        impersonation_departments=departments_with_active_hods(demo_db, org_id=org_id),
         page_title="Super Admin Dashboard",
         kicker="",
         page_heading="Super Admin Overview",
@@ -66,7 +68,8 @@ def admin_dashboard():
         "management_dashboard.html",
         summary=summary,
         highlights=highlights,
-        departments=live_departments(user["org_id"]),
+        departments=active_category_departments(demo_db, org_id=user["org_id"]),
+        impersonation_departments=departments_with_active_hods(demo_db, org_id=user["org_id"]),
         page_title="Admin Dashboard",
         kicker="Administration",
         page_heading="Admin Panel",
@@ -209,9 +212,8 @@ def impersonate_hod():
     session["acting_department"] = department
     from app.helpers import resolve_user_org
     from app import get_live_db
-    session["available_departments"] = [d["code"] for d in live_departments(
-        session.get("org_id") or resolve_user_org(session["user_email"], session["department"], get_live_db())
-    )]
+    user_org = session.get("org_id") or resolve_user_org(session["user_email"], session["department"], get_live_db())
+    session["available_departments"] = [d["code"] for d in active_category_departments(demo_db, org_id=user_org)]
     demo_db.log_audit_event(
         "IMPERSONATION_START", session["user_id"],
         session.get("org_id", ""),

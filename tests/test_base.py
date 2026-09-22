@@ -477,7 +477,21 @@ class MockCursor:
                 select_part = sql_lower_stripped[7:from_idx].strip()
                 if select_part.lower().startswith("distinct "):
                     select_part = select_part[9:].strip()
-                parts = select_part.split(",")
+                parts = []
+                curr = []
+                paren_depth = 0
+                for ch in select_part:
+                    if ch == '(':
+                        paren_depth += 1
+                    elif ch == ')':
+                        paren_depth -= 1
+                    if ch == ',' and paren_depth == 0:
+                        parts.append(''.join(curr).strip())
+                        curr = []
+                    else:
+                        curr.append(ch)
+                if curr:
+                    parts.append(''.join(curr).strip())
                 for p in parts:
                     p = p.strip()
                     as_match = re.search(r'\s+as\s+(\w+)\s*$', p, re.IGNORECASE)

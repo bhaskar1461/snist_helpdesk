@@ -824,8 +824,7 @@
                   </td>
                   {% if not read_only %}
                   <td class="actions-cell" style="text-align: right;">
-                    {% set mapped_blocks = item.block_mappings | map(attribute='block') | list if item.block_mappings else [] %}
-                    <button type="button" class="tbl-action-btn" data-cat-id="{{ item.id }}" data-cat-name="{{ item.category_name|e }}" data-dept="{{ item.department|e }}" data-ca-id="{{ item.assigned_ca_id or '' }}" data-blocks="{{ mapped_blocks|tojson|e }}" onclick="openEditModal(this.dataset.catId, this.dataset.catName, this.dataset.dept, this.dataset.caId, JSON.parse(this.dataset.blocks || '[]'))">Edit</button>
+                    <button type="button" class="tbl-action-btn" onclick="openEditModal({{ item.id }})">Edit</button>
                     {% if item.is_active == 0 %}
                       <button type="button" class="tbl-action-btn" style="color:#10b981;" data-cat-id="{{ item.id }}" onclick="toggleCatStatus(this.dataset.catId, 1)">Enable</button>
                     {% else %}
@@ -1347,6 +1346,30 @@
     }
 
     function openEditModal(id, name, dept, caId, mappedBlocks) {
+      if (arguments.length === 1 || typeof name === 'undefined') {
+        const catId = id;
+        let categoriesData = window.allCategoriesData;
+        if (!categoriesData) {
+          const raw = document.getElementById('smart-search-categories-data');
+          if (raw && raw.textContent) {
+            try {
+              categoriesData = JSON.parse(raw.textContent);
+              window.allCategoriesData = categoriesData;
+            } catch(e) {}
+          }
+        }
+        const cat = (categoriesData || []).find(c => Number(c.id) === Number(catId));
+        if (!cat) {
+          console.error("Category not found for ID:", catId);
+          return;
+        }
+        id = cat.id;
+        name = cat.category_name;
+        dept = cat.department;
+        caId = cat.assigned_ca_id;
+        mappedBlocks = (cat.block_mappings || cat.mapped_blocks || []).map(m => (typeof m === 'object' ? m.block : m)).filter(Boolean);
+      }
+
       document.getElementById('edit-cat-id').value = id;
       document.getElementById('edit-cat-name').value = name;
       const deptEl = document.getElementById('edit-cat-dept');
