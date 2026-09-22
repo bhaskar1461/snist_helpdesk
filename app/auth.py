@@ -15,7 +15,7 @@ from app.config import (
 )
 from app.helpers import (
     clear_login_attempts, current_user, is_login_rate_limited,
-    is_valid_email, page_context, record_login_attempt,
+    is_valid_email, normalize_role, page_context, record_login_attempt,
     resolve_user_org, role_required, route_for_role,
 )
 
@@ -26,6 +26,22 @@ log = logging.getLogger(__name__)
 auth_bp = Blueprint("auth", __name__)
 
 
+def _get_sso_redirect_uri() -> str:
+    """Resolve authoritative SSO redirect URI, ensuring HTTPS in production."""
+    from app.config import SSO_REDIRECT_URI
+    if SSO_REDIRECT_URI:
+        uri = SSO_REDIRECT_URI
+    else:
+        uri = url_for("auth.sso_callback", _external=True)
+
+    # Force HTTPS when running on production domain or behind proxy
+    host = (request.host or "").lower()
+    is_prod_domain = "sreenidhi.edu.in" in host or "1sports.app" in host
+    if uri.startswith("http://") and (is_prod_domain or request.is_secure or request.headers.get("X-Forwarded-Proto") == "https"):
+        uri = "https://" + uri[len("http://"):]
+    return uri
+
+
 @auth_bp.route("/", methods=["GET", "POST"])
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
@@ -33,10 +49,17 @@ def login():
     demo_db = get_demo_db()
     live_db = get_live_db()
 
-    # If SSO is enabled and this is a GET, show SSO login page
+    # If SSO is enabled and this is a GET, check if user is already authenticated
     if request.method == "GET":
-        if current_user():
-            return redirect(url_for(route_for_role(session["role"])))
+        user = current_user()
+        if user and session.get("user_id"):
+            target_endpoint = route_for_role(user.get("role"))
+            if target_endpoint and target_endpoint != "auth.login":
+                target_url = url_for(target_endpoint)
+                if target_url != request.path and target_url != request.url:
+                    return redirect(target_url)
+            # If target resolves back to login or session has unroutable state, clear it
+            session.clear()
         return render_template("login.html", sso_enabled=SSO_ENABLED)
 
     # POST — local authentication
@@ -120,7 +143,7 @@ def sso_login():
     """Redirect to Google / OIDC SSO provider, or handle mock SSO if unconfigured."""
     from app.config import (
         GOOGLE_CLIENT_ID, GOOGLE_HOSTED_DOMAIN, SSO_AUTHORIZE_URL,
-        SSO_CLIENT_ID, SSO_ENABLED, SSO_SCOPES, SSO_REDIRECT_URI,
+        SSO_CLIENT_ID, SSO_ENABLED, SSO_SCOPES,
     )
     if not SSO_ENABLED:
         flash("SSO is not configured.", "error")
@@ -128,8 +151,8 @@ def sso_login():
 
     client_id = GOOGLE_CLIENT_ID or SSO_CLIENT_ID
 
-    # If no client ID configured or set to mock, use mock SSO simulator
-    if not client_id or SSO_AUTHORIZE_URL == "mock" or client_id == "snist-helpdesk-client":
+    # Support developer / test mock submission via POST or when explicitly set to mock
+    if request.method == "POST" or not client_id or SSO_AUTHORIZE_URL == "mock" or client_id == "snist-helpdesk-client":
         if request.method == "POST":
             email = request.form.get("email", "faculty@sreenidhi.edu.in").strip().lower()
             role = request.form.get("role", "FACULTY").strip().upper()
@@ -156,6 +179,7 @@ def sso_login():
                         "org_id": teacher.get("org_id", "2000"),
                     }
                 else:
+                    session.clear()
                     flash(f"Access restricted: The account ({email}) is not registered in the SNIST staff directory. Please contact the administrator.", "error")
                     return redirect(url_for("auth.login"))
 
@@ -171,7 +195,7 @@ def sso_login():
     state = secrets.token_urlsafe(32)
     session["sso_state"] = state
 
-    redirect_uri = SSO_REDIRECT_URI or url_for("auth.sso_callback", _external=True)
+    redirect_uri = _get_sso_redirect_uri()
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -195,11 +219,13 @@ def sso_callback():
         return redirect(url_for("auth.login"))
 
     from app import get_demo_db, get_live_db
+    from app.config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
     demo_db = get_demo_db()
     live_db = get_live_db()
 
     error = request.args.get("error")
     if error:
+        session.clear()
         flash(f"SSO authentication failed: {error}", "error")
         return redirect(url_for("auth.login"))
 
@@ -207,6 +233,7 @@ def sso_callback():
     state = request.args.get("state")
 
     if not code or state != session.pop("sso_state", None):
+        session.clear()
         flash("Invalid SSO response. Please try again.", "error")
         return redirect(url_for("auth.login"))
 
@@ -214,6 +241,10 @@ def sso_callback():
         import urllib.request
         import urllib.parse
         import json
+
+        client_id = GOOGLE_CLIENT_ID or SSO_CLIENT_ID
+        client_secret = GOOGLE_CLIENT_SECRET or SSO_CLIENT_SECRET
+        redirect_uri = _get_sso_redirect_uri()
 
         if not SSO_TOKEN_URL:
             # Fallback for dev callback simulation
@@ -224,10 +255,10 @@ def sso_callback():
             # Exchange code for tokens
             token_data = urllib.parse.urlencode({
                 "grant_type": "authorization_code",
-                "client_id": SSO_CLIENT_ID,
-                "client_secret": SSO_CLIENT_SECRET,
+                "client_id": client_id,
+                "client_secret": client_secret,
                 "code": code,
-                "redirect_uri": SSO_REDIRECT_URI or url_for("auth.sso_callback", _external=True),
+                "redirect_uri": redirect_uri,
             }).encode()
 
             token_req = urllib.request.Request(SSO_TOKEN_URL, data=token_data,
@@ -282,6 +313,7 @@ def sso_callback():
                 }
             else:
                 log.warning("SSO login denied for unregistered user: %s", email)
+                session.clear()
                 flash(
                     f"Access restricted: The account ({email}) is not registered in the SNIST staff directory. "
                     "Please contact the system administrator.",
@@ -294,6 +326,7 @@ def sso_callback():
 
     except Exception as exc:
         log.error("SSO callback failed: %s", exc)
+        session.clear()
         flash("SSO authentication failed. Please try again or contact your administrator.", "error")
         return redirect(url_for("auth.login"))
 
@@ -350,6 +383,6 @@ def _set_session(user: dict, email: str) -> None:
     session["user_id"] = user["id"]
     session["user_name"] = user["name"]
     session["user_email"] = user["email"]
-    session["role"] = user["role"]
-    session["department"] = user["department"]
-    session["org_id"] = user.get("org_id") or resolve_user_org(email, user["department"], live_db)
+    session["role"] = normalize_role(user.get("role"))
+    session["department"] = user.get("department") or "General"
+    session["org_id"] = user.get("org_id") or resolve_user_org(email, session["department"], live_db)

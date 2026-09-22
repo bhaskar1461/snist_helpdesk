@@ -94,14 +94,13 @@ FROM sreenidhi.branch_detail;
 CREATE OR REPLACE VIEW location AS
 SELECT 
   id,
-  organization,
+  COALESCE(ORG_ID, 2000) AS ORG_ID,
   block,
   floor,
   room_no,
   name,
   created_at,
-  updated_at,
-  '2000' AS ORG_ID
+  updated_at
 FROM sreenidhi.location;
 
 -- DOWN

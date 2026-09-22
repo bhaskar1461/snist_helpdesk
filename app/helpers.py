@@ -110,6 +110,33 @@ def resolve_user_org(email, department, live_db=None):
     return "2000"
 
 
+def normalize_role(role: str | None) -> str:
+    """Normalize any role string into an authoritative ROLE enum value."""
+    if not role:
+        return "FACULTY"
+    cleaned = str(role).strip().upper().replace(" ", "_")
+    if cleaned in ("SUPER_ADMIN", "SUPERADMIN"):
+        return "SUPER_ADMIN"
+    if cleaned in ("ADMIN", "ADMINISTRATOR", "CAMPUS_ADMIN"):
+        return "ADMIN"
+    if cleaned == "HOD":
+        return "HOD"
+    if cleaned in ("CA", "ASSIGNEE", "CONCERNED_AUTHORITY"):
+        return "CA"
+    if cleaned in ("FACULTY", "TEACHER", "STAFF"):
+        return "FACULTY"
+    # Substring heuristics
+    if "SUPER" in cleaned and "ADMIN" in cleaned:
+        return "SUPER_ADMIN"
+    if "ADMIN" in cleaned:
+        return "ADMIN"
+    if "HOD" in cleaned:
+        return "HOD"
+    if "CA" in cleaned or "ASSIGNEE" in cleaned:
+        return "CA"
+    return "FACULTY"
+
+
 # ── Session Helpers ─────────────────────────────────────────────────
 def current_user():
     """Get the current logged-in user from session."""
@@ -118,7 +145,8 @@ def current_user():
     email = session.get("email") or session.get("user_email", "")
     name = session.get("name") or session.get("user_name", "")
     dept = session.get("acting_department") or session.get("department", "")
-    role = session.get("acting_role") or session.get("role") or session.get("user_role", "")
+    raw_role = session.get("acting_role") or session.get("role") or session.get("user_role", "")
+    role = normalize_role(raw_role)
     org_id = session.get("org_id")
     if not org_id:
         org_id = resolve_user_org(email, dept)
@@ -135,7 +163,9 @@ def current_user():
 
 
 def route_for_role(role: str) -> str:
-    return ROLE_DASHBOARD_ROUTES.get(role, "auth.login")
+    """Return dashboard route for role. Never returns 'auth.login' to prevent redirect loops."""
+    norm = normalize_role(role)
+    return ROLE_DASHBOARD_ROUTES.get(norm, "dashboards.user_dashboard")
 
 
 # ── Decorators ──────────────────────────────────────────────────────
@@ -154,11 +184,12 @@ def role_required(*roles):
             if not user:
                 flash("Please log in to continue.", "error")
                 return redirect(url_for("auth.login"))
-            if user["role"] not in allowed_roles:
+            user_role = normalize_role(user["role"])
+            if user_role not in allowed_roles:
                 flash("You do not have access to that page.", "error")
-                target = url_for(route_for_role(user["role"]))
+                target = url_for(route_for_role(user_role))
                 if target == request.path:
-                    return redirect(url_for("auth.login"))
+                    return redirect(url_for("dashboards.user_dashboard"))
                 return redirect(target)
             return view_func(*args, **kwargs)
         return wrapper

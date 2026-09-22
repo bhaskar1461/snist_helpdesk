@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from tests.test_base import HelpdeskTestCase, GLOBAL_DB_STATE
 from flask import session
 import time
@@ -195,4 +196,47 @@ class TestAuthRbac(HelpdeskTestCase):
         res_login = self.client.get("/login", follow_redirects=True)
         self.assertEqual(res_login.status_code, 200)
         self.logout()
+
+    def test_corrupt_or_empty_role_redirect_loop_prevention(self):
+        """Verify that a session with an empty, None, or unrecognized role never causes an infinite redirect loop."""
+        from app.helpers import normalize_role, route_for_role
+
+        # 1. Helper normalization checks
+        self.assertEqual(normalize_role(""), "FACULTY")
+        self.assertEqual(normalize_role(None), "FACULTY")
+        self.assertEqual(normalize_role("super Admin"), "SUPER_ADMIN")
+        self.assertEqual(normalize_role("CAMPUS ADMIN"), "ADMIN")
+        self.assertEqual(normalize_role("ASSIGNEE"), "CA")
+        self.assertEqual(normalize_role("UNKNOWN_ROLE"), "FACULTY")
+
+        # route_for_role should never return auth.login
+        self.assertNotEqual(route_for_role(""), "auth.login")
+        self.assertNotEqual(route_for_role(None), "auth.login")
+        self.assertNotEqual(route_for_role("invalid"), "auth.login")
+
+        # 2. Simulate browser having a session with user_id but corrupt role
+        with self.client.session_transaction() as sess:
+            sess["user_id"] = 9999
+            sess["user_email"] = "corrupt@sreenidhi.edu.in"
+            sess["role"] = ""
+
+        # GET /login must NOT redirect infinitely to /login (status 200 or clean redirect to dashboard)
+        res = self.client.get("/login")
+        self.assertIn(res.status_code, (200, 302))
+        if res.status_code == 302:
+            self.assertNotEqual(res.headers.get("Location"), "/login")
+            self.assertFalse(res.headers.get("Location", "").endswith("/login"))
+
+    def test_google_sso_login_redirect_endpoint(self):
+        """Verify /sso/login generates a valid Google OAuth authorization URL with HTTPS redirect_uri."""
+        with patch("app.config.GOOGLE_CLIENT_ID", "test-client-id.apps.googleusercontent.com"):
+            res = self.client.get("/sso/login")
+            self.assertEqual(res.status_code, 302)
+            location = res.headers.get("Location", "")
+            self.assertIn("accounts.google.com", location)
+            self.assertIn("test-client-id.apps.googleusercontent.com", location)
+            self.assertIn("redirect_uri=", location)
+            self.assertIn("sreenidhi.edu.in", location)
+
+
 

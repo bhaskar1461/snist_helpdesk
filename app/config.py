@@ -12,6 +12,12 @@ log = logging.getLogger(__name__)
 
 # ── Paths ────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(BASE_DIR / ".env", override=False)
+except ImportError:
+    pass
 SCHEMA_PATH = BASE_DIR / "sql" / "demo_schema.sql"
 MIGRATION_V2_PATH = BASE_DIR / "sql" / "migration_v2.sql"
 MIGRATION_V3_PATH = BASE_DIR / "sql" / "migration_v3.sql"
@@ -71,21 +77,21 @@ DEFAULT_DEMO_CATEGORIES = [
 SSO_ENABLED = os.getenv("SSO_ENABLED", "true").lower() == "true"
 SSO_PROVIDER = os.getenv("SSO_PROVIDER", "google")  # google, oidc, mock
 
-# Google Workspace OAuth2 Config
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", os.getenv("SSO_CLIENT_ID", ""))
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", os.getenv("SSO_CLIENT_SECRET", ""))
+# Google Workspace OAuth2 Config (SNIST Institutional Identity)
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", os.getenv("SSO_CLIENT_ID", "")).strip()
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", os.getenv("SSO_CLIENT_SECRET", "")).strip()
 GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo"
-GOOGLE_HOSTED_DOMAIN = os.getenv("GOOGLE_HOSTED_DOMAIN", "")  # e.g., sreenidhi.edu.in
+GOOGLE_HOSTED_DOMAIN = os.getenv("GOOGLE_HOSTED_DOMAIN", "sreenidhi.edu.in").strip()  # e.g., sreenidhi.edu.in
 
 # Generic OIDC fallback
-SSO_CLIENT_ID = GOOGLE_CLIENT_ID or os.getenv("SSO_CLIENT_ID", "")
-SSO_CLIENT_SECRET = GOOGLE_CLIENT_SECRET or os.getenv("SSO_CLIENT_SECRET", "")
+SSO_CLIENT_ID = GOOGLE_CLIENT_ID or os.getenv("SSO_CLIENT_ID", "").strip()
+SSO_CLIENT_SECRET = GOOGLE_CLIENT_SECRET or os.getenv("SSO_CLIENT_SECRET", "").strip()
 SSO_AUTHORIZE_URL = os.getenv("SSO_AUTHORIZE_URL", GOOGLE_AUTHORIZE_URL if GOOGLE_CLIENT_ID else "mock")
 SSO_TOKEN_URL = os.getenv("SSO_TOKEN_URL", GOOGLE_TOKEN_URL)
 SSO_USERINFO_URL = os.getenv("SSO_USERINFO_URL", GOOGLE_USERINFO_URL)
-SSO_REDIRECT_URI = os.getenv("SSO_REDIRECT_URI", "")
+SSO_REDIRECT_URI = os.getenv("SSO_REDIRECT_URI", "https://helpdesk.sreenidhi.edu.in/sso/callback").strip()
 SSO_SCOPES = os.getenv("SSO_SCOPES", "openid email profile")
 SSO_ROLE_CLAIM = os.getenv("SSO_ROLE_CLAIM", "")
 SSO_DEPT_CLAIM = os.getenv("SSO_DEPT_CLAIM", "")

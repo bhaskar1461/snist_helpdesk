@@ -47,6 +47,10 @@ def create_app(testing=False):
     app.config.update(get_flask_config())
     app.secret_key = app.config["SECRET_KEY"]
 
+    # Reverse proxy header support (Cloudflare, Nginx, ALB)
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
     # CSRF protection
     _csrf.init_app(app)
 
