@@ -4,7 +4,7 @@ from tests.test_base import HelpdeskTestCase, GLOBAL_DB_STATE
 import json
 import jwt
 from app.config import METABASE_SECRET_KEY
-from app.helpers import departments_with_active_hods, active_category_departments
+from app.helpers import departments_with_active_hods, active_category_departments, departments_for_impersonation
 
 class TestPendingFixes(HelpdeskTestCase):
 
@@ -138,3 +138,26 @@ class TestPendingFixes(HelpdeskTestCase):
         res_rt = self.client.get("/api/analytics/resolution-time")
         self.assertEqual(res_rt.status_code, 200)
         self.assertIn("resolution_time", res_rt.get_json())
+
+    def test_departments_for_impersonation_union(self):
+        """Union of departments: allow impersonating any department with active categories OR active HOD."""
+        from app import get_demo_db
+        demo_db = get_demo_db()
+        depts = departments_for_impersonation(demo_db, org_id="2000")
+        dept_codes = [d["code"] for d in depts]
+        # Active category department
+        self.assertIn("Facilities", dept_codes)
+        # HOD department
+        self.assertIn("CSE", dept_codes)
+
+        # Login and impersonate
+        self.login_as("admin@gmail.com")
+        res = self.client.post("/impersonate-hod", data={"department": "Facilities"}, follow_redirects=True)
+        self.assertEqual(res.status_code, 200)
+        with self.client.session_transaction() as sess:
+            self.assertEqual(sess.get("acting_role"), "HOD")
+            self.assertEqual(sess.get("acting_department"), "Facilities")
+            # Both Facilities and CSE should be present in available_departments
+            avail = sess.get("available_departments", [])
+            self.assertIn("Facilities", avail)
+            self.assertIn("CSE", avail)

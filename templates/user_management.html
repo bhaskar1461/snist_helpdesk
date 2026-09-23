@@ -521,7 +521,7 @@
           <form class="filter-strip" method="get" action="{{ url_for('management.user_management') }}" id="filter-form">
             <div class="search-input-wrap">
               <i data-lucide="search" style="width:16px; height:16px;"></i>
-              <input type="text" name="q" value="{{ filters.q }}" class="filter-search-input" placeholder="Search by name, email, or department...">
+              <input type="text" name="q" value="{{ filters.q }}" class="filter-search-input" placeholder="Search by name, email, or department..." autocomplete="off">
             </div>
             
             <div class="multi-select" id="role-multi-select">
@@ -589,7 +589,12 @@
                       </div>
                     </td>
                     <td style="color:var(--slate-600); font-size:0.84rem; font-family:'Space Grotesk', monospace;">{{ item.email }}</td>
-                    <td><span class="role-badge {{ 'assignee' if item.role in ['CA', 'ASSIGNEE'] else item.role|lower }}">{{ 'ASSIGNEE' if item.role in ['CA', 'ASSIGNEE'] else ('USER' if item.role == 'FACULTY' else item.role) }}</span></td>
+                    <td>
+                      {% set r_val = (item.role or '').strip() %}
+                      {% set r_display = 'ASSIGNEE' if r_val in ['CA', 'ASSIGNEE'] else ('USER' if r_val == 'FACULTY' else (r_val if r_val else 'ASSIGNEE')) %}
+                      {% set r_class = 'assignee' if r_val in ['CA', 'ASSIGNEE'] else (r_val|lower if r_val else 'assignee') %}
+                      <span class="role-badge {{ r_class }}">{{ r_display }}</span>
+                    </td>
                     <td><span class="dept-badge">{{ item.department }}</span></td>
                     <td>
                       {% if item.role in ['CA', 'ASSIGNEE'] or (item.assigned_categories and item.assigned_categories|length > 0) %}

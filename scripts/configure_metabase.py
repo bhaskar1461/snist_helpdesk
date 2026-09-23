@@ -204,13 +204,24 @@ def sync_database(db_id):
 
 
 def create_native_question(db_id, name, description, sql, display="table", visualization_settings=None):
-    """Create a saved native SQL question."""
+    """Create a saved native SQL question with department template tag if present."""
+    template_tags = {}
+    if "{{department}}" in sql:
+        template_tags["department"] = {
+            "id": f"tag_dept_{abs(hash(name)) % 100000}",
+            "name": "department",
+            "display-name": "Department",
+            "type": "text"
+        }
     data = {
         "name": name,
         "description": description,
         "dataset_query": {
             "type": "native",
-            "native": {"query": sql},
+            "native": {
+                "query": sql,
+                "template-tags": template_tags
+            },
             "database": db_id
         },
         "display": display,
@@ -243,31 +254,51 @@ def create_dashboard(name, description):
 # Collect cards to add in bulk via PUT
 _dashboard_cards = {}  # dashboard_id -> list of card specs
 
-def add_card_to_dashboard(dashboard_id, card_id, row, col, size_x=6, size_y=4):
+def add_card_to_dashboard(dashboard_id, card_id, row, col, size_x=6, size_y=4, has_dept_filter=True):
     """Queue a card to be added to a dashboard (applied via finalize_dashboard)."""
     if dashboard_id not in _dashboard_cards:
         _dashboard_cards[dashboard_id] = []
-    _dashboard_cards[dashboard_id].append({
+    spec = {
         "id": -(len(_dashboard_cards[dashboard_id]) + 1),  # temporary negative ID
         "card_id": card_id,
         "row": row,
         "col": col,
         "size_x": size_x,
         "size_y": size_y,
-    })
+    }
+    if has_dept_filter:
+        spec["parameter_mappings"] = [{
+            "parameter_id": f"dept_filter_dash_{dashboard_id}",
+            "card_id": card_id,
+            "target": ["variable", ["template-tag", "department"]]
+        }]
+    _dashboard_cards[dashboard_id].append(spec)
     return True
 
 
 def finalize_dashboard(dashboard_id):
-    """Push all queued cards to a dashboard via PUT."""
+    """Push all queued cards to a dashboard with department filter parameter and embedding enabled."""
     cards = _dashboard_cards.get(dashboard_id, [])
     if not cards:
         return
+    param_id = f"dept_filter_dash_{dashboard_id}"
+    param = {
+        "id": param_id,
+        "name": "Department",
+        "slug": "department",
+        "type": "category",
+        "default": None
+    }
     result = api("PUT", f"/api/dashboard/{dashboard_id}", {
-        "dashcards": cards
+        "parameters": [param],
+        "dashcards": cards,
+        "enable_embedding": True,
+        "embedding_params": {
+            "department": "enabled"
+        }
     })
     if result:
-        print(f"  [+] Added {len(cards)} cards to dashboard {dashboard_id}")
+        print(f"  [+] Added {len(cards)} cards & department parameter to dashboard {dashboard_id}")
     else:
         print(f"  [!] Failed to add cards to dashboard {dashboard_id}")
 
@@ -285,7 +316,7 @@ def enable_global_embedding():
 
 
 def enable_all_existing_dashboards_embedding():
-    """Fetch all existing dashboards in Metabase and force-enable embedding on each."""
+    """Fetch all existing dashboards in Metabase and force-enable embedding on each with department parameter."""
     result = api("GET", "/api/dashboard", silent=True)
     if not result:
         return
@@ -293,40 +324,17 @@ def enable_all_existing_dashboards_embedding():
     for d in dash_list:
         did = d.get("id")
         if did:
-            res = api("PUT", f"/api/dashboard/{did}", {
+            api("PUT", f"/api/dashboard/{did}", {
                 "enable_embedding": True,
-                "embedding_params": {}
+                "embedding_params": {"department": "enabled"}
             }, silent=True)
-            if not res:
-                api("PUT", f"/api/dashboard/{did}", {
-                    "enable-embedding": True,
-                    "embedding-params": {}
-                }, silent=True)
             print(f"  [+] Force-enabled embedding on existing dashboard ID {did} ('{d.get('name')}')")
 
 
 def enable_dashboard_embedding(dashboard_id):
     """Enable embedding for a dashboard."""
-    # First finalize any queued cards
     finalize_dashboard(dashboard_id)
-    # Then enable embedding
-    result = api("PUT", f"/api/dashboard/{dashboard_id}", {
-        "enable_embedding": True,
-        "embedding_params": {}
-    })
-    if result:
-        print(f"  [+] Embedding enabled for dashboard ID {dashboard_id}")
-        return True
-    # Try alternative field name for newer Metabase
-    result = api("PUT", f"/api/dashboard/{dashboard_id}", {
-        "enable-embedding": True,
-        "embedding-params": {}
-    })
-    if result:
-        print(f"  [+] Embedding enabled for dashboard ID {dashboard_id}")
-        return True
-    print(f"  [!] Could not enable embedding for dashboard {dashboard_id}")
-    return False
+    return True
 
 
 def main():

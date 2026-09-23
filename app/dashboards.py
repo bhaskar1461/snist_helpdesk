@@ -8,9 +8,9 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 
 from app.config import ORG_LABELS
 from app.helpers import (
-    active_category_departments, current_user, departments_with_active_hods,
-    filters_from_request, live_departments, page_context, role_required,
-    route_for_role,
+    active_category_departments, current_user, departments_for_impersonation,
+    departments_with_active_hods, filters_from_request, live_departments,
+    page_context, role_required, route_for_role,
 )
 
 log = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ def super_admin_dashboard():
         dept_stats=demo_db.ticket_stats_by_department(org_id=org_id),
         cat_stats=demo_db.ticket_stats_by_category(org_id=org_id),
         departments=active_category_departments(demo_db, org_id=org_id),
-        impersonation_departments=departments_with_active_hods(demo_db, org_id=org_id),
+        impersonation_departments=departments_for_impersonation(demo_db, org_id=org_id),
         page_title="Super Admin Dashboard",
         kicker="",
         page_heading="Super Admin Overview",
@@ -69,7 +69,7 @@ def admin_dashboard():
         summary=summary,
         highlights=highlights,
         departments=active_category_departments(demo_db, org_id=user["org_id"]),
-        impersonation_departments=departments_with_active_hods(demo_db, org_id=user["org_id"]),
+        impersonation_departments=departments_for_impersonation(demo_db, org_id=user["org_id"]),
         page_title="Admin Dashboard",
         kicker="Administration",
         page_heading="Admin Panel",
@@ -89,6 +89,11 @@ def hod_dashboard():
     user = current_user()
     summary = demo_db.dashboard_summary(user)
     highlights = demo_db.list_categories(department=user["department"])
+    if session.get("acting_role") == "HOD" and not session.get("available_departments"):
+        from app.helpers import resolve_user_org
+        from app import get_live_db
+        user_org = session.get("org_id") or resolve_user_org(session.get("user_email", ""), session.get("department", ""), get_live_db())
+        session["available_departments"] = [d["code"] for d in departments_for_impersonation(demo_db, org_id=user_org)]
     return render_template(
         "management_dashboard.html",
         summary=summary,
@@ -213,7 +218,7 @@ def impersonate_hod():
     from app.helpers import resolve_user_org
     from app import get_live_db
     user_org = session.get("org_id") or resolve_user_org(session["user_email"], session["department"], get_live_db())
-    session["available_departments"] = [d["code"] for d in active_category_departments(demo_db, org_id=user_org)]
+    session["available_departments"] = [d["code"] for d in departments_for_impersonation(demo_db, org_id=user_org)]
     demo_db.log_audit_event(
         "IMPERSONATION_START", session["user_id"],
         session.get("org_id", ""),

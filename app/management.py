@@ -9,7 +9,7 @@ from collections import defaultdict
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from app.helpers import (
-    current_user, is_valid_email, live_departments, page_context,
+    active_category_departments, current_user, is_valid_email, live_departments, page_context,
     role_required, route_for_role, safe_int, resolve_user_org,
     departments_match, normalize_dept_name,
 )
@@ -1242,7 +1242,7 @@ def hod_ticket_management():
     eligible_replacements.sort(key=lambda x: (x.get("name") or "").upper())
 
     # Department list for Super Admin / Admin
-    departments = live_departments(user["org_id"]) if user["role"] in ["SUPER_ADMIN", "ADMIN"] else []
+    departments = active_category_departments(demo_db, user["org_id"]) if user["role"] in ["SUPER_ADMIN", "ADMIN"] else []
 
     # Categories for filter tags
     categories = demo_db.list_categories(department=dept_filter, org_id=user["org_id"])

@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS helpdesk_staff_roles (
   name VARCHAR(120) NOT NULL,
   email VARCHAR(190) NOT NULL,
   password_hash VARCHAR(255) NULL COMMENT 'Used only for emergency local login',
-  role ENUM('SUPER_ADMIN', 'ADMIN', 'CA') NOT NULL,
+  role ENUM('SUPER_ADMIN', 'ADMIN', 'HOD', 'ASSIGNEE', 'CA', 'FACULTY') NOT NULL DEFAULT 'ASSIGNEE',
   department VARCHAR(255) NULL,
   phone VARCHAR(32) NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,

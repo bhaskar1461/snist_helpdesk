@@ -390,9 +390,9 @@ def active_category_departments(demo_db, org_id=None):
         seen.add(display_dept.upper())
 
         full_name = (
-            live_depts_map.get(display_dept.upper())
-            or DEPT_DISPLAY_NAMES.get(display_dept)
+            DEPT_DISPLAY_NAMES.get(display_dept)
             or DEPT_DISPLAY_NAMES.get(display_dept.upper())
+            or live_depts_map.get(display_dept.upper())
             or display_dept
         )
 
@@ -404,18 +404,26 @@ def active_category_departments(demo_db, org_id=None):
     return sorted(departments, key=lambda d: d["code"])
 
 def departments_with_active_hods(demo_db, org_id: str = None) -> list:
-    """Return only departments that have an active HOD assigned."""
+    """Return only departments that have an active HOD assigned and active categories."""
     try:
         hod_list = demo_db.list_users(role="HOD", org_id=org_id)
     except Exception:
         hod_list = []
+
+    active_cats = demo_db.list_categories(active_only=True)
+    cat_depts = {
+        "Facilities" if (c.get("department") or "").lower() in ("facilities", "fecilities")
+        else (c.get("department") or "").strip().upper()
+        for c in active_cats if c.get("department")
+    }
 
     active_depts = set()
     for u in hod_list:
         dept = (u.get("department") or "").strip()
         if dept and u.get("is_active", 1) == 1:
             display_dept = "Facilities" if dept.lower() in ("facilities", "fecilities") else dept
-            active_depts.add(display_dept)
+            if not cat_depts or display_dept.upper() in cat_depts:
+                active_depts.add(display_dept)
 
     live_depts_map = {}
     try:
@@ -431,13 +439,18 @@ def departments_with_active_hods(demo_db, org_id: str = None) -> list:
     out = []
     for dept_code in sorted(active_depts):
         display_name = (
-            live_depts_map.get(dept_code.upper())
-            or DEPT_DISPLAY_NAMES.get(dept_code)
+            DEPT_DISPLAY_NAMES.get(dept_code)
             or DEPT_DISPLAY_NAMES.get(dept_code.upper())
+            or live_depts_map.get(dept_code.upper())
             or dept_code
         )
         out.append({"code": dept_code, "name": display_name})
     return out
+
+def departments_for_impersonation(demo_db, org_id: str = None) -> list:
+    """Return departments eligible for HOD impersonation (active helpdesk departments)."""
+    return active_category_departments(demo_db, org_id=org_id)
+
 
 def live_departments(org_id=None):
     global _DEPT_CACHE, _DEPT_CACHE_TIME
