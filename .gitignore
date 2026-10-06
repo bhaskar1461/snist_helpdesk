@@ -36,3 +36,7 @@ mou.html
 pilot_results.html
 propsel.html
 
+# Local demo state & packages
+demo_state.json
+*.zip
+

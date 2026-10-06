@@ -885,12 +885,11 @@ def ticket_detail(ticket_id):
     activity = demo_db.list_ticket_activity(ticket_id)
     # Determine next allowed transitions for status action
     next_statuses = list(demo_db.ALLOWED_TRANSITIONS.get(ticket["status"], set()))
-    # Only assigned CA/ASSIGNEE can update ticket status
     can_update = (
-        user["role"] in ["CA", "ASSIGNEE"]
+        user.get("role") in ["CA", "ASSIGNEE"]
         and (
             ticket.get("assigned_to_email", "").lower() == user["email"].lower()
-            or (ticket.get("assigned_to") and ticket.get("assigned_to") == user.get("id"))
+            or (ticket.get("assigned_to") and str(ticket.get("assigned_to")) == str(user.get("id")))
         )
     )
     # Ticket creator can REOPEN a resolved ticket
@@ -909,23 +908,51 @@ def ticket_detail(ticket_id):
     )
 
 
-@app.route("/authority/update-status/<int:ticket_id>", methods=["POST"])
+@app.route("/authority/update-status/<int:ticket_id>", methods=["POST", "PUT"])
+@app.route("/tickets/<int:ticket_id>/status", methods=["POST", "PUT"])
 @role_required("CA", "ASSIGNEE")
 def authority_update_status(ticket_id):
     user = current_user()
-    status = request.form.get("status", "").strip().upper()
-    remarks = request.form.get("remarks", "").strip()
-    time_taken = request.form.get("time_taken", "").strip()
-    attachment = request.files.get("attachment")
+    is_json_req = request.is_json or (request.headers.get("Content-Type") and "application/json" in request.headers.get("Content-Type"))
+    if is_json_req:
+        data = request.get_json(silent=True) or {}
+        raw_status = (data.get("status") or "").strip()
+        remarks = (data.get("remarks") or "").strip()
+        time_taken = (data.get("time_taken") or "").strip()
+    else:
+        raw_status = request.form.get("status", "").strip()
+        remarks = request.form.get("remarks", "").strip()
+        time_taken = request.form.get("time_taken", "").strip()
+
+    if not raw_status:
+        if is_json_req:
+            return jsonify({"error": "status is required."}), 400
+        flash("Status is required.", "error")
+        return redirect(url_for("ticket_detail", ticket_id=ticket_id))
+
+    status = raw_status.upper().replace(" ", "_")
+    if status in ("CLOSED", "RESOLVE"):
+        status = "RESOLVED"
+    elif status == "INPROGRESS":
+        status = "IN_PROGRESS"
+    elif status == "ONHOLD":
+        status = "ON_HOLD"
 
     if status not in {"PENDING", "IN_PROGRESS", "ON_HOLD", "RESOLVED", "REOPENED"}:
+        if is_json_req:
+            return jsonify({"error": f"Invalid status: {raw_status}"}), 400
         flash("Invalid status selected.", "error")
         return redirect(url_for("ticket_detail", ticket_id=ticket_id))
+
     if status == "RESOLVED" and not remarks:
-        flash("Resolution remarks are required.", "error")
-        return redirect(url_for("ticket_detail", ticket_id=ticket_id))
+        if is_json_req:
+            remarks = "Ticket resolved directly by CA."
+        else:
+            flash("Resolution remarks are required.", "error")
+            return redirect(url_for("ticket_detail", ticket_id=ticket_id))
 
     attachment_path = ""
+    attachment = request.files.get("attachment") if not is_json_req else None
     if attachment and attachment.filename:
         if not allowed_file(attachment.filename) or not verify_file_signature(attachment):
             flash(f"File type not allowed. Accepted: {', '.join(sorted(ALLOWED_EXTENSIONS))}.", "error")
@@ -943,12 +970,20 @@ def authority_update_status(ticket_id):
 
     try:
         demo_db.update_ticket_status(ticket_id, actor=user, status=status, remarks=remarks, time_taken=time_taken, attachment_path=attachment_path)
+        if is_json_req:
+            return jsonify({"message": "Ticket updated successfully.", "status": status}), 200
         flash("Ticket updated successfully.", "success")
     except PermissionError as exc:
+        if is_json_req:
+            return jsonify({"error": str(exc) or "Forbidden: Access denied."}), 403
         flash("You do not have access to that page.", "error")
         return redirect(url_for(route_for_role(user["role"])))
     except ValueError as exc:
+        if is_json_req:
+            return jsonify({"error": str(exc)}), 400
         flash(str(exc), "error")
+    if is_json_req:
+        return jsonify({"message": "Ticket updated successfully.", "status": status}), 200
     return redirect(url_for("ticket_detail", ticket_id=ticket_id))
 
 

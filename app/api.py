@@ -6,7 +6,7 @@ import logging
 
 from flask import Blueprint, jsonify, request
 
-from app.helpers import current_user, role_required
+from app.helpers import current_user, role_required, safe_int, departments_match, resolve_user_org
 
 log = logging.getLogger(__name__)
 
@@ -289,3 +289,250 @@ def download_attachment(ticket_id, filename):
     resp = send_file(safe_file_path, as_attachment=False)
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
+
+# ── User Management REST APIs ───────────────────────────────────────
+
+@api_bp.route("/users/<int:user_id>", methods=["GET"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD", "CA", "FACULTY")
+def api_get_user(user_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    user = demo_db.get_user(user_id)
+    if not user:
+        return jsonify({"error": "User not found."}), 404
+    cats = demo_db.list_ca_categories(user_id) if hasattr(demo_db, "list_ca_categories") else []
+    return jsonify({"user": user, "categories": cats}), 200
+
+
+@api_bp.route("/users/<int:user_id>", methods=["PUT", "PATCH"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def api_update_user(user_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    actor = current_user()
+    data = request.get_json(silent=True) or {}
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        return jsonify({"error": "User not found."}), 404
+
+    target_org = resolve_user_org(target_user.get("email"), target_user.get("department"))
+    if target_org != actor.get("org_id"):
+        return jsonify({"error": "Access denied: User belongs to a different organization."}), 403
+
+    if actor["role"] == "HOD":
+        target_depts = [d.strip().lower() for d in (target_user.get("department") or "").split(",")]
+        if actor["department"].lower() not in target_depts:
+            return jsonify({"error": "Access denied: You can only modify users in your own department."}), 403
+
+    try:
+        demo_db.update_user(user_id, data)
+        updated = demo_db.get_user(user_id)
+        return jsonify({"message": "User updated successfully.", "user": updated}), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": f"Failed to update user: {exc}"}), 500
+
+
+@api_bp.route("/users/<int:user_id>", methods=["DELETE"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def api_delete_user(user_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    actor = current_user()
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        return jsonify({"error": "User not found."}), 404
+
+    target_org = resolve_user_org(target_user.get("email"), target_user.get("department"))
+    if target_org != actor.get("org_id"):
+        return jsonify({"error": "Access denied: User belongs to a different organization."}), 403
+
+    if actor["role"] == "HOD":
+        target_depts = [d.strip().lower() for d in (target_user.get("department") or "").split(",")]
+        if actor["department"].lower() not in target_depts:
+            return jsonify({"error": "Access denied: You can only delete users in your own department."}), 403
+
+    try:
+        res = demo_db.delete_user(user_id)
+        return jsonify({"message": "User deleted or deactivated successfully.", "result": res}), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+# ── CA Category Assignment REST APIs ────────────────────────────────
+
+@api_bp.route("/users/<int:user_id>/categories", methods=["GET"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD", "CA")
+def api_get_ca_categories(user_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        return jsonify({"error": "User not found."}), 404
+    cats = demo_db.list_ca_categories(user_id)
+    return jsonify({"categories": cats, "user_id": user_id}), 200
+
+
+@api_bp.route("/users/<int:user_id>/categories", methods=["POST"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def api_add_ca_category(user_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    actor = current_user()
+    data = request.get_json(silent=True) or {}
+    category_id = safe_int(data.get("category_id"))
+    block = data.get("block", "All Blocks").strip() or "All Blocks"
+
+    if not category_id:
+        return jsonify({"error": "category_id is required."}), 400
+
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        return jsonify({"error": "User not found."}), 404
+
+    category = demo_db.get_category(category_id)
+    if not category:
+        return jsonify({"error": "Category not found."}), 404
+
+    # Validate department match
+    if not departments_match(target_user.get("department"), category.get("department")):
+        return jsonify({"error": "Unable to assign category: department mismatch between CA and category."}), 400
+
+    try:
+        demo_db.create_ca_assignment(category_id, user_id, block=block)
+        return jsonify({"message": "Category assigned successfully.", "category_id": category_id, "user_id": user_id}), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@api_bp.route("/users/<int:user_id>/categories/<int:category_id>", methods=["DELETE"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def api_remove_ca_category(user_id, category_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        return jsonify({"error": "User not found."}), 404
+    category = demo_db.get_category(category_id)
+    if not category:
+        return jsonify({"error": "Category not found."}), 404
+
+    try:
+        demo_db.remove_ca_from_category(category_id, user_id)
+        return jsonify({"message": "Category unassigned successfully."}), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+
+@api_bp.route("/users/<int:user_id>/categories", methods=["PUT"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def api_reassign_ca_category(user_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    actor = current_user()
+    data = request.get_json(silent=True) or {}
+    old_cat_id = safe_int(data.get("old_category_id"))
+    new_cat_id = safe_int(data.get("new_category_id") or data.get("category_id"))
+    block = data.get("block", "All Blocks").strip() or "All Blocks"
+
+    if not new_cat_id:
+        return jsonify({"error": "new_category_id is required."}), 400
+
+    target_user = demo_db.get_user(user_id)
+    if not target_user:
+        return jsonify({"error": "User not found."}), 404
+
+    new_cat = demo_db.get_category(new_cat_id)
+    if not new_cat:
+        return jsonify({"error": "New category not found."}), 404
+
+    if not departments_match(target_user.get("department"), new_cat.get("department")):
+        return jsonify({"error": "Unable to assign category: department mismatch between CA and category."}), 400
+
+    if old_cat_id:
+        try:
+            demo_db.remove_ca_from_category(old_cat_id, user_id)
+        except Exception:
+            pass
+
+    demo_db.create_ca_assignment(new_cat_id, user_id, block=block)
+    return jsonify({"message": "Category reassigned successfully.", "category_id": new_cat_id}), 200
+
+
+# ── Category Deletion REST API ──────────────────────────────────────
+
+@api_bp.route("/categories/<int:category_id>", methods=["DELETE"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD")
+def api_delete_category(category_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    cat = demo_db.get_category(category_id)
+    if not cat:
+        return jsonify({"error": "Category not found."}), 404
+
+    with demo_db.connection() as conn, conn.cursor() as cur:
+        # Check if category is referenced by existing tickets
+        cur.execute(
+            "SELECT COUNT(*) AS cnt FROM helpdesk_tickets WHERE category_id = %s",
+            (category_id,),
+        )
+        row = cur.fetchone()
+        ticket_count = row["cnt"] if row else 0
+        if ticket_count > 0:
+            return jsonify({
+                "error": "Unable to remove category: category is referenced by existing tickets."
+            }), 400
+
+        cur.execute(
+            "UPDATE helpdesk_categories SET is_active = 0 WHERE id = %s",
+            (category_id,),
+        )
+    return jsonify({"message": "Category removed/deactivated successfully."}), 200
+
+
+# ── Ticket Status REST API ──────────────────────────────────────────
+
+@api_bp.route("/tickets/<int:ticket_id>/status", methods=["POST", "PUT"])
+@role_required("SUPER_ADMIN", "ADMIN", "HOD", "CA", "ASSIGNEE", "FACULTY")
+def api_update_ticket_status(ticket_id):
+    from app import get_demo_db
+    demo_db = get_demo_db()
+    user = current_user()
+    data = request.get_json(silent=True) or {}
+    raw_status = (data.get("status") or "").strip()
+    remarks = (data.get("remarks") or "").strip()
+
+    if not raw_status:
+        return jsonify({"error": "status is required."}), 400
+
+    status = raw_status.upper().replace(" ", "_")
+    if status in ("CLOSED", "RESOLVE"):
+        status = "RESOLVED"
+    elif status == "INPROGRESS":
+        status = "IN_PROGRESS"
+    elif status == "ONHOLD":
+        status = "ON_HOLD"
+
+    if status not in {"PENDING", "IN_PROGRESS", "ON_HOLD", "RESOLVED", "REOPENED"}:
+        return jsonify({"error": f"Invalid status: {raw_status}"}), 400
+
+    if status == "RESOLVED" and not remarks:
+        remarks = "Ticket resolved directly by CA."
+
+    try:
+        demo_db.update_ticket_status(
+            ticket_id,
+            actor=user,
+            status=status,
+            remarks=remarks,
+            time_taken=(data.get("time_taken") or "").strip(),
+            attachment_path=(data.get("attachment_path") or "").strip(),
+        )
+        return jsonify({"message": "Ticket updated successfully.", "status": status}), 200
+    except PermissionError as exc:
+        return jsonify({"error": str(exc) or "Forbidden: Access denied."}), 403
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+

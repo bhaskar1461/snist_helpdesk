@@ -78,6 +78,64 @@
 
             <button type="submit" class="login-btn">Sign In</button>
           </form>
+
+          {% if demo_mode %}
+          <!-- Interactive Demo Quick-Fill Roles -->
+          <div class="demo-quickfill" style="margin-top: 22px; padding-top: 18px; border-top: 1px solid #f1f5f9;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+              <span style="font-size: 0.76rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #4f46e5; display: inline-flex; align-items: center; gap: 4px;">
+                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10b981;"></span>
+                One-Click Demo Roles
+              </span>
+              <span style="font-size: 0.72rem; color: #64748b; background: #f8fafc; padding: 2px 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
+                Pwd: <strong>123</strong>
+              </span>
+            </div>
+            <p style="font-size: 0.78rem; color: #64748b; margin-bottom: 10px; line-height: 1.35;">
+              Click any role to autofill credentials and explore:
+            </p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <button type="button" class="demo-role-btn" onclick="quickFill('admin@gmail.com', '123')" style="text-align: left; padding: 7px 9px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column;">
+                <span style="font-weight: 600; font-size: 0.78rem; color: #1e293b;">👑 Super Admin</span>
+                <span style="font-size: 0.70rem; color: #64748b;">admin@gmail.com</span>
+              </button>
+              <button type="button" class="demo-role-btn" onclick="quickFill('campus.admin@gmail.com', '123')" style="text-align: left; padding: 7px 9px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column;">
+                <span style="font-weight: 600; font-size: 0.78rem; color: #1e293b;">🏛️ Campus Admin</span>
+                <span style="font-size: 0.70rem; color: #64748b;">campus.admin@gmail...</span>
+              </button>
+              <button type="button" class="demo-role-btn" onclick="quickFill('shirisha.k@sreenidhi.edu.in', '123')" style="text-align: left; padding: 7px 9px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column;">
+                <span style="font-weight: 600; font-size: 0.78rem; color: #1e293b;">🎓 HOD (CSE)</span>
+                <span style="font-size: 0.70rem; color: #64748b;">shirisha.k@sreenidhi...</span>
+              </button>
+              <button type="button" class="demo-role-btn" onclick="quickFill('managerict@sreenidhi.edu.in', '123')" style="text-align: left; padding: 7px 9px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column;">
+                <span style="font-weight: 600; font-size: 0.78rem; color: #1e293b;">🛠️ Assignee (ICT)</span>
+                <span style="font-size: 0.70rem; color: #64748b;">managerict@sreenidhi...</span>
+              </button>
+              <button type="button" class="demo-role-btn" onclick="quickFill('aruna.v@sreenidhi.edu.in', '123')" style="text-align: left; padding: 7px 9px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column; grid-column: span 2;">
+                <span style="font-weight: 600; font-size: 0.78rem; color: #1e293b;">👨‍🏫 Faculty (CSE)</span>
+                <span style="font-size: 0.70rem; color: #64748b;">aruna.v@sreenidhi.edu.in</span>
+              </button>
+            </div>
+          </div>
+          <style>
+            .demo-role-btn:hover {
+              border-color: #6366f1 !important;
+              background: #f5f3ff !important;
+              transform: translateY(-1px);
+            }
+          </style>
+          <script>
+            function quickFill(email, pwd) {
+              const emailInput = document.querySelector('input[name="email"]');
+              const pwdInput = document.querySelector('input[name="password"]');
+              if (emailInput && pwdInput) {
+                emailInput.value = email;
+                pwdInput.value = pwd;
+                emailInput.focus();
+              }
+            }
+          </script>
+          {% endif %}
         </div>
       </section>
     </section>

@@ -20,6 +20,10 @@ def validate_config(env: Optional[Dict[str, str]] = None) -> List[Dict[str, str]
     if env is None:
         env = dict(os.environ)
 
+    # In standalone demo mode, external MySQL and production secret key checks are not required
+    if (env.get("DEMO_MODE", "false").lower() in ("true", "1") or env.get("OFFLINE_DEMO", "false").lower() in ("true", "1")) and env.get("FORCE_STARTUP_CHECKS", "0") != "1" and env.get("TESTING", "false").lower() != "true":
+        return []
+
     issues: List[Dict[str, str]] = []
     flask_env = env.get("FLASK_ENV", env.get("ENV", "production")).strip().lower()
     is_development = flask_env in ("development", "dev", "local")

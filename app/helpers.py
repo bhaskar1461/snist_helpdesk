@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import datetime
 from functools import wraps
 
-from flask import Response, flash, redirect, request, session, url_for
+from flask import Response, flash, redirect, request, session, url_for, jsonify
 from markupsafe import escape
 from werkzeug.utils import secure_filename
 
@@ -186,6 +186,8 @@ def role_required(*roles):
                 return redirect(url_for("auth.login"))
             user_role = normalize_role(user["role"])
             if user_role not in allowed_roles:
+                if request.is_json or request.method in ("PUT", "DELETE", "PATCH") or (request.headers.get("Accept") and "application/json" in request.headers.get("Accept")):
+                    return jsonify({"error": "Forbidden: You do not have permission to access this resource."}), 403
                 flash("You do not have access to that page.", "error")
                 target = url_for(route_for_role(user_role))
                 if target == request.path:
@@ -325,12 +327,17 @@ def departments_match(dept1: str, dept2: str, org_id: str = "2000") -> bool:
     if d1_norm == d2_norm:
         return True
     aliases = [
-        {"facilities", "fecilities", "facilities & security", "f&s", "estate", "maintenance", "facilities & estates"},
-        {"ict", "information technology", "information and communication technology", "sap"},
+        {"facilities", "fecilities", "facilities & security", "f&s", "estate", "maintenance", "facilities & estates", "maintenance & repairs"},
+        {"ict", "information technology", "information and communication technology", "sap", "it"},
         {"cse", "computer science and engineering", "computer science"},
-        {"ece", "electronics and communication engineering"},
-        {"eee", "electrical and electronics engineering", "soee"},
+        {"ece", "electronics and communication engineering", "electronics"},
+        {"eee", "electrical and electronics engineering", "soee", "electrical"},
+        {"me", "mechanical engineering", "mechanical"},
+        {"ce", "civil engineering", "civil"},
         {"s&h", "science and humanities", "s and h", "maths", "physics", "chemistry", "english"},
+        {"bio-tech", "biotechnology"},
+        {"administration", "admin"},
+        {"library", "centeral library", "central library"},
     ]
     for grp in aliases:
         if d1_norm in grp and d2_norm in grp:

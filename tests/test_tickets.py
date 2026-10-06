@@ -175,13 +175,16 @@ class TestTickets(HelpdeskTestCase):
         # Login as assigned CA
         self.login_as("bhaskar.ca@gmail.com")
 
-        # Case A: PENDING -> RESOLVED directly (Invalid - must accept first)
+        # Case A: PENDING -> RESOLVED directly (Valid per Issue 1)
         resA = self.client.post("/authority/update-status/20", data={
             "status": "RESOLVED",
             "remarks": "Done directly"
         }, follow_redirects=True)
-        self.assertIn(b"Invalid status transition", resA.data)
-        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "PENDING")
+        self.assertIn(b"Ticket updated successfully", resA.data)
+        self.assertEqual(GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"], "RESOLVED")
+
+        # Reset back to PENDING for Case B
+        GLOBAL_DB_STATE.tables["helpdesk_tickets"][0]["status"] = "PENDING"
 
         # Case B: PENDING -> REOPENED directly (Invalid)
         resB = self.client.post("/authority/update-status/20", data={

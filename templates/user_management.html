@@ -663,26 +663,34 @@
                   </tr>
                   {% if can_edit %}
                   <tr id="user-edit-{{ item.id }}" class="edit-row" style="display:none; background:#f8fafc;">
-                    <form method="post" action="/user-management/{{ item.id }}/update">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <td><strong>{{ item.name }}</strong></td>
-                      <td style="color:var(--slate-600); font-size:0.84rem;">{{ item.email }}</td>
-                      <td>
-                        <select name="role" required style="padding:6px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; font-weight:600; outline:none; background:#ffffff; color:var(--slate-800);">
-                          {% for role in roles %}
-                            <option value="{{ role }}" {% if item.role == role or (role == 'ASSIGNEE' and item.role == 'CA') %}selected{% endif %}>{{ 'USER' if role == 'FACULTY' else role }}</option>
-                          {% endfor %}
-                        </select>
-                      </td>
-                      <td><span class="dept-badge">{{ item.department }}</span></td>
-                      <td style="color:#94a3b8; font-size:0.82rem; font-style:italic;">Update role above to manage categories</td>
-                      <td style="text-align:right;">
-                        <div class="btn-group" style="justify-content:flex-end;">
-                          <button type="submit" class="btn-table-action btn-save">Save</button>
-                          <button type="button" class="btn-table-action btn-cancel" onclick="toggleEdit({{ item.id }})">Cancel</button>
-                        </div>
-                      </td>
-                    </form>
+                    <td>
+                      <form id="edit-form-{{ item.id }}" method="post" action="/user-management/{{ item.id }}/update">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      </form>
+                      <input type="text" name="name" value="{{ item.name }}" form="edit-form-{{ item.id }}" style="padding:6px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; font-weight:600; width:100%; max-width:180px;">
+                    </td>
+                    <td style="color:var(--slate-600); font-size:0.84rem;">{{ item.email }}</td>
+                    <td>
+                      <select name="role" form="edit-form-{{ item.id }}" required style="padding:6px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; font-weight:600; outline:none; background:#ffffff; color:var(--slate-800);">
+                        {% for role in roles %}
+                          <option value="{{ role }}" {% if item.role == role or (role == 'ASSIGNEE' and item.role == 'CA') %}selected{% endif %}>{{ 'USER' if role == 'FACULTY' else role }}</option>
+                        {% endfor %}
+                      </select>
+                    </td>
+                    <td>
+                      <select name="department" form="edit-form-{{ item.id }}" style="padding:6px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; outline:none; background:#ffffff; color:var(--slate-800);">
+                        {% for d in departments %}
+                          <option value="{{ d.code }}" {% if d.code == item.department or d.name == item.department %}selected{% endif %}>{{ d.name }} ({{ d.code }})</option>
+                        {% endfor %}
+                      </select>
+                    </td>
+                    <td style="color:#94a3b8; font-size:0.82rem; font-style:italic;">Update details above to manage user</td>
+                    <td style="text-align:right;">
+                      <div class="btn-group" style="justify-content:flex-end;">
+                        <button type="submit" form="edit-form-{{ item.id }}" class="btn-table-action btn-save">Save</button>
+                        <button type="button" class="btn-table-action btn-cancel" onclick="toggleEdit({{ item.id }})">Cancel</button>
+                      </div>
+                    </td>
                   </tr>
                   {% endif %}
                 {% else %}

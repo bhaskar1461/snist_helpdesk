@@ -454,6 +454,8 @@ class BaseMySQLService:
 
     @property
     def enabled(self) -> bool:
+        if os.getenv("DEMO_MODE", "false").lower() in ("true", "1") or os.getenv("OFFLINE_DEMO", "false").lower() in ("true", "1"):
+            return True
         import sys
         if "unittest" in sys.modules or "pytest" in sys.modules or os.getenv("TESTING", "false").lower() == "true":
             return self.config is not None
@@ -484,6 +486,12 @@ class BaseMySQLService:
         )
 
     def connection(self):
+        if (os.getenv("DEMO_MODE", "false").lower() in ("true", "1") or os.getenv("OFFLINE_DEMO", "false").lower() in ("true", "1")) and os.getenv("TESTING", "false").lower() != "true":
+            from app.demo_engine import GLOBAL_DB_STATE, MockConnection
+            if getattr(self._local, "active_conn", None) is not None:
+                return self._local.active_conn
+            return MockConnection(GLOBAL_DB_STATE)
+
         if self.config is None:
             raise RuntimeError("MySQL is not configured.")
 
@@ -1315,7 +1323,8 @@ class DemoDbService(BaseMySQLService):
                         f"""
                         SELECT t.TEACHER_ID AS id, t.TEACHER_NAME AS name, t.EMAIL_ID AS email,
                                t.DESIGNATION AS designation, t.TEACHER_CODE AS teacher_code, t.SAP_ID AS sap_id,
-                               t.MOBILE_PHONE AS phone, b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
+                               t.MOBILE_PHONE AS phone, t.BRANCH_ID AS branch_id, COALESCE(t.ACTIVE, 1) AS is_active,
+                               b.BRANCH_CODE AS department, b.HOD_ID AS hod_id,
                                {self._branch_org_id_sql(cursor)} AS org_id
                         FROM {self.inst_prefix}teacher_info t
                         LEFT JOIN {self.inst_prefix}branch_detail b ON b.BRANCH_ID = t.BRANCH_ID
@@ -1326,15 +1335,48 @@ class DemoDbService(BaseMySQLService):
                     )
                     row = cursor.fetchone()
                     if row:
+                        from app.helpers import BRANCH_ID_TO_DEPT
+                        dept = row.get("department") or BRANCH_ID_TO_DEPT.get(str(row.get("branch_id")), "General")
                         role = self._resolve_teacher_role(cursor, row)
+                        is_active_val = 1 if row.get("is_active") is None else int(row.get("is_active"))
+                        
+                        name = row["name"]
+                        # Check if helpdesk_staff_roles or helpdesk_users has explicit overrides
+                        try:
+                            cursor.execute(
+                                "SELECT name, role, department, phone, COALESCE(is_active, 1) AS is_active FROM helpdesk_staff_roles WHERE teacher_id = %s OR id = %s LIMIT 1",
+                                (user_id_int, user_id_int)
+                            )
+                            staff_row = cursor.fetchone()
+                            if staff_row:
+                                if staff_row.get("name"): name = staff_row["name"]
+                                if staff_row.get("role"): role = staff_row["role"]
+                                if staff_row.get("department"): dept = staff_row["department"]
+                                if staff_row.get("is_active") is not None: is_active_val = int(staff_row["is_active"])
+                        except Exception:
+                            pass
+                        try:
+                            cursor.execute(
+                                "SELECT name, role, department, phone, COALESCE(is_active, 1) AS is_active FROM helpdesk_users WHERE id = %s LIMIT 1",
+                                (user_id_int,)
+                            )
+                            u_row = cursor.fetchone()
+                            if u_row:
+                                if u_row.get("name"): name = u_row["name"]
+                                if u_row.get("role"): role = u_row["role"]
+                                if u_row.get("department"): dept = u_row["department"]
+                                if u_row.get("is_active") is not None: is_active_val = int(u_row["is_active"])
+                        except Exception:
+                            pass
+
                         return {
                             "id": row["id"],
-                            "name": row["name"],
+                            "name": name,
                             "email": row["email"],
                             "role": role,
-                            "department": row.get("department") or "General",
+                            "department": dept,
                             "phone": row.get("phone"),
-                            "is_active": 1 if row.get("is_active") is None else int(row.get("is_active")),
+                            "is_active": is_active_val,
                             "org_id": row.get("org_id", "2000"),
                         }
                 except Exception:
@@ -1666,15 +1708,22 @@ class DemoDbService(BaseMySQLService):
     def update_user(self, user_id, payload):
         if not self.enabled:
             return
+        user_obj = self.get_user(user_id)
+        if not user_obj:
+            raise ValueError("User not found.")
+
         fields = []
         params = []
         for k in ["name", "email", "role", "department"]:
-            if k in payload:
+            if k in payload and payload[k] is not None:
                 fields.append(f"{k} = %s")
                 params.append(payload[k])
-        if "phone" in payload:
+        if "phone" in payload and payload["phone"] is not None:
             fields.append("phone = %s")
             params.append(payload["phone"])
+        if "is_active" in payload and payload["is_active"] is not None:
+            fields.append("is_active = %s")
+            params.append(int(payload["is_active"]))
             
         if not fields and not payload.get("password"):
             return
@@ -1706,49 +1755,109 @@ class DemoDbService(BaseMySQLService):
                     staff_params.append(existing_staff["id"])
                     cursor.execute(f"UPDATE helpdesk_staff_roles SET {', '.join(staff_fields)} WHERE id = %s", tuple(staff_params))
                 else:
-                    # User only existed in teacher_info or helpdesk_users without a staff_roles entry
-                    user_obj = self.get_user(user_id) or {}
                     name = payload.get("name") or user_obj.get("name") or ""
                     email = payload.get("email") or user_obj.get("email") or ""
                     role = payload.get("role") or user_obj.get("role") or "FACULTY"
                     department = payload.get("department") or user_obj.get("department") or "General"
                     phone = payload.get("phone") or user_obj.get("phone") or ""
+                    is_active = int(payload.get("is_active", user_obj.get("is_active", 1)))
                     pwd_hash = generate_password_hash(payload["password"]) if payload.get("password") else None
 
                     cursor.execute("""
                         INSERT INTO helpdesk_staff_roles (teacher_id, name, email, role, department, phone, password_hash, is_active)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, 1)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE
+                            name = VALUES(name),
                             role = VALUES(role),
                             department = VALUES(department),
                             phone = VALUES(phone),
+                            is_active = VALUES(is_active),
                             password_hash = COALESCE(VALUES(password_hash), password_hash)
-                    """, (user_id, name, email, role, department, phone, pwd_hash))
+                    """, (user_id, name, email, role, department, phone, pwd_hash, is_active))
             except Exception as e:
                 log.debug("Staff role update/upsert error: %s", e)
 
     def delete_user(self, user_id):
+        user = self.get_user(user_id)
+        if not user:
+            raise ValueError("User not found.")
+
+        uids = {int(user_id)}
+        if user.get("id"):
+            try:
+                uids.add(int(user["id"]))
+            except Exception:
+                pass
+
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    (SELECT COUNT(*) FROM helpdesk_categories WHERE assigned_ca_id = %s) AS category_refs,
-                    (SELECT COUNT(*) FROM helpdesk_tickets WHERE created_by = %s OR assigned_to = %s) AS ticket_refs,
-                    (SELECT COUNT(*) FROM helpdesk_ticket_activity WHERE action_by = %s) AS activity_refs
-                """,
-                (user_id, user_id, user_id, user_id),
-            )
-            refs = cursor.fetchone()
-            if any(refs.values()):
-                raise ValueError("Cannot delete a user that is referenced by categories, tickets, or activity.")
             try:
-                cursor.execute("DELETE FROM helpdesk_users WHERE id = %s", (user_id,))
+                cursor.execute(
+                    "SELECT id, teacher_id FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s",
+                    (user_id, user_id),
+                )
+                for r in cursor.fetchall():
+                    if r.get("id"):
+                        uids.add(int(r["id"]))
+                    if r.get("teacher_id"):
+                        uids.add(int(r["teacher_id"]))
             except Exception:
                 pass
-            try:
-                cursor.execute("DELETE FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s", (user_id, user_id))
-            except Exception:
-                pass
+
+            total_refs = 0
+            for uid in uids:
+                try:
+                    cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_categories WHERE assigned_ca_id = %s", (uid,))
+                    r = cursor.fetchone()
+                    if r and r.get("cnt"):
+                        total_refs += int(r["cnt"])
+                except Exception:
+                    pass
+                try:
+                    cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_ca_assignments WHERE ca_id = %s", (uid,))
+                    r = cursor.fetchone()
+                    if r and r.get("cnt"):
+                        total_refs += int(r["cnt"])
+                except Exception:
+                    pass
+                try:
+                    cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_tickets WHERE created_by = %s OR assigned_to = %s", (uid, uid))
+                    r = cursor.fetchone()
+                    if r and r.get("cnt"):
+                        total_refs += int(r["cnt"])
+                except Exception:
+                    pass
+                try:
+                    cursor.execute("SELECT COUNT(*) AS cnt FROM helpdesk_ticket_activity WHERE action_by = %s", (uid,))
+                    r = cursor.fetchone()
+                    if r and r.get("cnt"):
+                        total_refs += int(r["cnt"])
+                except Exception:
+                    pass
+
+            if total_refs > 0:
+                # Soft delete / deactivate user while preserving all historical references
+                for uid in uids:
+                    try:
+                        cursor.execute("UPDATE helpdesk_users SET is_active = %s WHERE id = %s", (0, uid))
+                    except Exception:
+                        pass
+                    try:
+                        cursor.execute("UPDATE helpdesk_staff_roles SET is_active = %s WHERE id = %s OR teacher_id = %s", (0, uid, uid))
+                    except Exception:
+                        pass
+                return {"status": "deactivated", "is_active": 0}
+            else:
+                # Hard delete when safe with zero references
+                for uid in uids:
+                    try:
+                        cursor.execute("DELETE FROM helpdesk_users WHERE id = %s", (uid,))
+                    except Exception:
+                        pass
+                    try:
+                        cursor.execute("DELETE FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s", (uid, uid))
+                    except Exception:
+                        pass
+                return {"status": "deleted"}
 
     def list_categories(self, department=None, search="", ca_id=None, org_id=None, active_only=False, limit=None, offset=None):
         sql = f"""
@@ -1945,6 +2054,9 @@ class DemoDbService(BaseMySQLService):
         category = self.get_category(category_id)
         if not category:
             raise ValueError("Category not found.")
+        ca = self.get_user(ca_id)
+        if not ca:
+            raise ValueError("Assignee not found.")
 
         blocks = blocks or []
         created_count = 0
@@ -1978,15 +2090,40 @@ class DemoDbService(BaseMySQLService):
 
     def remove_ca_from_category(self, category_id, ca_id):
         """Remove a CA and all their block mappings from a category."""
+        category = self.get_category(category_id)
+        if not category:
+            raise ValueError("Category not found.")
+        ca = self.get_user(ca_id)
+        if not ca:
+            raise ValueError("Assignee not found.")
+
+        ca_ids = {ca_id}
+        if ca.get("id"):
+            try:
+                ca_ids.add(int(ca["id"]))
+            except Exception:
+                pass
+        try:
+            with self.connection() as conn, conn.cursor() as cur:
+                cur.execute("SELECT id, teacher_id FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s", (ca_id, ca_id))
+                for r in cur.fetchall():
+                    if r.get("id"):
+                        ca_ids.add(int(r["id"]))
+                    if r.get("teacher_id"):
+                        ca_ids.add(int(r["teacher_id"]))
+        except Exception:
+            pass
+
         with self.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                "DELETE FROM helpdesk_ca_assignments WHERE category_id = %s AND ca_id = %s",
-                (category_id, ca_id),
-            )
+            for cid in ca_ids:
+                cursor.execute(
+                    "DELETE FROM helpdesk_ca_assignments WHERE category_id = %s AND ca_id = %s",
+                    (category_id, cid),
+                )
             # If this CA was category.assigned_ca_id, elect another assigned CA or NULL
             cursor.execute("SELECT assigned_ca_id FROM helpdesk_categories WHERE id = %s", (category_id,))
             cat = cursor.fetchone()
-            if cat and cat.get("assigned_ca_id") == ca_id:
+            if cat and (cat.get("assigned_ca_id") in ca_ids or cat.get("assigned_ca_id") == ca_id):
                 cursor.execute(
                     "SELECT ca_id FROM helpdesk_ca_assignments WHERE category_id = %s LIMIT 1",
                     (category_id,),
@@ -2004,6 +2141,8 @@ class DemoDbService(BaseMySQLService):
         """Return structured list of distinct categories mapped to a user (CA) with their mapped blocks."""
         res_map = self.get_users_assigned_categories_map([user_id])
         return res_map.get(user_id, [])
+
+    list_ca_categories = get_user_assigned_categories
 
     def get_users_assigned_categories_map(self, user_ids):
         """Return a mapping of user_id -> list of assigned category dicts for batch user enrichment."""
@@ -2443,11 +2582,11 @@ class DemoDbService(BaseMySQLService):
             return ticket
 
     ALLOWED_TRANSITIONS = {
-        "PENDING": {"IN_PROGRESS"},
+        "PENDING": {"IN_PROGRESS", "ON_HOLD", "RESOLVED"},
         "IN_PROGRESS": {"ON_HOLD", "RESOLVED"},
-        "ON_HOLD": {"IN_PROGRESS"},
+        "ON_HOLD": {"IN_PROGRESS", "RESOLVED"},
         "RESOLVED": {"REOPENED"},
-        "REOPENED": {"IN_PROGRESS"},
+        "REOPENED": {"IN_PROGRESS", "RESOLVED"},
     }
 
     def update_ticket_status(self, ticket_id, actor, status, remarks="", time_taken="", attachment_path=""):
@@ -2457,6 +2596,20 @@ class DemoDbService(BaseMySQLService):
 
         if actor.get("org_id") and ticket.get("org_id") and ticket["org_id"] != actor["org_id"]:
             raise PermissionError("Access denied: Ticket belongs to a different organization.")
+
+        # Normalize incoming status string
+        if not status:
+            raise ValueError("Status is required.")
+        status = str(status).strip().upper()
+        if status in ("CLOSED", "RESOLVE"):
+            status = "RESOLVED"
+        elif status == "INPROGRESS":
+            status = "IN_PROGRESS"
+        elif status == "ONHOLD":
+            status = "ON_HOLD"
+
+        if not remarks:
+            remarks = "Ticket resolved" if status == "RESOLVED" else f"Status updated to {status}"
 
         # Permission check:
         # - Assigned CA/ASSIGNEE can update their own assigned tickets
@@ -2474,14 +2627,16 @@ class DemoDbService(BaseMySQLService):
                 (ticket.get("created_by_email") and actor.get("email") and ticket["created_by_email"].lower() == actor["email"].lower())
                 or (ticket.get("created_by") and ticket.get("created_by") == actor.get("id"))
             )
-            and ticket.get("status") == "RESOLVED"
+            and ticket.get("status") in ("RESOLVED", "CLOSED")
             and status == "REOPENED"
         )
         if not is_assigned_ca and not is_creator_reopening:
             raise PermissionError("Only the assigned Assignee can update this ticket.")
 
         # Enforce valid status transitions
-        current_status = ticket["status"]
+        current_status = ticket["status"].upper()
+        if current_status in ("CLOSED", "RESOLVE"):
+            current_status = "RESOLVED"
         allowed = self.ALLOWED_TRANSITIONS.get(current_status, set())
         if status not in allowed:
             raise ValueError(
@@ -3084,6 +3239,17 @@ class DemoDbService(BaseMySQLService):
             return cursor.fetchall()
 
     def create_ca_assignment(self, category_id, ca_id, block):
+        category = self.get_category(category_id)
+        if not category:
+            raise ValueError("Category not found.")
+        ca = self.get_user(ca_id)
+        if not ca:
+            raise ValueError("Assignee not found.")
+
+        block_clean = str(block or "").strip()
+        if not block_clean or block_clean.lower() in ("all", "all blocks", "campus"):
+            block_clean = "All Blocks"
+
         with self.connection() as connection, connection.cursor() as cursor:
             # Check if assignment already exists
             cursor.execute(
@@ -3092,7 +3258,7 @@ class DemoDbService(BaseMySQLService):
                 WHERE category_id = %s AND ca_id = %s AND LOWER(block) = LOWER(%s)
                 LIMIT 1
                 """,
-                (category_id, ca_id, block),
+                (category_id, ca_id, block_clean),
             )
             if cursor.fetchone():
                 raise ValueError("This CA is already assigned to this category and block.")
@@ -3101,7 +3267,7 @@ class DemoDbService(BaseMySQLService):
                 INSERT INTO helpdesk_ca_assignments (category_id, ca_id, block)
                 VALUES (%s, %s, %s)
                 """,
-                (category_id, ca_id, block),
+                (category_id, ca_id, block_clean),
             )
             return cursor.lastrowid
 

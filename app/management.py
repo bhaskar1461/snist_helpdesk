@@ -6,7 +6,7 @@ import json
 import logging
 from collections import defaultdict
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for, jsonify
 
 from app.helpers import (
     active_category_departments, current_user, is_valid_email, live_departments, page_context,
@@ -142,8 +142,10 @@ def category_assignments():
             if blocks and ca_id:
                 for b in blocks:
                     b_stripped = b.strip()
-                    if not b_stripped or b_stripped == "all":
+                    if not b_stripped:
                         continue
+                    if b_stripped.lower() in ("all", "all blocks", "campus"):
+                        b_stripped = "All Blocks"
                     try:
                         demo_db.create_ca_assignment(cat_id, ca_id, b_stripped)
                         demo_db.log_audit_event(
@@ -235,8 +237,10 @@ def category_assignments():
             if blocks and ca_id:
                 for b in blocks:
                     b_stripped = b.strip()
-                    if not b_stripped or b_stripped == "all":
+                    if not b_stripped:
                         continue
+                    if b_stripped.lower() in ("all", "all blocks", "campus"):
+                        b_stripped = "All Blocks"
                     try:
                         demo_db.create_ca_assignment(category_id, ca_id, b_stripped)
                         demo_db.log_audit_event(
@@ -321,8 +325,10 @@ def category_assignments():
                             # Create block-level mapping
                             for b in blocks:
                                 b_stripped = b.strip()
-                                if not b_stripped or b_stripped == "all":
+                                if not b_stripped:
                                     continue
+                                if b_stripped.lower() in ("all", "all blocks", "campus"):
+                                    b_stripped = "All Blocks"
                                 try:
                                     demo_db.create_ca_assignment(cat_id, ca_id, b_stripped)
                                     demo_db.log_audit_event(
@@ -1054,56 +1060,71 @@ def unassign_ca_category():
     return redirect(redirect_url)
 
 
-@management_bp.route("/user-management/<int:user_id>/update", methods=["POST"])
+@management_bp.route("/user-management/<int:user_id>/update", methods=["POST", "PUT"])
 @role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def update_user(user_id):
     from app import get_demo_db
     demo_db = get_demo_db()
     user = current_user()
+    is_json_req = request.is_json or request.content_type == "application/json"
+    data = request.get_json(silent=True) if is_json_req else {}
+    if not data:
+        data = request.form or {}
+
     target_user = demo_db.get_user(user_id)
     if not target_user:
+        if is_json_req:
+            return jsonify({"error": "User not found."}), 404
         flash("User not found.", "error")
         return redirect(url_for("management.user_management"))
 
     target_org = resolve_user_org(target_user["email"], target_user["department"])
     if target_org != user["org_id"]:
+        if is_json_req:
+            return jsonify({"error": "Access denied: User belongs to a different organization."}), 403
         flash("Access denied: User belongs to a different organization.", "error")
         return redirect(url_for("management.user_management"))
 
-    new_role = request.form.get("role", "").strip().upper()
-    if not new_role:
-        flash("Role is required.", "error")
-        return redirect(url_for("management.user_management"))
+    new_role = data.get("role", "").strip().upper() if data.get("role") else target_user["role"]
 
     if user["role"] == "HOD":
         target_depts = [d.strip() for d in target_user["department"].split(",")]
         if user["department"] not in target_depts:
+            if is_json_req:
+                return jsonify({"error": "Access denied: You can only modify users in your own department."}), 403
             flash("Access denied: You can only modify users in your own department.", "error")
             return redirect(url_for("management.user_management"))
         if target_user["role"] not in ("CA", "ASSIGNEE", "FACULTY"):
+            if is_json_req:
+                return jsonify({"error": "Access denied: You can only modify CA or USER users."}), 403
             flash("Access denied: You can only modify CA or USER users.", "error")
             return redirect(url_for("management.user_management"))
 
         if new_role not in ("CA", "ASSIGNEE", "FACULTY"):
+            if is_json_req:
+                return jsonify({"error": "Access denied: You can only assign CA or USER role."}), 403
             flash("Access denied: You can only assign CA or USER role.", "error")
             return redirect(url_for("management.user_management"))
 
-        # In the users tab, name, email, and department cannot be altered
-        name = target_user["name"]
-        email = target_user["email"]
+        name = data.get("name", "").strip() or target_user["name"]
+        email = data.get("email", "").strip().lower() or target_user["email"]
         department = target_user["department"]
     else:
         if user["role"] != "SUPER_ADMIN":
             if target_user["role"] == "SUPER_ADMIN":
+                if is_json_req:
+                    return jsonify({"error": "Access denied: Cannot modify SUPER_ADMIN users."}), 403
                 flash("Access denied: Cannot modify SUPER_ADMIN users.", "error")
                 return redirect(url_for("management.user_management"))
             if new_role == "SUPER_ADMIN":
+                if is_json_req:
+                    return jsonify({"error": "Access denied: Cannot assign SUPER_ADMIN role."}), 403
                 flash("Access denied: Cannot assign SUPER_ADMIN role.", "error")
                 return redirect(url_for("management.user_management"))
 
-        name = request.form.get("name", "").strip() or target_user["name"]
-        email = request.form.get("email", "").strip().lower() or target_user["email"]
-        department = request.form.get("department", "").strip() or target_user["department"]
+        name = data.get("name", "").strip() if "name" in data else target_user["name"]
+        email = data.get("email", "").strip().lower() if "email" in data else target_user["email"]
+        department = data.get("department", "").strip() if "department" in data else target_user["department"]
 
     payload = {
         "name": name,
@@ -1111,49 +1132,72 @@ def update_user(user_id):
         "role": new_role,
         "department": department,
     }
-    password = request.form.get("password", "").strip()
+    if "phone" in data:
+        payload["phone"] = data["phone"]
+    if "is_active" in data:
+        payload["is_active"] = data["is_active"]
+    password = data.get("password", "").strip() if data.get("password") else ""
     if password and user["role"] == "SUPER_ADMIN":
         payload["password"] = password
 
     demo_db.update_user(user_id, payload)
+    updated_user = demo_db.get_user(user_id)
+    if is_json_req:
+        return jsonify({"message": "User updated successfully.", "user": updated_user}), 200
+
     display_role = "USER" if new_role == "FACULTY" else new_role
     flash(f"User role updated to {display_role} successfully.", "success")
     return redirect(url_for("management.user_management"))
 
 
-@management_bp.route("/user-management/<int:user_id>/delete", methods=["POST"])
+@management_bp.route("/user-management/<int:user_id>/delete", methods=["POST", "DELETE"])
 @role_required("SUPER_ADMIN", "ADMIN", "HOD")
 def delete_user(user_id):
     from app import get_demo_db
     demo_db = get_demo_db()
     user = current_user()
+    is_json_req = request.is_json or request.content_type == "application/json"
     target_user = demo_db.get_user(user_id)
     if not target_user:
+        if is_json_req:
+            return jsonify({"error": "User not found."}), 404
         flash("User not found.", "error")
         return redirect(url_for("management.user_management"))
 
     target_org = resolve_user_org(target_user["email"], target_user["department"])
     if target_org != user["org_id"]:
+        if is_json_req:
+            return jsonify({"error": "Access denied: User belongs to a different organization."}), 403
         flash("Access denied: User belongs to a different organization.", "error")
         return redirect(url_for("management.user_management"))
 
     if user["role"] == "HOD":
         target_depts = [d.strip() for d in target_user["department"].split(",")]
         if user["department"] not in target_depts:
+            if is_json_req:
+                return jsonify({"error": "Access denied: You can only delete users in your own department."}), 403
             flash("Access denied: You can only delete users in your own department.", "error")
             return redirect(url_for("management.user_management"))
         if target_user["role"] not in ("CA", "FACULTY"):
+            if is_json_req:
+                return jsonify({"error": "Access denied: You can only delete CA or FACULTY users."}), 403
             flash("Access denied: You can only delete CA or FACULTY users.", "error")
             return redirect(url_for("management.user_management"))
     else:
         if user["role"] != "SUPER_ADMIN" and target_user["role"] == "SUPER_ADMIN":
+            if is_json_req:
+                return jsonify({"error": "Access denied: Cannot delete SUPER_ADMIN users."}), 403
             flash("Access denied: Cannot delete SUPER_ADMIN users.", "error")
             return redirect(url_for("management.user_management"))
 
     try:
-        demo_db.delete_user(user_id)
-        flash("Demo user deleted.", "success")
+        res = demo_db.delete_user(user_id)
+        if is_json_req:
+            return jsonify({"message": "User deleted or deactivated successfully.", "result": res}), 200
+        flash("User deleted or deactivated successfully.", "success")
     except ValueError as exc:
+        if is_json_req:
+            return jsonify({"error": str(exc)}), 400
         flash(str(exc), "error")
     return redirect(url_for("management.user_management"))
 

@@ -32,12 +32,21 @@ def get_live_db():
     return _live_db
 
 
-def create_app(testing=False):
+def create_app(testing=False, demo_mode=False):
     """Create and configure the Flask application."""
     global _demo_db, _live_db
 
     # Load .env before anything else (preserve existing env vars)
     load_dotenv(BASE_DIR / ".env", override=False)
+
+    is_demo_mode = (
+        demo_mode
+        or os.getenv("DEMO_MODE", "false").lower() in ("true", "1")
+        or os.getenv("OFFLINE_DEMO", "false").lower() in ("true", "1")
+    )
+    if is_demo_mode:
+        from app.demo_engine import activate_standalone_demo
+        activate_standalone_demo()
 
     app = Flask(
         __name__,
@@ -60,6 +69,7 @@ def create_app(testing=False):
     is_testing_env = (
         (
             testing
+            or is_demo_mode
             or app.config.get("TESTING")
             or "unittest" in sys.modules
             or "pytest" in sys.modules
@@ -126,7 +136,7 @@ def create_app(testing=False):
             log.error("Database seed failed: %s", exc)
 
     # ── Startup Database Readiness Validation (non-testing only) ─────
-    if not is_testing_env and db_config and _demo_db.enabled:
+    if not is_testing_env and not is_demo_mode and db_config and _demo_db.enabled:
         from app.startup_checks import check_database, format_readiness_panel
         db_report = check_database(db_service=_demo_db)
         for c in db_report.get("checks", []):
@@ -169,7 +179,13 @@ def create_app(testing=False):
     def inject_user_context():
         from app.helpers import current_user
         curr_user = current_user()
-        return {"current_user": curr_user, "user": curr_user}
+        demo_active = (
+            app.config.get("DEMO_MODE", False)
+            or os.getenv("DEMO_MODE", "false").lower() in ("true", "1")
+            or os.getenv("OFFLINE_DEMO", "false").lower() in ("true", "1")
+            or is_demo_mode
+        )
+        return {"current_user": curr_user, "user": curr_user, "demo_mode": demo_active}
 
     # ── Security Headers ────────────────────────────────────────────
     @app.after_request
