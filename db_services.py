@@ -2137,6 +2137,58 @@ class DemoDbService(BaseMySQLService):
 
     unassign_ca_from_category = remove_ca_from_category
 
+    def unassign_ca_from_all_categories(self, ca_id):
+        """Remove a CA and all their block mappings from ALL categories."""
+        ca = self.get_user(ca_id)
+        if not ca:
+            return 0
+
+        ca_ids = {ca_id}
+        if ca.get("id"):
+            try:
+                ca_ids.add(int(ca["id"]))
+            except Exception:
+                pass
+        try:
+            with self.connection() as conn, conn.cursor() as cur:
+                cur.execute("SELECT id, teacher_id FROM helpdesk_staff_roles WHERE id = %s OR teacher_id = %s", (ca_id, ca_id))
+                for r in cur.fetchall():
+                    if r.get("id"):
+                        ca_ids.add(int(r["id"]))
+                    if r.get("teacher_id"):
+                        ca_ids.add(int(r["teacher_id"]))
+        except Exception:
+            pass
+
+        format_strings = ", ".join(["%s"] * len(ca_ids))
+        with self.connection() as connection, connection.cursor() as cursor:
+            # 1. Remove all block-level mappings
+            for cid in ca_ids:
+                cursor.execute("DELETE FROM helpdesk_ca_assignments WHERE ca_id = %s", (cid,))
+
+            # 2. Re-elect or clear default assigned_ca_id in helpdesk_categories
+            cursor.execute(
+                f"SELECT id FROM helpdesk_categories WHERE assigned_ca_id IN ({format_strings})",
+                list(ca_ids),
+            )
+            affected_cats = cursor.fetchall() or []
+            for cat_row in affected_cats:
+                cid = cat_row["id"]
+                cursor.execute(
+                    "SELECT ca_id FROM helpdesk_ca_assignments WHERE category_id = %s LIMIT 1",
+                    (cid,),
+                )
+                other = cursor.fetchone()
+                new_ca_id = other["ca_id"] if other else None
+                cursor.execute(
+                    "UPDATE helpdesk_categories SET assigned_ca_id = %s WHERE id = %s",
+                    (new_ca_id, cid),
+                )
+        return len(ca_ids)
+
+    remove_ca_from_all_categories = unassign_ca_from_all_categories
+    unassign_user_from_all_categories = unassign_ca_from_all_categories
+
     def get_user_assigned_categories(self, user_id):
         """Return structured list of distinct categories mapped to a user (CA) with their mapped blocks."""
         res_map = self.get_users_assigned_categories_map([user_id])
@@ -2397,27 +2449,73 @@ class DemoDbService(BaseMySQLService):
                     log.info("Initial ticket activity creation skipped (duplicate entry): %s", act_exc)
                 else:
                     raise
+            # 1. Dispatch confirmation email to ticket creator
+            try:
+                from email_services import send_ticket_created_email
+                creator_user = self.get_user(created_by)
+                creator_email = None
+                creator_name = "Staff"
+                if creator_user and creator_user.get("email"):
+                    creator_email = creator_user["email"]
+                    creator_name = creator_user.get("name") or "Staff"
+                elif isinstance(created_by, str) and "@" in created_by:
+                    creator_email = created_by
+
+                if creator_email:
+                    send_ticket_created_email(
+                        creator_name,
+                        creator_email,
+                        ticket_id,
+                        category.get("category_name", "General"),
+                    )
+            except Exception as exc:
+                log.warning("Failed to dispatch ticket creation confirmation email for ticket #%s: %s", ticket_id, exc)
+
+            # 2. Dispatch allocation email to assigned Assignee
             try:
                 from email_services import send_allocation_email
                 ca_user = self.get_user(assigned_ca_id)
+                ca_email = None
+                ca_name = "Assignee"
                 if ca_user and ca_user.get("email"):
-                    send_allocation_email(ca_user["name"], ca_user["email"], ticket_id, category["category_name"])
-            except Exception:
-                pass
+                    ca_email = ca_user["email"]
+                    ca_name = ca_user.get("name") or "Assignee"
+                elif isinstance(assigned_ca_id, str) and "@" in assigned_ca_id:
+                    ca_email = assigned_ca_id
+
+                if ca_email:
+                    send_allocation_email(
+                        ca_name=ca_name,
+                        ca_email=ca_email,
+                        ticket_id=ticket_id,
+                        category_name=category.get("category_name", "General"),
+                    )
+            except Exception as exc:
+                log.warning("Failed to dispatch allocation email for ticket #%s to Assignee %s: %s", ticket_id, assigned_ca_id, exc)
+
+            # 3. Dispatch allocation SMS / WhatsApp to assigned Assignee
             try:
                 from sms_services import send_allocation_sms
-                ca_user = self.get_user(assigned_ca_id)
+                ca_user = locals().get("ca_user") or self.get_user(assigned_ca_id)
+                ca_phone = None
                 if ca_user and ca_user.get("email"):
                     ca_phone = self.get_user_phone(ca_user["email"])
-                    if ca_phone:
-                        send_allocation_sms(
-                            ca_user["name"], ca_phone, ticket_id,
-                            category_name=category.get("category_name", "System"),
-                            department=category.get("department", "ICT Department"),
-                        )
-            except Exception:
-                pass
+                if not ca_phone and ca_user and ca_user.get("phone"):
+                    ca_phone = ca_user.get("phone")
+
+                if ca_phone:
+                    send_allocation_sms(
+                        (ca_user.get("name") if ca_user else None) or "Assignee",
+                        ca_phone,
+                        ticket_id,
+                        category_name=category.get("category_name", "System"),
+                        department=category.get("department", "ICT Department"),
+                    )
+            except Exception as exc:
+                log.warning("Failed to dispatch allocation SMS/WhatsApp for ticket #%s to Assignee %s: %s", ticket_id, assigned_ca_id, exc)
+
             return ticket_id
+
 
     def _has_column(self, table, column):
         """Check if a column exists in a table with strict table name whitelist validation."""

@@ -50,6 +50,18 @@ def send_allocation_email(ca_name, ca_email, ticket_id, category_name):
     body = f"Dear {ca_name}, A helpdesk ticket ID with #{ticket_id} about {category_name} has been allocated to you. Please attend to it immediately. - ICT Sreenidhi"
     send_email_async(ca_email, subject, body)
 
+def send_ticket_created_email(creator_name, creator_email, ticket_id, category_name):
+    subject = f"Helpdesk Ticket #{ticket_id} Created Successfully"
+    name = creator_name or "Staff"
+    body = (
+        f"Dear {name},\n\n"
+        f"Your helpdesk ticket #{ticket_id} regarding '{category_name}' has been created successfully "
+        f"and assigned for resolution.\n"
+        f"You can track the progress of your ticket on the SNIST Helpdesk portal.\n\n"
+        f"Regards,\nSNIST Helpdesk"
+    )
+    send_email_async(creator_email, subject, body)
+
 def send_closure_email(creator_email, ticket_id):
     subject = f"Helpdesk Ticket #{ticket_id} Closed"
     body = f"Dear staff, Your ICT complaint ticket id : #{ticket_id} is closed, please check and if you are not satisfied reopen the same ticket id. - ICT"

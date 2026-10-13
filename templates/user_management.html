@@ -444,10 +444,40 @@
       align-items: center;
       gap: 8px;
     }
-    .confirm-box p {
-      font-size: 0.9rem;
-      color: var(--slate-600);
-      margin: 0 0 1.25rem;
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+    .toast-msg {
+      pointer-events: auto;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 500;
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: toastIn 0.25s ease-out;
+      transition: all 0.2s ease;
+    }
+    .toast-msg.success {
+      background: #10b981;
+      color: #ffffff;
+    }
+    .toast-msg.error {
+      background: #ef4444;
+      color: #ffffff;
+    }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
     }
   </style>
 </head>
@@ -597,22 +627,22 @@
                     </td>
                     <td><span class="dept-badge">{{ item.department }}</span></td>
                     <td>
-                      {% if item.role in ['CA', 'ASSIGNEE'] or (item.assigned_categories and item.assigned_categories|length > 0) %}
+                      {% if item.role in ['CA', 'ASSIGNEE'] %}
                         <div class="user-categories-cell">
                           <div class="cat-summary-row">
-                            <span class="category-count-badge {{ 'has-cats' if item.assigned_categories else 'empty' }}">
+                            <span class="category-count-badge {{ 'has-cats' if item.assigned_categories else 'empty' }}" id="user-cat-count-badge-{{ item.id }}">
                               {{ item.assigned_categories|length }} {{ 'Category' if item.assigned_categories|length == 1 else 'Categories' }}
                             </span>
                             {% if can_edit %}
-                              <button type="button" class="btn-manage-cat-link" data-id="{{ item.id }}" data-name="{{ item.name|e }}" data-dept="{{ item.department|e }}" data-cats='{{ item.assigned_categories|tojson }}' onclick="handleManageCatClick(this)">
+                              <button type="button" class="btn-manage-cat-link" id="btn-manage-cat-{{ item.id }}" data-id="{{ item.id }}" data-name="{{ item.name|e }}" data-dept="{{ item.department|e }}" data-cats='{{ item.assigned_categories|tojson }}' onclick="handleManageCatClick(this)">
                                 <i data-lucide="edit-3" style="width:11px;height:11px;"></i> Manage
                               </button>
                             {% endif %}
                           </div>
                           {% if item.assigned_categories %}
-                            <div class="assignee-pills-wrap" style="margin-top:4px;">
+                            <div class="assignee-pills-wrap" id="user-pills-wrap-{{ item.id }}" style="margin-top:4px;">
                               {% for cat in item.assigned_categories %}
-                                <div class="assignee-card-pill" style="margin-bottom:3px;">
+                                <div class="assignee-card-pill" id="table-user-{{ item.id }}-cat-{{ cat.category_id }}" style="margin-bottom:3px;">
                                   <div class="assignee-pill-info">
                                     <span class="ca-avatar" style="background:#e0e7ff; color:#4f46e5;">
                                       <i data-lucide="tag" style="width:10px;height:10px;"></i>
@@ -637,8 +667,10 @@
                               {% endfor %}
                             </div>
                           {% else %}
-                            <div style="font-size:0.78rem; color:#94a3b8; font-style:italic; margin-top:2px;">
-                              No categories mapped
+                            <div class="assignee-pills-wrap" id="user-pills-wrap-{{ item.id }}" style="margin-top:4px;">
+                              <div style="font-size:0.78rem; color:#94a3b8; font-style:italic; margin-top:2px;">
+                                No categories mapped
+                              </div>
                             </div>
                           {% endif %}
                         </div>
@@ -671,7 +703,8 @@
                     </td>
                     <td style="color:var(--slate-600); font-size:0.84rem;">{{ item.email }}</td>
                     <td>
-                      <select name="role" form="edit-form-{{ item.id }}" required style="padding:6px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; font-weight:600; outline:none; background:#ffffff; color:var(--slate-800);">
+                      {% set cat_count = item.assigned_categories|length if item.assigned_categories else 0 %}
+                      <select name="role" form="edit-form-{{ item.id }}" required data-user-id="{{ item.id }}" data-cat-count="{{ cat_count }}" onchange="handleRoleEditChange(this)" style="padding:6px 10px; border:1.5px solid #cbd5e1; border-radius:8px; font-size:0.86rem; font-weight:600; outline:none; background:#ffffff; color:var(--slate-800);">
                         {% for role in roles %}
                           <option value="{{ role }}" {% if item.role == role or (role == 'ASSIGNEE' and item.role == 'CA') %}selected{% endif %}>{{ 'USER' if role == 'FACULTY' else role }}</option>
                         {% endfor %}
@@ -684,7 +717,7 @@
                         {% endfor %}
                       </select>
                     </td>
-                    <td style="color:#94a3b8; font-size:0.82rem; font-style:italic;">Update details above to manage user</td>
+                    <td id="user-edit-hint-{{ item.id }}" style="color:#94a3b8; font-size:0.82rem; font-style:italic;">Update details above to manage user</td>
                     <td style="text-align:right;">
                       <div class="btn-group" style="justify-content:flex-end;">
                         <button type="submit" form="edit-form-{{ item.id }}" class="btn-table-action btn-save">Save</button>
@@ -1396,11 +1429,128 @@
       confirmUnassignCategory(caId, catId, catName, caName);
     }
 
-    function confirmUnassignCategory(caId, catId, catName, caName) {
+    function showToast(message, type) {
+      type = type || 'success';
+      let container = document.getElementById('global-toast-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'global-toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+      }
+      const toast = document.createElement('div');
+      toast.className = 'toast-msg ' + type;
+      toast.innerHTML = '<span style="font-size:1rem; font-weight:700;">' + (type === 'success' ? '✓' : '⚠️') + '</span> <span>' + escapeHtml(message) + '</span>';
+      container.appendChild(toast);
+      setTimeout(function() {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-8px)';
+        setTimeout(function() { toast.remove(); }, 250);
+      }, 3500);
+    }
+
+    function handleRoleEditChange(selectEl) {
+      const userId = selectEl.getAttribute('data-user-id');
+      const catCount = parseInt(selectEl.getAttribute('data-cat-count') || '0', 10);
+      const hintEl = document.getElementById('user-edit-hint-' + userId);
+      if (!hintEl) return;
+      const newRole = selectEl.value;
+      if (newRole === 'FACULTY' && catCount > 0) {
+        hintEl.innerHTML = '<span style="color:#d97706; font-weight:600;"><i data-lucide="alert-triangle" style="width:13px;height:13px;display:inline-block;vertical-align:middle;"></i> Note: Changing to USER will automatically unassign all ' + catCount + ' mapped categories.</span>';
+        if (window.lucide) lucide.createIcons();
+      } else {
+        hintEl.textContent = 'Update details above to manage user';
+        hintEl.style.color = '#94a3b8';
+      }
+    }
+
+    async function confirmUnassignCategory(caId, catId, catName, caName) {
       if (!confirm(`Are you sure you want to unassign category "${catName}" from ${caName}?`)) return;
-      document.getElementById('unassign-ca-id').value = caId;
-      document.getElementById('unassign-category-id').value = catId;
-      document.getElementById('unassign-category-form').submit();
+
+      const csrfInput = document.querySelector('input[name="csrf_token"]');
+      const csrfToken = csrfInput ? csrfInput.value : '';
+      const formData = new FormData();
+      formData.append('csrf_token', csrfToken);
+      formData.append('ca_id', caId);
+      formData.append('category_id', catId);
+
+      try {
+        const resp = await fetch('{{ url_for("management.unassign_ca_category") }}', {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json'
+          },
+          body: formData
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || data.status !== 'success') {
+          showToast(data.message || 'Failed to unassign category.', 'error');
+          return;
+        }
+
+        // 1. Update in Modal if modal is currently open for this user
+        const modalUserId = document.getElementById('mca-user-id') ? document.getElementById('mca-user-id').value : null;
+        if (modalUserId && String(modalUserId) === String(caId)) {
+          const pillInModal = document.getElementById('mca-pill-' + catId);
+          if (pillInModal) {
+            pillInModal.style.transition = 'all 0.2s ease';
+            pillInModal.style.opacity = '0';
+            pillInModal.style.transform = 'scale(0.95)';
+            setTimeout(function() {
+              pillInModal.remove();
+              const container = document.getElementById('mca-current-cats-list');
+              if (container && container.querySelectorAll('.assignee-card-pill').length === 0) {
+                container.innerHTML = '<div style="padding:10px 14px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; font-size:0.84rem; color:#94a3b8; font-style:italic;">No categories currently assigned to this Assignee.</div>';
+              }
+            }, 200);
+          }
+        }
+
+        // 2. Update in User Management Directory Table (row #user-view-{caId})
+        const manageBtn = document.getElementById('btn-manage-cat-' + caId);
+        if (manageBtn) {
+          try {
+            let currentCats = JSON.parse(manageBtn.getAttribute('data-cats') || '[]');
+            currentCats = currentCats.filter(function(c) { return String(c.category_id) !== String(catId); });
+            manageBtn.setAttribute('data-cats', JSON.stringify(currentCats));
+
+            // Update badge count
+            const countBadge = document.getElementById('user-cat-count-badge-' + caId);
+            if (countBadge) {
+              countBadge.textContent = currentCats.length + (currentCats.length === 1 ? ' Category' : ' Categories');
+              if (currentCats.length === 0) {
+                countBadge.classList.remove('has-cats');
+                countBadge.classList.add('empty');
+              }
+            }
+
+            // Remove table pill
+            const tablePill = document.getElementById('table-user-' + caId + '-cat-' + catId);
+            if (tablePill) {
+              tablePill.remove();
+            }
+
+            // If no categories left in table, show "No categories mapped"
+            const wrap = document.getElementById('user-pills-wrap-' + caId);
+            if (wrap && currentCats.length === 0) {
+              wrap.innerHTML = '<div style="font-size:0.78rem; color:#94a3b8; font-style:italic; margin-top:2px;">No categories mapped</div>';
+            }
+          } catch (e) {
+            console.error('Error updating table row state:', e);
+          }
+        }
+
+        // 3. Show smooth toast notification
+        showToast(data.message || `Successfully unassigned "${catName}" from ${caName}.`, 'success');
+
+      } catch (err) {
+        console.error('AJAX Unassign error, falling back to form submit:', err);
+        document.getElementById('unassign-ca-id').value = caId;
+        document.getElementById('unassign-category-id').value = catId;
+        document.getElementById('unassign-category-form').submit();
+      }
     }
 
     let currentMcaUserDept = '';
@@ -1424,7 +1574,7 @@
             : '<span class="block-sub-badge all">All Blocks</span>';
           
           html += `
-            <div class="assignee-card-pill" style="display:flex; justify-content:space-between; width:100%; box-sizing:border-box; padding:6px 10px; margin-bottom:4px;">
+            <div class="assignee-card-pill" id="mca-pill-${cat.category_id}" style="display:flex; justify-content:space-between; width:100%; box-sizing:border-box; padding:6px 10px; margin-bottom:4px;">
               <div class="assignee-pill-info">
                 <span class="ca-avatar" style="background:#e0e7ff; color:#4f46e5;">
                   <i data-lucide="tag" style="width:12px;height:12px;"></i>

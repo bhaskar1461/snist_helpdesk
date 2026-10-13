@@ -1023,24 +1023,43 @@ def unassign_ca_category():
     from app import get_demo_db
     demo_db = get_demo_db()
     user = current_user()
-    ca_id = safe_int(request.form.get("ca_id"))
-    category_id = safe_int(request.form.get("category_id"))
-    redirect_url = request.form.get("redirect_to") or url_for("management.user_management")
+    is_json_req = (
+        request.is_json
+        or request.content_type == "application/json"
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in request.headers.get("Accept", "")
+    )
+    if is_json_req and not request.form:
+        json_data = request.get_json(silent=True) or {}
+        ca_id = safe_int(json_data.get("ca_id"))
+        category_id = safe_int(json_data.get("category_id"))
+        redirect_url = json_data.get("redirect_to") or url_for("management.user_management")
+    else:
+        ca_id = safe_int(request.form.get("ca_id"))
+        category_id = safe_int(request.form.get("category_id"))
+        redirect_url = request.form.get("redirect_to") or url_for("management.user_management")
 
     if not ca_id or not category_id:
+        if is_json_req:
+            return jsonify({"status": "error", "message": "Invalid request parameters."}), 400
         flash("Invalid request parameters.", "error")
         return redirect(redirect_url)
 
     target_ca = demo_db.get_user(ca_id)
     target_cat = demo_db.get_category(category_id)
     if not target_ca or not target_cat:
+        if is_json_req:
+            return jsonify({"status": "error", "message": "CA or Category not found."}), 404
         flash("CA or Category not found.", "error")
         return redirect(redirect_url)
 
     # Permission check for HOD: can only manage within their own department
     if user["role"] == "HOD":
         if target_ca.get("department") != user["department"] or target_cat.get("department") != user["department"]:
-            flash("You can only manage category assignments within your own department.", "error")
+            msg = "You can only manage category assignments within your own department."
+            if is_json_req:
+                return jsonify({"status": "error", "message": msg}), 403
+            flash(msg, "error")
             return redirect(redirect_url)
 
     try:
@@ -1053,8 +1072,22 @@ def unassign_ca_category():
             target_id=ca_id,
             details={"category_id": category_id, "category_name": target_cat.get("category_name")},
         )
-        flash(f"Successfully unassigned '{target_cat.get('category_name')}' from {target_ca.get('name')}.", "success")
+        success_msg = f"Successfully unassigned '{target_cat.get('category_name')}' from {target_ca.get('name')}."
+        if is_json_req:
+            remaining_cats = demo_db.get_user_assigned_categories(ca_id) if hasattr(demo_db, 'get_user_assigned_categories') else []
+            return jsonify({
+                "status": "success",
+                "message": success_msg,
+                "ca_id": ca_id,
+                "category_id": category_id,
+                "category_name": target_cat.get("category_name"),
+                "remaining_count": len(remaining_cats),
+                "remaining_categories": remaining_cats,
+            }), 200
+        flash(success_msg, "success")
     except Exception as e:
+        if is_json_req:
+            return jsonify({"status": "error", "message": str(e)}), 500
         flash(f"Failed to unassign category: {e}", "error")
 
     return redirect(redirect_url)
@@ -1140,13 +1173,35 @@ def update_user(user_id):
     if password and user["role"] == "SUPER_ADMIN":
         payload["password"] = password
 
+    old_role = target_user.get("role", "")
     demo_db.update_user(user_id, payload)
+
+    categories_cleared = 0
+    if old_role in ("CA", "ASSIGNEE") and new_role not in ("CA", "ASSIGNEE"):
+        if hasattr(demo_db, "unassign_ca_from_all_categories"):
+            categories_cleared = demo_db.unassign_ca_from_all_categories(user_id)
+        demo_db.log_audit_event(
+            "CA_DEMOTED_CATEGORIES_CLEARED",
+            user["id"],
+            user["org_id"],
+            target_type="user",
+            target_id=user_id,
+            details={"demoted_user": name, "old_role": old_role, "new_role": new_role, "categories_cleared": categories_cleared},
+        )
+
     updated_user = demo_db.get_user(user_id)
     if is_json_req:
-        return jsonify({"message": "User updated successfully.", "user": updated_user}), 200
+        return jsonify({
+            "message": "User updated successfully.",
+            "user": updated_user,
+            "categories_cleared": categories_cleared,
+        }), 200
 
     display_role = "USER" if new_role == "FACULTY" else new_role
-    flash(f"User role updated to {display_role} successfully.", "success")
+    if old_role in ("CA", "ASSIGNEE") and new_role not in ("CA", "ASSIGNEE"):
+        flash(f"User role updated to {display_role}. All mapped categories were automatically unassigned.", "success")
+    else:
+        flash(f"User role updated to {display_role} successfully.", "success")
     return redirect(url_for("management.user_management"))
 
 

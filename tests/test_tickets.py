@@ -40,6 +40,39 @@ class TestTickets(HelpdeskTestCase):
         self.assertEqual(created_tickets[0]["status"], "PENDING")
         self.assertEqual(created_tickets[0]["assigned_to"], 4) # Fallback to default CA
 
+        # Verify notifications were dispatched to both creator and assignee
+        self.mock_email_create.assert_called_once()
+        create_args = self.mock_email_create.call_args[0]
+        self.assertEqual(create_args[1], "faculty@gmail.com")
+        self.mock_email_alloc.assert_called_once()
+        self.mock_sms_alloc.assert_called_once()
+
+    def test_create_ticket_bulletproof_on_notification_failures(self):
+        """Verify ticket creation succeeds and returns ticket_id even if email/SMS services throw exceptions."""
+        from app import get_demo_db
+        demo_db = get_demo_db()
+
+        # Simulate catastrophic external notification failures
+        self.mock_email_create.side_effect = RuntimeError("SMTP connection timed out")
+        self.mock_email_alloc.side_effect = RuntimeError("Mail exchange unreachable")
+        self.mock_sms_alloc.side_effect = RuntimeError("BulkSMS gateway 500 error")
+
+        # Ticket creation must still succeed cleanly without raising exceptions
+        ticket_id = demo_db.create_ticket(
+            title="Projector bulb fused",
+            description="Room 302 projector needs immediate replacement",
+            category_id=1,
+            created_by=7,
+        )
+        self.assertIsNotNone(ticket_id)
+        self.assertTrue(ticket_id > 0)
+
+        # Verify ticket exists in DB and is in PENDING state
+        ticket = demo_db.get_ticket(ticket_id)
+        self.assertIsNotNone(ticket)
+        self.assertEqual(ticket["title"], "Projector bulb fused")
+        self.assertEqual(ticket["status"], "PENDING")
+
     def test_create_ticket_readonly_department_display(self):
         self.login_as("faculty@gmail.com")
         # Keep only CSE categories so available_depts has length 1

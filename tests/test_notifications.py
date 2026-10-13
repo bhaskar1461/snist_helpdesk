@@ -1,7 +1,7 @@
 import unittest
 from tests.test_base import HelpdeskTestCase
 from sms_services import _normalize_phone, _build_whatsapp_allocation_payload, send_allocation_sms, send_closure_sms
-from email_services import send_allocation_email, send_closure_email
+from email_services import send_allocation_email, send_closure_email, send_ticket_created_email
 from unittest.mock import patch
 
 class TestNotifications(HelpdeskTestCase):
@@ -105,3 +105,23 @@ class TestNotifications(HelpdeskTestCase):
         self.assertEqual(args2[0], "faculty@gmail.com")
         self.assertTrue("Ticket Resolved" in args2[1] or "Closed" in args2[1])
         self.assertIn("123", args2[2])
+
+        # 3. Creation confirmation email
+        mock_email_send.reset_mock()
+        send_ticket_created_email("Ramesh", "ramesh@sreenidhi.edu.in", 456, "Projector Issue")
+        mock_email_send.assert_called_once()
+        args3 = mock_email_send.call_args[0]
+        self.assertEqual(args3[0], "ramesh@sreenidhi.edu.in")
+        self.assertIn("Ticket #456 Created", args3[1])
+        self.assertIn("Ramesh", args3[2])
+        self.assertIn("Projector Issue", args3[2])
+        self.assertIn("456", args3[2])
+
+        # 4. Creation confirmation with fallback name
+        mock_email_send.reset_mock()
+        send_ticket_created_email(None, "faculty@sreenidhi.edu.in", 789, "Network Down")
+        mock_email_send.assert_called_once()
+        args4 = mock_email_send.call_args[0]
+        self.assertEqual(args4[0], "faculty@sreenidhi.edu.in")
+        self.assertIn("Staff", args4[2])
+

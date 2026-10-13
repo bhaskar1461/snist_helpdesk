@@ -41,11 +41,13 @@ class HelpdeskTestCase(unittest.TestCase):
         self.sms_alloc_patcher = patch("sms_services.send_allocation_sms", return_value=(True, "Mock SMS success"))
         self.sms_close_patcher = patch("sms_services.send_closure_sms", return_value=(True, "Mock SMS success"))
         self.email_alloc_patcher = patch("email_services.send_allocation_email", return_value=True)
+        self.email_create_patcher = patch("email_services.send_ticket_created_email", return_value=True)
         self.email_close_patcher = patch("email_services.send_closure_email", return_value=True)
 
         self.mock_sms_alloc = self.sms_alloc_patcher.start()
         self.mock_sms_close = self.sms_close_patcher.start()
         self.mock_email_alloc = self.email_alloc_patcher.start()
+        self.mock_email_create = self.email_create_patcher.start()
         self.mock_email_close = self.email_close_patcher.start()
 
     def tearDown(self):
@@ -53,6 +55,7 @@ class HelpdeskTestCase(unittest.TestCase):
         self.sms_alloc_patcher.stop()
         self.sms_close_patcher.stop()
         self.email_alloc_patcher.stop()
+        self.email_create_patcher.stop()
         self.email_close_patcher.stop()
 
     def login_as(self, email, password="123", follow_redirects=False):
