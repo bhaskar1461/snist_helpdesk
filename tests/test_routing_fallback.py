@@ -64,3 +64,82 @@ class TestRoutingFallback(HelpdeskTestCase):
         # Check that the warning was logged
         warning_logged = any("No CA resolvable for category" in msg for msg in log_ctx.output)
         self.assertTrue(warning_logged, f"Expected fallback warning log not found in: {log_ctx.output}")
+
+    def test_routing_with_block_aliases(self):
+        """
+        3. Test that resolve_assigned_ca normalizes between Roman and Arabic numerals,
+        as well as Academic prefixes (e.g. Block 11 <-> Block-XI).
+        """
+        demo_db = get_demo_db()
+
+        # Category 1: assign CA 4 to Block-XI, CA 5 to Block-III
+        demo_db.assign_ca_to_category_blocks(1, 4, ["Block-XI"])
+        demo_db.assign_ca_to_category_blocks(1, 5, ["Block-III"])
+
+        # Test resolving Arabic numeral 'Block 11' maps to CA 4 (assigned to Block-XI)
+        self.assertEqual(demo_db.resolve_assigned_ca(1, "Block 11"), 4)
+        self.assertEqual(demo_db.resolve_assigned_ca(1, "Block-11"), 4)
+        self.assertEqual(demo_db.resolve_assigned_ca(1, "Academic Block 11"), 4)
+
+        # Test resolving 'Block 3' maps to CA 5 (assigned to Block-III)
+        self.assertEqual(demo_db.resolve_assigned_ca(1, "Block 3"), 5)
+        self.assertEqual(demo_db.resolve_assigned_ca(1, "Block-3"), 5)
+
+        # Reverse test: assign CA 4 to 'Block 5', resolve with Roman numeral 'Block-V'
+        demo_db.assign_ca_to_category_blocks(1, 4, ["Block 5"])
+        self.assertEqual(demo_db.resolve_assigned_ca(1, "Block-V"), 4)
+        self.assertEqual(demo_db.resolve_assigned_ca(1, "Block 5"), 4)
+
+    def test_specific_block_takes_precedence_over_all_blocks(self):
+        """
+        4. Test that a specific block assignment takes priority over a wildcard 'All Blocks' assignment.
+        """
+        demo_db = get_demo_db()
+
+        # Category 1: CA 6 is mapped to 'All Blocks', CA 4 is specifically mapped to 'Block-V'
+        demo_db.assign_ca_to_category_blocks(1, 6, ["All Blocks"])
+        demo_db.assign_ca_to_category_blocks(1, 4, ["Block-V"])
+
+        # For Block-V (or Block 5), specific CA 4 should be returned, not All Blocks CA 6
+        resolved = demo_db.resolve_assigned_ca(1, "Block 5")
+        self.assertEqual(resolved, 4)
+
+        # For an unmapped block (e.g. Block-VIII), All Blocks CA 6 should be returned
+        resolved_unmapped = demo_db.resolve_assigned_ca(1, "Block-VIII")
+        self.assertEqual(resolved_unmapped, 6)
+
+    def test_create_ticket_with_block_without_room(self):
+        """
+        5. Test that submitting a ticket with block (and location_id=None)
+        correctly routes to the block CA and resolves location.
+        """
+        demo_db = get_demo_db()
+        demo_db.assign_ca_to_category_blocks(1, 4, ["Block-XI"])
+
+        ticket_id = demo_db.create_ticket(
+            title="Switch failure",
+            description="Testing block routing without room",
+            category_id=1,
+            created_by=7,
+            org_id="2000",
+            location_id=None,
+            block="Block 11",
+        )
+        t = demo_db.get_ticket(ticket_id)
+        self.assertEqual(t["assigned_to"], 4)
+
+    def test_legacy_ticket_location_fallback(self):
+        """
+        6. Test that legacy tickets with NULL location_id extract location from title.
+        """
+        demo_db = get_demo_db()
+        ticket_data = {
+            "title": "Monitor issue in Block-V 5003",
+            "location_block": None,
+            "location_room_no": None,
+            "created_at": "2026-09-17 10:24:02",
+        }
+        enriched = demo_db.add_escalation_status(ticket_data)
+        self.assertEqual(enriched["location_block"], "Block-V")
+        self.assertEqual(enriched["location_room_no"], "5003")
+

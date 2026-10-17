@@ -600,6 +600,7 @@ def create_ticket_for_role():
         title = request.form.get("title", "").strip()
         description = request.form.get("description", "").strip()
         location_id = safe_int(request.form.get("location_id", "0")) or None
+        block = request.form.get("block", "").strip() or None
         if not category_id:
             flash("Category is required.", "error")
             return redirect(url_for("create_ticket_for_role"))
@@ -637,7 +638,7 @@ def create_ticket_for_role():
 
         org_id = user["org_id"]
         submission_key = request.form.get("submission_key", "").strip() or None
-        demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id, submission_key=submission_key)
+        demo_db.create_ticket(title=title, description=description, category_id=category_id, created_by=user["id"], org_id=org_id, location_id=location_id, submission_key=submission_key, block=block)
         flash("Ticket created and auto-assigned to the mapped Assignee.", "success")
         return redirect(url_for(route_for_role(user["role"])))
 

@@ -58,6 +58,66 @@ def zero_date_safe(col: str, alias: str = "t") -> str:
 
 ZERO_DATE_SAFE = {col: f"{zero_date_safe(col)} AS {col}" for col in ZERO_DATE_COLUMNS}
 
+ROMAN_TO_ARABIC = {
+    "i": 1, "ii": 2, "iii": 3, "iv": 4, "v": 5,
+    "vi": 6, "vii": 7, "viii": 8, "ix": 9, "x": 10,
+    "xi": 11, "xii": 12, "xiii": 13, "xiv": 14, "xv": 15
+}
+ARABIC_TO_ROMAN = {v: k.upper() for k, v in ROMAN_TO_ARABIC.items()}
+
+def get_block_aliases(block_str: str) -> list[str]:
+    """
+    Given any block string (e.g. 'Block 11', 'Block-XI', 'Academic Block 1', 'Admin Block'),
+    return a deduplicated list of lowercase alias strings representing that block.
+    """
+    if not block_str:
+        return []
+    import re
+    raw = str(block_str).strip().lower()
+    aliases = {raw}
+
+    clean = raw.replace("-", " ")
+    aliases.add(clean)
+    aliases.add(raw.replace(" ", "-"))
+
+    m = re.search(r'(?:academic\s+)?block[-\s]*([0-9]+|[ivx]+)\b', raw)
+    if m:
+        val = m.group(1)
+        num = None
+        if val.isdigit():
+            num = int(val)
+        elif val in ROMAN_TO_ARABIC:
+            num = ROMAN_TO_ARABIC[val]
+
+        if num is not None and 1 <= num <= 20:
+            roman = ARABIC_TO_ROMAN.get(num, "").lower()
+            aliases.add(f"block {num}")
+            aliases.add(f"block-{num}")
+            aliases.add(f"academic block {num}")
+            aliases.add(f"academic block-{num}")
+            if roman:
+                aliases.add(f"block {roman}")
+                aliases.add(f"block-{roman}")
+                aliases.add(f"academic block {roman}")
+                aliases.add(f"academic block-{roman}")
+
+    if "admin" in raw:
+        aliases.update(["admin block", "admin", "administrative block", "administration"])
+    if "library" in raw:
+        aliases.update(["central library", "centeral library", "library"])
+    if "cctv" in raw or "security" in raw:
+        aliases.update(["cctv/security room", "security&cctv", "security & cctv", "security room", "cctv"])
+    if "biotech" in raw:
+        aliases.update(["biotech block", "biotechnology block", "biotech"])
+    if "canteen" in raw:
+        aliases.update(["canteen", "cafeteria"])
+    if "1st year" in raw or "first year" in raw:
+        aliases.update(["1st year block", "first year block"])
+    if "university" in raw:
+        aliases.update(["university block", "university"])
+
+    return sorted(list(aliases))
+
 
 @dataclass
 class DbConfig:
@@ -2328,7 +2388,7 @@ class DemoDbService(BaseMySQLService):
             "Block-VI", "Block-VII", "Block-VIII", "Block-IX", "Block-X",
             "Block-XI", "Block-XII", "Block-XIII", "1st year block", "Admin Block",
             "Biotech Block", "Canteen", "Central Library", "City Office",
-            "Security & CCTV", "University Block", "Block 5"
+            "Security & CCTV", "University Block"
         ]
         blocks = set(DEFAULT_BLOCKS)
         if self.enabled:
@@ -2343,7 +2403,7 @@ class DemoDbService(BaseMySQLService):
                 pass
         return sorted(list(blocks), key=lambda x: (not x.startswith("Block-"), x))
 
-    def create_ticket(self, title, description, category_id, created_by, org_id="2000", location_id=None, submission_key=None, assigned_to=None):
+    def create_ticket(self, title, description, category_id, created_by, org_id="2000", location_id=None, submission_key=None, assigned_to=None, block=None):
         category = self.get_category(category_id, org_id=org_id)
         if not category:
             raise ValueError("Selected category does not exist.")
@@ -2367,6 +2427,28 @@ class DemoDbService(BaseMySQLService):
                 row = cursor.fetchone()
                 if row:
                     block_name = row.get("block")
+
+        # Fallback to directly provided block if location_id did not yield a block or was omitted
+        if not block_name and block:
+            block_name = str(block).strip()
+
+        # If location_id is omitted but block_name is given, try resolving a location_id for that block
+        if not location_id and block_name:
+            try:
+                with self.connection() as connection, connection.cursor() as cursor:
+                    aliases = get_block_aliases(block_name)
+                    if aliases:
+                        placeholders = ", ".join(["%s"] * len(aliases))
+                        cursor.execute(
+                            f"SELECT id, block FROM {self.inst_prefix}location WHERE LOWER(block) IN ({placeholders}) AND (CAST(ORG_ID AS CHAR) = %s OR ORG_ID IS NULL OR ORG_ID = '') LIMIT 1",
+                            aliases + [org_id],
+                        )
+                        loc_row = cursor.fetchone()
+                        if loc_row:
+                            location_id = loc_row["id"]
+                            block_name = loc_row.get("block") or block_name
+            except Exception:
+                pass
 
         # Resolve assigned CA dynamically or use explicitly provided assigned_to
         if assigned_to is not None:
@@ -2536,7 +2618,23 @@ class DemoDbService(BaseMySQLService):
             return False
 
     def add_escalation_status(self, ticket):
-        if not ticket or not ticket.get("created_at"):
+        if not ticket:
+            return ticket
+
+        # Fallback for location display if location_block is missing (e.g. historical tickets)
+        if not ticket.get("location_block") and not ticket.get("location_room_no"):
+            title = ticket.get("title") or ""
+            if " in " in title:
+                loc_part = title.split(" in ")[-1].strip()
+                if any(k in loc_part.lower() for k in ["block", "admin", "library", "canteen", "lab"]):
+                    parts = loc_part.split()
+                    if len(parts) >= 2:
+                        ticket["location_block"] = parts[0]
+                        ticket["location_room_no"] = " ".join(parts[1:])
+                    else:
+                        ticket["location_block"] = loc_part
+
+        if not ticket.get("created_at"):
             return ticket
         
         from datetime import datetime, timedelta
@@ -3390,18 +3488,25 @@ class DemoDbService(BaseMySQLService):
             return None
 
         with self.connection() as connection, connection.cursor() as cursor:
-            # Step 1: Exact block match or 'All Blocks'
+            # Step 1: Exact or aliased block match or 'All Blocks'
             if block:
+                aliases = get_block_aliases(block)
+                placeholders = ", ".join(["%s"] * len(aliases))
                 cursor.execute(
-                    """
-                    SELECT ca_id FROM helpdesk_ca_assignments 
-                    WHERE category_id = %s AND (LOWER(block) = LOWER(%s) OR LOWER(block) IN ('all blocks', 'all', 'campus'))
+                    f"""
+                    SELECT ca_id, block FROM helpdesk_ca_assignments 
+                    WHERE category_id = %s AND (LOWER(block) IN ({placeholders}) OR LOWER(block) IN ('all blocks', 'all', 'campus'))
                     """,
-                    (category_id, block),
+                    [category_id] + aliases,
                 )
                 rows = cursor.fetchall()
                 if rows:
-                    ca_ids = list(dict.fromkeys([r["ca_id"] for r in rows]))
+                    # Give preference to specific block matches over generic 'All Blocks'
+                    specific_rows = [r for r in rows if (r.get("block") or "").strip().lower() not in ('all blocks', 'all', 'campus')]
+                    if specific_rows:
+                        ca_ids = list(dict.fromkeys([r["ca_id"] for r in specific_rows]))
+                    else:
+                        ca_ids = list(dict.fromkeys([r["ca_id"] for r in rows]))
                     return self._select_least_loaded_ca(cursor, ca_ids)
 
             # Step 2: Any block / all assigned CAs for this category
